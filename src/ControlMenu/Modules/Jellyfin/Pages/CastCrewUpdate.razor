@@ -1,0 +1,157 @@
+@page "/jellyfin/cast-crew"
+@using ControlMenu.Data.Entities
+@using ControlMenu.Data.Enums
+@using ControlMenu.Services
+@implements IDisposable
+
+<PageTitle>Jellyfin — Cast & Crew Update</PageTitle>
+
+<h1><i class="bi bi-people"></i> Cast & Crew Image Update</h1>
+<p class="page-subtitle">Updates images for all cast members, directors, and producers in Jellyfin media libraries. This process typically takes several days to complete.</p>
+
+@if (_activeJob is not null)
+{
+    <div class="job-panel">
+        <div class="job-header">
+            <span class="job-status-badge @_activeJob.Status.ToString().ToLower()">
+                @_activeJob.Status
+            </span>
+            @if (_activeJob.StartedAt.HasValue)
+            {
+                <span class="job-time">Started: @_activeJob.StartedAt.Value.ToLocalTime().ToString("g")</span>
+            }
+        </div>
+
+        @if (_activeJob.Status == JobStatus.Running || _activeJob.Status == JobStatus.Queued)
+        {
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" style="width: @(_activeJob.Progress ?? 0)%"></div>
+            </div>
+            <div class="progress-info">
+                <span>@(_activeJob.Progress ?? 0)%</span>
+                <span>@(_activeJob.ProgressMessage ?? "Waiting...")</span>
+            </div>
+            <button class="btn btn-danger" @onclick="CancelJob">
+                <i class="bi bi-stop-circle"></i> Cancel
+            </button>
+        }
+        else if (_activeJob.Status == JobStatus.Completed)
+        {
+            <div class="job-complete">
+                <i class="bi bi-check-circle-fill"></i>
+                <p>Update completed at @_activeJob.CompletedAt?.ToLocalTime().ToString("g").</p>
+            </div>
+        }
+        else if (_activeJob.Status == JobStatus.Failed)
+        {
+            <div class="job-failed">
+                <i class="bi bi-x-circle-fill"></i>
+                <p>@_activeJob.ErrorMessage</p>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="start-panel">
+        <div class="info-box">
+            <i class="bi bi-info-circle"></i>
+            <div>
+                <p><strong>What this does:</strong> Calls the Jellyfin API to find all people without images and triggers an image refresh for each one.</p>
+                <p><strong>Duration:</strong> Typically about a week for large libraries.</p>
+                <p><strong>Runs in background:</strong> You can close this page. A notification email is sent when finished.</p>
+            </div>
+        </div>
+        <button class="btn btn-primary btn-lg" @onclick="StartJob" disabled="@_starting">
+            <i class="bi bi-play-circle"></i> Start Update
+        </button>
+    </div>
+}
+
+@if (_recentJobs.Count > 0)
+{
+    <h2>Job History</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Status</th>
+                <th>Started</th>
+                <th>Completed</th>
+                <th>Progress</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var job in _recentJobs)
+            {
+                <tr>
+                    <td><span class="job-status-badge @job.Status.ToString().ToLower()">@job.Status</span></td>
+                    <td>@(job.StartedAt?.ToLocalTime().ToString("g") ?? "—")</td>
+                    <td>@(job.CompletedAt?.ToLocalTime().ToString("g") ?? "—")</td>
+                    <td>@(job.Progress ?? 0)%</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [Inject] private IBackgroundJobService JobService { get; set; } = default!;
+
+    private Job? _activeJob;
+    private List<Job> _recentJobs = [];
+    private bool _starting;
+    private Timer? _pollTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadJobs();
+
+        // Poll for progress updates every 5 seconds if there's an active job
+        _pollTimer = new Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadJobs();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    private async Task LoadJobs()
+    {
+        var allJobs = await JobService.GetJobsByModuleAsync("jellyfin");
+        var castCrewJobs = allJobs.Where(j => j.JobType == "cast-crew-update").ToList();
+
+        _activeJob = castCrewJobs.FirstOrDefault(j =>
+            j.Status == JobStatus.Running || j.Status == JobStatus.Queued);
+
+        _recentJobs = castCrewJobs
+            .Where(j => j.Status == JobStatus.Completed || j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled)
+            .Take(10)
+            .ToList();
+    }
+
+    private async Task StartJob()
+    {
+        _starting = true;
+        var job = await JobService.CreateJobAsync("jellyfin", "cast-crew-update");
+        _activeJob = job;
+        // NOTE: In a full implementation, this would launch the worker process:
+        // var process = Process.Start("dotnet", $"run --project Workers/CastCrewWorker -- {job.Id}");
+        // await JobService.StartJobAsync(job.Id, process.Id);
+        // For now, the job is created in Queued state. Worker process launching
+        // will be implemented when the worker project is added.
+        _starting = false;
+    }
+
+    private async Task CancelJob()
+    {
+        if (_activeJob is null) return;
+        await JobService.RequestCancellationAsync(_activeJob.Id);
+    }
+
+    public void Dispose()
+    {
+        _pollTimer?.Dispose();
+    }
+}
