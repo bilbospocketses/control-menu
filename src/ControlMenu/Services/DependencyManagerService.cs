@@ -255,7 +255,9 @@ public class DependencyManagerService : IDependencyManagerService
                 return new UpdateResult(false, null,
                     $"Could not find {moduleDep.ExecutableName} in extracted archive", urlAction);
 
-            var verifyResult = await _executor.ExecuteAsync(newExe, moduleDep.VersionCommand.Split(' ').Last());
+            var versionParts = moduleDep.VersionCommand.Split(' ', 2);
+            var verifyArgs = versionParts.Length > 1 ? versionParts[1] : null;
+            var verifyResult = await _executor.ExecuteAsync(newExe, verifyArgs);
             if (verifyResult.ExitCode != 0)
                 return new UpdateResult(false, null,
                     $"New binary verification failed: {verifyResult.StandardError}", urlAction);
