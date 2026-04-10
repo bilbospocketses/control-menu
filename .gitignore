@@ -1,0 +1,46 @@
+# .NET build output
+bin/
+obj/
+publish/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# SQLite runtime databases (not the EF migrations)
+*.db
+*.db-shm
+*.db-wal
+
+# Data Protection keys (machine-specific)
+keys/
+
+# Root-level binaries (existing tools — not part of the .NET project)
+/*.exe
+/*.dll
+/*.bat
+/*.vbs
+/*.ico
+/*.png
+/scrcpy-server
+/source.properties
+/mke2fs.conf
+/*.lnk
+
+# PowerShell scripts (legacy, kept for reference but not part of new app)
+/*.ps1
+
+# Jellyfin backup directory
+/jellyfin-db-bkup-and-logs/
+
+# Keep these directories
+!src/
+!tests/
+!docs/
