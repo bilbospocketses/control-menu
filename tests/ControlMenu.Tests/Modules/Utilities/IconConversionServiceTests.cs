@@ -9,40 +9,56 @@ public class IconConversionServiceTests : IDisposable
 
     public IconConversionServiceTests()
     {
-        _tempDir = Path.Combine(Path.GetTempPath(), $"icontest_{Guid.NewGuid():N}");
+        _tempDir = Path.Combine(Path.GetTempPath(), "ControlMenu-Tests", Guid.NewGuid().ToString());
         Directory.CreateDirectory(_tempDir);
     }
 
     public void Dispose()
     {
-        if (Directory.Exists(_tempDir))
-            Directory.Delete(_tempDir, true);
-    }
-
-    private string CreateTestPng(int width = 64, int height = 64)
-    {
-        var path = Path.Combine(_tempDir, $"test_{width}x{height}.png");
-        using var bitmap = new System.Drawing.Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-        using var g = System.Drawing.Graphics.FromImage(bitmap);
-        g.Clear(System.Drawing.Color.Blue);
-        bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
-        return path;
+        try { Directory.Delete(_tempDir, recursive: true); } catch { }
     }
 
     [Fact]
-    public async Task ConvertToIcoAsync_CreatesIcoFile()
+    public async Task ConvertToIcoAsync_ProducesValidIcoFile()
     {
-        var sourcePath = CreateTestPng(256, 256);
-        var targetPath = Path.Combine(_tempDir, "output.ico");
+        var sourcePng = CreateTestPng(128, 128);
+        var targetIco = Path.Combine(_tempDir, "test.ico");
+        await _service.ConvertToIcoAsync(sourcePng, targetIco, [32, 64]);
+        Assert.True(File.Exists(targetIco));
+        var bytes = await File.ReadAllBytesAsync(targetIco);
+        Assert.True(bytes.Length > 22);
+        Assert.Equal(0, BitConverter.ToUInt16(bytes, 0)); // reserved
+        Assert.Equal(1, BitConverter.ToUInt16(bytes, 2)); // type = icon
+        Assert.Equal(2, BitConverter.ToUInt16(bytes, 4)); // 2 images
+    }
 
-        await _service.ConvertToIcoAsync(sourcePath, targetPath, [64, 128, 256]);
+    [Fact]
+    public async Task ConvertToIcoAsync_HandlesNonSquareImage()
+    {
+        var sourcePng = CreateTestPng(200, 100);
+        var targetIco = Path.Combine(_tempDir, "wide.ico");
+        await _service.ConvertToIcoAsync(sourcePng, targetIco, [64]);
+        Assert.True(File.Exists(targetIco));
+        var bytes = await File.ReadAllBytesAsync(targetIco);
+        Assert.Equal(1, BitConverter.ToUInt16(bytes, 4)); // 1 image
+    }
 
-        Assert.True(File.Exists(targetPath));
-        var bytes = await File.ReadAllBytesAsync(targetPath);
-        // ICO file header: reserved (2 bytes) + type 1 (2 bytes) + image count (2 bytes)
-        Assert.Equal(0, BitConverter.ToUInt16(bytes, 0)); // reserved = 0
-        Assert.Equal(1, BitConverter.ToUInt16(bytes, 2)); // type = 1 (icon)
-        Assert.Equal(3, BitConverter.ToUInt16(bytes, 4)); // 3 images
+    [Fact]
+    public async Task ConvertToIcoAsync_Handles256Size()
+    {
+        var sourcePng = CreateTestPng(512, 512);
+        var targetIco = Path.Combine(_tempDir, "large.ico");
+        await _service.ConvertToIcoAsync(sourcePng, targetIco, [256]);
+        var bytes = await File.ReadAllBytesAsync(targetIco);
+        Assert.Equal(0, bytes[6]); // width = 0 means 256
+        Assert.Equal(0, bytes[7]); // height = 0 means 256
+    }
+
+    [Fact]
+    public async Task ConvertToIcoAsync_ThrowsForMissingFile()
+    {
+        await Assert.ThrowsAsync<FileNotFoundException>(() =>
+            _service.ConvertToIcoAsync("/nonexistent.png", "/out.ico"));
     }
 
     [Fact]
@@ -59,27 +75,6 @@ public class IconConversionServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task ConvertToIcoAsync_SingleSize_Creates1Image()
-    {
-        var sourcePath = CreateTestPng(64, 64);
-        var targetPath = Path.Combine(_tempDir, "single.ico");
-
-        await _service.ConvertToIcoAsync(sourcePath, targetPath, [64]);
-
-        Assert.True(File.Exists(targetPath));
-        var bytes = await File.ReadAllBytesAsync(targetPath);
-        Assert.Equal(1, BitConverter.ToUInt16(bytes, 4)); // 1 image
-    }
-
-    [Fact]
-    public async Task ConvertToIcoAsync_ThrowsForMissingSource()
-    {
-        var targetPath = Path.Combine(_tempDir, "out.ico");
-        await Assert.ThrowsAsync<FileNotFoundException>(
-            () => _service.ConvertToIcoAsync("/nonexistent/file.png", targetPath));
-    }
-
-    [Fact]
     public async Task ConvertToIcoAsync_OutputIsValidIcoFormat()
     {
         var sourcePath = CreateTestPng(128, 128);
@@ -89,5 +84,18 @@ public class IconConversionServiceTests : IDisposable
 
         var bytes = await File.ReadAllBytesAsync(targetPath);
         Assert.True(bytes.Length > 6 + 16 * 2); // header + 2 dir entries minimum
+    }
+
+    private string CreateTestPng(int width, int height)
+    {
+        var path = Path.Combine(_tempDir, $"test_{width}x{height}.png");
+        using var bitmap = new SkiaSharp.SKBitmap(width, height, SkiaSharp.SKColorType.Rgba8888, SkiaSharp.SKAlphaType.Premul);
+        using var canvas = new SkiaSharp.SKCanvas(bitmap);
+        canvas.Clear(new SkiaSharp.SKColor(255, 0, 0, 128));
+        using var image = SkiaSharp.SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+        using var fs = File.Create(path);
+        data.SaveTo(fs);
+        return path;
     }
 }

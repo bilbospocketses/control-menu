@@ -1,6 +1,4 @@
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
+using SkiaSharp;
 
 namespace ControlMenu.Modules.Utilities.Services;
 
@@ -15,70 +13,55 @@ public class IconConversionService : IIconConversionService
 
         sizes ??= DefaultSizes;
 
-        using var sourceImage = new Bitmap(sourcePath);
-        using var output = new FileStream(targetPath, FileMode.Create, FileAccess.Write);
+        using var sourceImage = SKBitmap.Decode(sourcePath);
+        if (sourceImage is null)
+            throw new InvalidOperationException($"Could not decode image: {sourcePath}");
 
-        // Prepare PNG data for each size
+        using var output = new FileStream(targetPath, FileMode.Create, FileAccess.Write);
         var pngEntries = new List<byte[]>();
         foreach (var size in sizes)
         {
             using var resized = ResizeImage(sourceImage, size, size);
-            using var ms = new MemoryStream();
-            resized.Save(ms, ImageFormat.Png);
-            pngEntries.Add(ms.ToArray());
+            using var image = SKImage.FromBitmap(resized);
+            using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
+            pngEntries.Add(encoded.ToArray());
         }
 
         using var writer = new BinaryWriter(output);
 
         // ICONDIR header
-        writer.Write((ushort)0);               // reserved
-        writer.Write((ushort)1);               // type = icon
-        writer.Write((ushort)pngEntries.Count); // image count
+        writer.Write((ushort)0);
+        writer.Write((ushort)1);
+        writer.Write((ushort)pngEntries.Count);
 
-        // Calculate data offset: header (6) + dir entries (16 each)
         var dataOffset = 6 + 16 * pngEntries.Count;
-
-        // ICONDIRENTRY for each image
         for (var i = 0; i < pngEntries.Count; i++)
         {
             var size = sizes[i];
             var data = pngEntries[i];
-
-            writer.Write((byte)(size >= 256 ? 0 : size)); // width (0 = 256)
-            writer.Write((byte)(size >= 256 ? 0 : size)); // height (0 = 256)
-            writer.Write((byte)0);     // color count (0 for 32bpp)
-            writer.Write((byte)0);     // reserved
-            writer.Write((ushort)1);   // color planes
-            writer.Write((ushort)32);  // bits per pixel
-            writer.Write((uint)data.Length);    // bytes in resource
-            writer.Write((uint)dataOffset);     // offset to data
-
+            writer.Write((byte)(size >= 256 ? 0 : size));
+            writer.Write((byte)(size >= 256 ? 0 : size));
+            writer.Write((byte)0);
+            writer.Write((byte)0);
+            writer.Write((ushort)1);
+            writer.Write((ushort)32);
+            writer.Write((uint)data.Length);
+            writer.Write((uint)dataOffset);
             dataOffset += data.Length;
         }
 
-        // Image data (PNG blobs)
         foreach (var data in pngEntries)
-        {
             writer.Write(data);
-        }
 
         return Task.CompletedTask;
     }
 
-    private static Bitmap ResizeImage(Image source, int width, int height)
+    private static SKBitmap ResizeImage(SKBitmap source, int width, int height)
     {
-        var destRect = new Rectangle(0, 0, width, height);
-        var destImage = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        destImage.SetResolution(96, 96);
+        var destBitmap = new SKBitmap(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
+        using var canvas = new SKCanvas(destBitmap);
+        canvas.Clear(SKColors.Transparent);
 
-        using var graphics = Graphics.FromImage(destImage);
-        graphics.CompositingMode = CompositingMode.SourceOver;
-        graphics.CompositingQuality = CompositingQuality.HighQuality;
-        graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-        graphics.SmoothingMode = SmoothingMode.HighQuality;
-        graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
-
-        // Handle non-square source images: scale to fit, center
         var srcAspect = (float)source.Width / source.Height;
         int drawWidth, drawHeight, drawX, drawY;
 
@@ -104,11 +87,17 @@ public class IconConversionService : IIconConversionService
             drawY = 0;
         }
 
-        using var wrapMode = new ImageAttributes();
-        wrapMode.SetWrapMode(System.Drawing.Drawing2D.WrapMode.TileFlipXY);
-        graphics.DrawImage(source, new Rectangle(drawX, drawY, drawWidth, drawHeight),
-            0, 0, source.Width, source.Height, GraphicsUnit.Pixel, wrapMode);
+        var destRect = new SKRect(drawX, drawY, drawX + drawWidth, drawY + drawHeight);
+        var sourceRect = new SKRect(0, 0, source.Width, source.Height);
 
-        return destImage;
+        using var paint = new SKPaint
+        {
+            IsAntialias = true
+        };
+
+        using var sourceImage = SKImage.FromBitmap(source);
+        var sampling = new SKSamplingOptions(SKCubicResampler.Mitchell);
+        canvas.DrawImage(sourceImage, sourceRect, destRect, sampling, paint);
+        return destBitmap;
     }
 }
