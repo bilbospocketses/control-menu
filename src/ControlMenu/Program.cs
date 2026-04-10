@@ -27,6 +27,8 @@ builder.Services.AddDataProtection()
 builder.Services.AddSingleton<ICommandExecutor, CommandExecutor>();
 builder.Services.AddScoped<ISecretStore, SecretStore>();
 builder.Services.AddScoped<IConfigurationService, ConfigurationService>();
+builder.Services.AddScoped<IDeviceService, DeviceService>();
+builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
 
 // Module discovery — scans the main assembly for IToolModule implementations
 builder.Services.AddSingleton(new ModuleDiscoveryService(
