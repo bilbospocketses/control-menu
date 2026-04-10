@@ -15,4 +15,6 @@ public record ModuleDependency
     public string? AssetPattern { get; init; }
     public string? InstallPath { get; init; }
     public string[] RelatedFiles { get; init; } = [];
+    public string? VersionCheckUrl { get; init; }
+    public string? VersionCheckPattern { get; init; }
 }
