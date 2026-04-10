@@ -1,5 +1,151 @@
-<h2>Dependencies</h2>
+@inject IDependencyManagerService DepManager
+
+<div class="settings-section">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+        <h2><i class="bi bi-box-seam"></i> Locate Dependencies</h2>
+        <div class="toolbar">
+            <button class="btn btn-secondary btn-sm" @onclick="RescanAsync" disabled="@_scanning">
+                <i class="bi bi-arrow-clockwise"></i> Re-scan
+            </button>
+        </div>
+    </div>
+    <p>Scanning your system for required tools. We check your PATH and common install locations.</p>
+
+    @if (_scanning)
+    {
+        <p><i class="bi bi-hourglass-split"></i> Scanning...</p>
+    }
+    else if (_results.Count > 0)
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Tool</th>
+                    <th>Status</th>
+                    <th>Version</th>
+                    <th>Location</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var result in _results)
+                {
+                    <tr>
+                        <td>@result.Name</td>
+                        <td>
+                            @if (result.Found)
+                            {
+                                <span class="status-badge status-ok">Found</span>
+                            }
+                            else
+                            {
+                                <span class="status-badge status-error">Not Found</span>
+                            }
+                        </td>
+                        <td>@(result.Version ?? "—")</td>
+                        <td>@(result.Path ?? "—")</td>
+                        <td>
+                            @if (result.Found)
+                            {
+                                @if (_accepted.Contains(result.Name))
+                                {
+                                    <span style="color: var(--color-success, green);">
+                                        <i class="bi bi-check-circle-fill"></i> Accepted
+                                    </span>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-primary btn-sm" @onclick="() => Accept(result.Name)">Accept</button>
+                                }
+                            }
+                            else
+                            {
+                                @if (_editing.Contains(result.Name))
+                                {
+                                    <div style="display: flex; gap: 0.4rem; align-items: center;">
+                                        <input class="form-control"
+                                               style="max-width: 260px;"
+                                               placeholder="Enter path..."
+                                               @bind="_manualPaths[result.Name]" />
+                                        <button class="btn btn-primary btn-sm" @onclick="() => OkManualPath(result.Name)">OK</button>
+                                        <button class="btn btn-secondary btn-sm" @onclick="() => CancelManualPath(result.Name)">Cancel</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-secondary btn-sm" @onclick="() => StartEditing(result.Name)">Enter Path...</button>
+                                }
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
 
 @code {
     [Parameter] public SetupWizard.WizardState State { get; set; } = default!;
+
+    private IReadOnlyList<DependencyScanResult> _results = [];
+    private readonly HashSet<string> _accepted = new();
+    private readonly HashSet<string> _editing = new();
+    private readonly Dictionary<string, string> _manualPaths = new();
+    private bool _scanning = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RunScanAsync();
+    }
+
+    private async Task RescanAsync()
+    {
+        _scanning = true;
+        _accepted.Clear();
+        _editing.Clear();
+        _manualPaths.Clear();
+        await RunScanAsync();
+    }
+
+    private async Task RunScanAsync()
+    {
+        _scanning = true;
+        _results = await DepManager.ScanForDependenciesAsync();
+
+        foreach (var r in _results.Where(r => r.Found && r.Source == "Previously configured"))
+            _accepted.Add(r.Name);
+
+        _scanning = false;
+        UpdateState();
+    }
+
+    private void Accept(string name)
+    {
+        _accepted.Add(name);
+        UpdateState();
+    }
+
+    private void StartEditing(string name)
+    {
+        _editing.Add(name);
+        _manualPaths.TryAdd(name, "");
+    }
+
+    private void OkManualPath(string name)
+    {
+        _editing.Remove(name);
+        _accepted.Add(name);
+        UpdateState();
+    }
+
+    private void CancelManualPath(string name)
+    {
+        _editing.Remove(name);
+    }
+
+    private void UpdateState()
+    {
+        State.DependenciesTotal = _results.Count;
+        State.DependenciesFound = _results.Count(r => r.Found);
+    }
 }
