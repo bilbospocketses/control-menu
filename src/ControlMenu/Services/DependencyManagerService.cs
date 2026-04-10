@@ -307,7 +307,135 @@ public class DependencyManagerService : IDependencyManagerService
         }
     }
 
+    public async Task<IReadOnlyList<DependencyScanResult>> ScanForDependenciesAsync()
+    {
+        var existing = await _db.Dependencies.ToListAsync();
+        var results = new List<DependencyScanResult>();
+
+        foreach (var module in _modules)
+        {
+            foreach (var dep in module.Dependencies)
+            {
+                var entity = existing.FirstOrDefault(e =>
+                    e.ModuleId == module.Id && e.Name == dep.Name);
+
+                // Already configured in DB with a known version
+                if (entity?.InstalledVersion is not null)
+                {
+                    results.Add(new DependencyScanResult(
+                        dep.Name, module.Id, Found: true,
+                        Path: null, Version: entity.InstalledVersion,
+                        Source: "Previously configured"));
+                    continue;
+                }
+
+                // Try PATH
+                var pathResult = await TryScanPathAsync(dep, module.Id);
+                if (pathResult is not null)
+                {
+                    results.Add(pathResult);
+                    continue;
+                }
+
+                // Try common locations
+                var locationResult = await TryScanCommonLocationsAsync(dep, module.Id);
+                if (locationResult is not null)
+                {
+                    results.Add(locationResult);
+                    continue;
+                }
+
+                // Not found anywhere
+                results.Add(new DependencyScanResult(
+                    dep.Name, module.Id, Found: false,
+                    Path: null, Version: null,
+                    Source: "Not found"));
+            }
+        }
+
+        return results;
+    }
+
     // --- Private helpers ---
+
+    private async Task<DependencyScanResult?> TryScanPathAsync(ModuleDependency dep, string moduleId)
+    {
+        var parts = dep.VersionCommand.Split(' ', 2);
+        var command = parts[0];
+        var args = parts.Length > 1 ? parts[1] : null;
+
+        try
+        {
+            var result = await _executor.ExecuteAsync(command, args);
+            if (result.ExitCode != 0) return null;
+
+            var version = ExtractVersion(result.StandardOutput, dep.VersionPattern);
+            if (version is null) return null;
+
+            return new DependencyScanResult(
+                dep.Name, moduleId, Found: true,
+                Path: command, Version: version,
+                Source: "PATH");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<DependencyScanResult?> TryScanCommonLocationsAsync(ModuleDependency dep, string moduleId)
+    {
+        var exeName = dep.ExecutableName;
+        if (OperatingSystem.IsWindows() && !exeName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            exeName += ".exe";
+
+        foreach (var location in GetCommonLocations(exeName))
+        {
+            if (!File.Exists(location)) continue;
+
+            try
+            {
+                var parts = dep.VersionCommand.Split(' ', 2);
+                var args = parts.Length > 1 ? parts[1] : null;
+
+                var result = await _executor.ExecuteAsync(location, args);
+                if (result.ExitCode != 0) continue;
+
+                var version = ExtractVersion(result.StandardOutput, dep.VersionPattern);
+                if (version is null) continue;
+
+                return new DependencyScanResult(
+                    dep.Name, moduleId, Found: true,
+                    Path: location, Version: version,
+                    Source: location);
+            }
+            catch
+            {
+                // Continue to next location
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> GetCommonLocations(string executableName)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            yield return $@"C:\platform-tools\{executableName}";
+            yield return $@"C:\scrcpy\{executableName}";
+            yield return $@"C:\Program Files\Android\platform-tools\{executableName}";
+            yield return Path.Combine(localAppData, "Android", "Sdk", "platform-tools", executableName);
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            yield return $"/usr/local/bin/{executableName}";
+            yield return $"/opt/platform-tools/{executableName}";
+            yield return $"/opt/scrcpy/{executableName}";
+            yield return $"/snap/bin/{executableName}";
+        }
+    }
 
     private async Task<string?> GetInstalledVersionAsync(ModuleDependency dep)
     {

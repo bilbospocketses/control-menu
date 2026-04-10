@@ -9,4 +9,5 @@ public interface IDependencyManagerService
     Task<UpdateResult> DownloadAndInstallAsync(Guid dependencyId, AssetMatch asset);
     Task<int> GetUpdateAvailableCountAsync();
     Task<IReadOnlyList<Data.Entities.Dependency>> GetAllDependenciesAsync();
+    Task<IReadOnlyList<DependencyScanResult>> ScanForDependenciesAsync();
 }
