@@ -168,6 +168,132 @@ public class DependencyManagerServiceTests : IDisposable
 
         Assert.Equal(2, count);
     }
+
+    [Fact]
+    public async Task CheckDependencyAsync_GitHub_DetectsUpdateAvailable()
+    {
+        var module = new FakeModule("android-module", "Android",
+        [
+            new ModuleDependency
+            {
+                Name = "scrcpy",
+                ExecutableName = "scrcpy",
+                VersionCommand = "scrcpy --version",
+                VersionPattern = @"scrcpy ([\d.]+)",
+                SourceType = UpdateSourceType.GitHub,
+                GitHubRepo = "Genymobile/scrcpy"
+            }
+        ]);
+
+        _mockExecutor.Setup(e => e.ExecuteAsync("scrcpy", "--version", null, default))
+            .ReturnsAsync(new CommandResult(0, "scrcpy 3.3.2", "", false));
+
+        var depId = Guid.NewGuid();
+        _db.Dependencies.Add(new Dependency
+        {
+            Id = depId,
+            ModuleId = "android-module",
+            Name = "scrcpy",
+            SourceType = UpdateSourceType.GitHub,
+            Status = DependencyStatus.UpToDate,
+            InstalledVersion = "3.3.2"
+        });
+        await _db.SaveChangesAsync();
+
+        var handler = new MockHttpHandler(@"{""tag_name"": ""v3.3.4"", ""assets"": []}");
+        var httpClient = new HttpClient(handler);
+        _mockHttpFactory.Setup(f => f.CreateClient("github-api")).Returns(httpClient);
+
+        var service = CreateService(module);
+        var result = await service.CheckDependencyAsync(depId);
+
+        Assert.Equal(DependencyStatus.UpdateAvailable, result.Status);
+        Assert.Equal("3.3.2", result.InstalledVersion);
+        Assert.Equal("3.3.4", result.LatestVersion);
+    }
+
+    [Fact]
+    public async Task CheckDependencyAsync_DirectUrl_ParsesXmlVersion()
+    {
+        var module = new FakeModule("android-module", "Android",
+        [
+            new ModuleDependency
+            {
+                Name = "adb",
+                ExecutableName = "adb",
+                VersionCommand = "adb --version",
+                VersionPattern = @"Android Debug Bridge version ([\d.]+)",
+                SourceType = UpdateSourceType.DirectUrl,
+                VersionCheckUrl = "https://dl.google.com/android/repository/repository2-3.xml",
+                VersionCheckPattern = @"<major>(\d+)</major>\s*<minor>(\d+)</minor>\s*<micro>(\d+)</micro>"
+            }
+        ]);
+
+        _mockExecutor.Setup(e => e.ExecuteAsync("adb", "--version", null, default))
+            .ReturnsAsync(new CommandResult(0, "Android Debug Bridge version 36.0.0", "", false));
+
+        var depId = Guid.NewGuid();
+        _db.Dependencies.Add(new Dependency
+        {
+            Id = depId,
+            ModuleId = "android-module",
+            Name = "adb",
+            SourceType = UpdateSourceType.DirectUrl,
+            Status = DependencyStatus.UpToDate,
+            InstalledVersion = "36.0.0"
+        });
+        await _db.SaveChangesAsync();
+
+        var xmlContent = "<repo><major>37</major><minor>0</minor><micro>0</micro></repo>";
+        var handler = new MockHttpHandler(xmlContent);
+        var httpClient = new HttpClient(handler);
+        _mockHttpFactory.Setup(f => f.CreateClient("dependency-updates")).Returns(httpClient);
+
+        var service = CreateService(module);
+        var result = await service.CheckDependencyAsync(depId);
+
+        Assert.Equal(DependencyStatus.UpdateAvailable, result.Status);
+        Assert.Equal("36.0.0", result.InstalledVersion);
+        Assert.Equal("37.0.0", result.LatestVersion);
+    }
+
+    [Fact]
+    public async Task CheckDependencyAsync_Manual_StaysUpToDate()
+    {
+        var module = new FakeModule("jellyfin-module", "Jellyfin",
+        [
+            new ModuleDependency
+            {
+                Name = "docker",
+                ExecutableName = "docker",
+                VersionCommand = "docker --version",
+                VersionPattern = @"Docker version ([\d.]+)",
+                SourceType = UpdateSourceType.Manual
+            }
+        ]);
+
+        _mockExecutor.Setup(e => e.ExecuteAsync("docker", "--version", null, default))
+            .ReturnsAsync(new CommandResult(0, "Docker version 27.1.0, build abc123", "", false));
+
+        var depId = Guid.NewGuid();
+        _db.Dependencies.Add(new Dependency
+        {
+            Id = depId,
+            ModuleId = "jellyfin-module",
+            Name = "docker",
+            SourceType = UpdateSourceType.Manual,
+            Status = DependencyStatus.UpToDate,
+            InstalledVersion = "27.1.0"
+        });
+        await _db.SaveChangesAsync();
+
+        var service = CreateService(module);
+        var result = await service.CheckDependencyAsync(depId);
+
+        Assert.Equal(DependencyStatus.UpToDate, result.Status);
+        Assert.Equal("27.1.0", result.InstalledVersion);
+        Assert.Null(result.LatestVersion);
+    }
 }
 
 // Test helpers at bottom of file
@@ -182,4 +308,17 @@ internal class FakeModule(string id, string displayName, ModuleDependency[] deps
     public IEnumerable<ConfigRequirement> ConfigRequirements => [];
     public IEnumerable<NavEntry> GetNavEntries() => [];
     public IEnumerable<BackgroundJobDefinition> GetBackgroundJobs() => [];
+}
+
+internal class MockHttpHandler(string responseContent, System.Net.HttpStatusCode statusCode = System.Net.HttpStatusCode.OK)
+    : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        return Task.FromResult(new HttpResponseMessage(statusCode)
+        {
+            Content = new StringContent(responseContent)
+        });
+    }
 }
