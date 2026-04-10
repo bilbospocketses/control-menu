@@ -1,0 +1,57 @@
+@page "/settings"
+@page "/settings/{Section}"
+
+<PageTitle>Settings — Control Menu</PageTitle>
+
+<div class="settings-layout">
+    <nav class="settings-nav">
+        <button class="settings-nav-item @(ActiveSection == "general" ? "active" : "")"
+                @onclick='() => Navigate("general")'>
+            <i class="bi bi-gear"></i> General
+        </button>
+        <button class="settings-nav-item @(ActiveSection == "devices" ? "active" : "")"
+                @onclick='() => Navigate("devices")'>
+            <i class="bi bi-phone"></i> Devices
+        </button>
+        @if (ModuleDiscovery.Modules.Count > 0)
+        {
+            <button class="settings-nav-item @(ActiveSection == "modules" ? "active" : "")"
+                    @onclick='() => Navigate("modules")'>
+                <i class="bi bi-puzzle"></i> Module Settings
+            </button>
+        }
+    </nav>
+
+    <div class="settings-content">
+        @switch (ActiveSection)
+        {
+            case "general":
+                <GeneralSettings />
+                break;
+            case "devices":
+                <DeviceManagement />
+                break;
+            case "modules":
+                <ModuleSettings />
+                break;
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string? Section { get; set; }
+
+    [Inject]
+    private NavigationManager Nav { get; set; } = default!;
+
+    [Inject]
+    private ModuleDiscoveryService ModuleDiscovery { get; set; } = default!;
+
+    private string ActiveSection => Section?.ToLowerInvariant() ?? "general";
+
+    private void Navigate(string section)
+    {
+        Nav.NavigateTo($"/settings/{section}");
+    }
+}

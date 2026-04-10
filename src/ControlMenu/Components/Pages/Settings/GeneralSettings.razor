@@ -1,0 +1,69 @@
+@inject IConfigurationService Config
+@inject IJSRuntime JS
+
+<div class="settings-section">
+    <h2>General</h2>
+    <p>Application-wide configuration settings.</p>
+
+    <div class="form-group">
+        <label>Theme</label>
+        <select class="form-control" style="max-width: 200px;" value="@_theme" @onchange="OnThemeChanged">
+            <option value="system">System (auto)</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Device Discovery Interval (seconds)</label>
+        <input type="number" class="form-control" style="max-width: 200px;" min="30" max="3600"
+               value="@_discoveryInterval" @onchange="OnDiscoveryIntervalChanged" />
+        <div class="form-hint">How often to scan the network for device IP changes. Min 30s, max 3600s.</div>
+    </div>
+
+    @if (_saved)
+    {
+        <div class="alert alert-success">Settings saved.</div>
+    }
+</div>
+
+@code {
+    private string _theme = "system";
+    private int _discoveryInterval = 300;
+    private bool _saved;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _theme = await Config.GetSettingAsync("theme") ?? "system";
+        var interval = await Config.GetSettingAsync("discovery-interval");
+        if (int.TryParse(interval, out var parsed))
+            _discoveryInterval = parsed;
+    }
+
+    private async Task OnThemeChanged(ChangeEventArgs e)
+    {
+        _theme = e.Value?.ToString() ?? "system";
+        await Config.SetSettingAsync("theme", _theme);
+        await JS.InvokeVoidAsync("themeManager.set", _theme);
+        await ShowSaved();
+    }
+
+    private async Task OnDiscoveryIntervalChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var val) && val >= 30 && val <= 3600)
+        {
+            _discoveryInterval = val;
+            await Config.SetSettingAsync("discovery-interval", val.ToString());
+            await ShowSaved();
+        }
+    }
+
+    private async Task ShowSaved()
+    {
+        _saved = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _saved = false;
+        StateHasChanged();
+    }
+}
