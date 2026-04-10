@@ -1,0 +1,173 @@
+@page "/jellyfin/db-update"
+@using ControlMenu.Modules.Jellyfin.Services
+
+<PageTitle>Jellyfin — DB Date Update</PageTitle>
+
+<h1><i class="bi bi-calendar-date"></i> Database Date Update</h1>
+<p class="page-subtitle">Updates the DateCreated field in the Jellyfin database to match the premiere date of each show or movie.</p>
+
+@if (!_running && !_completed)
+{
+    <div class="start-panel">
+        <p>This will:</p>
+        <ol>
+            <li>Stop the Jellyfin Docker container</li>
+            <li>Create a database backup</li>
+            <li>Run the SQL update</li>
+            <li>Restart the container</li>
+            <li>Clean up backups older than 5 days</li>
+        </ol>
+        <button class="btn btn-primary btn-lg" @onclick="RunUpdate">
+            <i class="bi bi-play-circle"></i> Start Update
+        </button>
+    </div>
+}
+else
+{
+    <div class="progress-panel">
+        @foreach (var step in _steps)
+        {
+            <div class="progress-step @step.Status.ToString().ToLower()">
+                <div class="step-icon">
+                    @if (step.Status == StepStatus.Running)
+                    {
+                        <i class="bi bi-arrow-repeat spin"></i>
+                    }
+                    else if (step.Status == StepStatus.Completed)
+                    {
+                        <i class="bi bi-check-circle-fill"></i>
+                    }
+                    else if (step.Status == StepStatus.Failed)
+                    {
+                        <i class="bi bi-x-circle-fill"></i>
+                    }
+                    else
+                    {
+                        <i class="bi bi-circle"></i>
+                    }
+                </div>
+                <div class="step-content">
+                    <span class="step-label">@step.Label</span>
+                    @if (!string.IsNullOrEmpty(step.Detail))
+                    {
+                        <span class="step-detail">@step.Detail</span>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="error-panel">
+        <i class="bi bi-exclamation-triangle"></i> @_error
+    </div>
+}
+
+@code {
+    [Inject] private IJellyfinService JellyfinService { get; set; } = default!;
+
+    private List<ProgressStep> _steps = [];
+    private bool _running;
+    private bool _completed;
+    private string? _error;
+
+    private async Task RunUpdate()
+    {
+        _running = true;
+        _error = null;
+        _steps =
+        [
+            new("Stopping Docker container..."),
+            new("Creating database backup..."),
+            new("Running SQL update..."),
+            new("Starting Docker container..."),
+            new("Cleaning up old backups..."),
+            new("Complete")
+        ];
+
+        try
+        {
+            // Step 1: Get container ID
+            _steps[0].Status = StepStatus.Running;
+            StateHasChanged();
+            var containerId = await JellyfinService.GetContainerIdAsync();
+            if (containerId is null)
+            {
+                _steps[0].Status = StepStatus.Failed;
+                _steps[0].Detail = "Jellyfin container not found. Is it running?";
+                _error = "Could not find Jellyfin Docker container.";
+                _running = false;
+                return;
+            }
+
+            var stopped = await JellyfinService.StopContainerAsync(containerId);
+            if (!stopped)
+            {
+                _steps[0].Status = StepStatus.Failed;
+                _error = "Failed to stop container.";
+                _running = false;
+                return;
+            }
+            _steps[0].Status = StepStatus.Completed;
+            _steps[0].Detail = $"Container {containerId[..12]} stopped.";
+            StateHasChanged();
+
+            // Step 2: Backup
+            _steps[1].Status = StepStatus.Running;
+            StateHasChanged();
+            var backupPath = await JellyfinService.BackupDatabaseAsync();
+            _steps[1].Status = backupPath is not null ? StepStatus.Completed : StepStatus.Failed;
+            _steps[1].Detail = backupPath is not null ? $"Saved to {Path.GetFileName(backupPath)}" : "Backup failed";
+            StateHasChanged();
+
+            // Step 3: SQL Update
+            _steps[2].Status = StepStatus.Running;
+            StateHasChanged();
+            var updated = await JellyfinService.UpdateDateCreatedAsync();
+            _steps[2].Status = updated ? StepStatus.Completed : StepStatus.Failed;
+            _steps[2].Detail = updated ? "DateCreated = PremiereDate applied." : "SQL update failed.";
+            StateHasChanged();
+
+            // Step 4: Start container
+            _steps[3].Status = StepStatus.Running;
+            StateHasChanged();
+            var started = await JellyfinService.StartContainerAsync(containerId);
+            _steps[3].Status = started ? StepStatus.Completed : StepStatus.Failed;
+            _steps[3].Detail = started ? "Container restarted." : "Failed to start container.";
+            StateHasChanged();
+
+            // Step 5: Cleanup
+            _steps[4].Status = StepStatus.Running;
+            StateHasChanged();
+            await JellyfinService.CleanupOldBackupsAsync(5);
+            _steps[4].Status = StepStatus.Completed;
+            _steps[4].Detail = "Backups older than 5 days removed.";
+            StateHasChanged();
+
+            // Done
+            _steps[5].Status = StepStatus.Completed;
+            _completed = true;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Unexpected error: {ex.Message}";
+            var current = _steps.FirstOrDefault(s => s.Status == StepStatus.Running);
+            if (current is not null) current.Status = StepStatus.Failed;
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private enum StepStatus { Pending, Running, Completed, Failed }
+
+    private class ProgressStep(string label)
+    {
+        public string Label { get; set; } = label;
+        public StepStatus Status { get; set; } = StepStatus.Pending;
+        public string? Detail { get; set; }
+    }
+}
