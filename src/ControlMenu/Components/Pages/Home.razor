@@ -1,40 +1,60 @@
 @page "/"
+@using ControlMenu.Services
 
 <PageTitle>Control Menu</PageTitle>
 
-<div class="home-container">
-    <h1>Control Menu</h1>
-    <p class="home-subtitle">Manage your Android devices, media server, and utilities from one place.</p>
+@if (!_setupDone)
+{
+    <SetupWizard />
+}
+else
+{
+    <div class="home-container">
+        <h1>Control Menu</h1>
+        <p class="home-subtitle">Manage your Android devices, media server, and utilities from one place.</p>
 
-    @if (ModuleDiscovery.Modules.Count == 0)
-    {
-        <div class="home-empty-state">
-            <i class="bi bi-box-seam"></i>
-            <h2>No modules loaded</h2>
-            <p>Modules will appear here as they are installed. Check back after Phase 2+ implementation.</p>
-        </div>
-    }
-    else
-    {
-        <div class="home-module-grid">
-            @foreach (var module in ModuleDiscovery.Modules)
-            {
-                <div class="home-module-card">
-                    <i class="bi @module.Icon"></i>
-                    <h3>@module.DisplayName</h3>
-                    <div class="module-nav-links">
-                        @foreach (var entry in module.GetNavEntries().OrderBy(e => e.SortOrder))
-                        {
-                            <a href="@entry.Href">@entry.Title</a>
-                        }
+        @if (ModuleDiscovery.Modules.Count == 0)
+        {
+            <div class="home-empty-state">
+                <i class="bi bi-box-seam"></i>
+                <h2>No modules loaded</h2>
+                <p>Modules will appear here as they are installed. Check back after Phase 2+ implementation.</p>
+            </div>
+        }
+        else
+        {
+            <div class="home-module-grid">
+                @foreach (var module in ModuleDiscovery.Modules)
+                {
+                    <div class="home-module-card">
+                        <i class="bi @module.Icon"></i>
+                        <h3>@module.DisplayName</h3>
+                        <div class="module-nav-links">
+                            @foreach (var entry in module.GetNavEntries().OrderBy(e => e.SortOrder))
+                            {
+                                <a href="@entry.Href">@entry.Title</a>
+                            }
+                        </div>
                     </div>
-                </div>
-            }
-        </div>
-    }
-</div>
+                }
+            </div>
+        }
+    </div>
+}
 
 @code {
     [Inject]
     private ModuleDiscoveryService ModuleDiscovery { get; set; } = default!;
+
+    [Inject]
+    private IConfigurationService Config { get; set; } = default!;
+
+    private bool _setupDone = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var flag = await Config.GetSettingAsync("setup-completed");
+        if (flag != "true")
+            _setupDone = false;
+    }
 }

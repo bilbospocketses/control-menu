@@ -1,5 +1,6 @@
 @inject IConfigurationService Config
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 
 <div class="settings-section">
     <h2>General</h2>
@@ -19,6 +20,12 @@
         <input type="number" class="form-control" style="max-width: 200px;" min="30" max="3600"
                value="@_discoveryInterval" @onchange="OnDiscoveryIntervalChanged" />
         <div class="form-hint">How often to scan the network for device IP changes. Min 30s, max 3600s.</div>
+    </div>
+
+    <div class="form-group">
+        <label>Setup Wizard</label>
+        <button class="btn btn-secondary" @onclick="RerunWizard"><i class="bi bi-arrow-counterclockwise"></i> Re-run Setup Wizard</button>
+        <div class="form-hint">Walk through the initial setup again.</div>
     </div>
 
     @if (_saved)
@@ -65,5 +72,11 @@
         await Task.Delay(2000);
         _saved = false;
         StateHasChanged();
+    }
+
+    private async Task RerunWizard()
+    {
+        await Config.SetSettingAsync("setup-completed", "false");
+        Nav.NavigateTo("/", forceLoad: true);
     }
 }
