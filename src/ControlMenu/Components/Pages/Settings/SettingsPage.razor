@@ -20,6 +20,10 @@
                 <i class="bi bi-puzzle"></i> Module Settings
             </button>
         }
+        <button class="settings-nav-item @(ActiveSection == "dependencies" ? "active" : "")"
+                @onclick='() => Navigate("dependencies")'>
+            <i class="bi bi-box-seam"></i> Dependencies
+        </button>
     </nav>
 
     <div class="settings-content">
@@ -33,6 +37,9 @@
                 break;
             case "modules":
                 <ModuleSettings />
+                break;
+            case "dependencies":
+                <DependencyManagement />
                 break;
         }
     </div>

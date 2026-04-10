@@ -1,0 +1,223 @@
+@using ControlMenu.Data.Entities
+@using ControlMenu.Data.Enums
+@inject IDependencyManagerService DepManager
+@inject NavigationManager Nav
+
+<div class="settings-section">
+    <h2>Dependencies</h2>
+    <p>External tools required by modules. Version checks run automatically on a daily schedule.</p>
+
+    <div class="toolbar">
+        <button class="btn btn-secondary" @onclick="CheckAll" disabled="@_checkingAll">
+            <i class="bi bi-arrow-repeat"></i> @(_checkingAll ? "Checking..." : "Check All")
+        </button>
+        <div class="toolbar-spacer"></div>
+        @if (!string.IsNullOrEmpty(_message))
+        {
+            <span class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin:0; padding:6px 12px;">@_message</span>
+        }
+    </div>
+
+    @if (_dependencies.Count == 0)
+    {
+        <p style="color: var(--text-muted);">No dependencies registered. Install modules that declare external tool requirements.</p>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Module</th>
+                    <th>Installed</th>
+                    <th>Latest</th>
+                    <th>Status</th>
+                    <th>Source</th>
+                    <th>Last Checked</th>
+                    <th style="text-align:right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var dep in _dependencies)
+                {
+                    <tr>
+                        <td><strong>@dep.Name</strong></td>
+                        <td>@dep.ModuleId</td>
+                        <td><code>@(dep.InstalledVersion ?? "—")</code></td>
+                        <td><code>@(dep.LatestKnownVersion ?? "—")</code></td>
+                        <td><span class="status-badge @GetStatusClass(dep.Status)">@FormatStatus(dep.Status)</span></td>
+                        <td>@dep.SourceType</td>
+                        <td>@(dep.LastChecked?.ToLocalTime().ToString("g") ?? "Never")</td>
+                        <td class="actions">
+                            @if (dep.Status == DependencyStatus.UpdateAvailable && _hasInstallPath.Contains(dep.Name))
+                            {
+                                <button class="btn btn-primary btn-sm" @onclick="() => StartUpdate(dep)"
+                                        disabled="@(_updatingId == dep.Id)">
+                                    @(_updatingId == dep.Id ? "Updating..." : "Update")
+                                </button>
+                            }
+                            <button class="btn btn-secondary btn-sm" @onclick="() => CheckOne(dep.Id)"
+                                    disabled="@(_checkingId == dep.Id)">
+                                @(_checkingId == dep.Id ? "..." : "Check")
+                            </button>
+                            @if (dep.ProjectHomeUrl is not null)
+                            {
+                                <a class="btn btn-secondary btn-sm" href="@dep.ProjectHomeUrl"
+                                   target="_blank" rel="noopener">
+                                    <i class="bi bi-box-arrow-up-right"></i> Project
+                                </a>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    @if (_showUpdateDialog)
+    {
+        <div class="modal-overlay">
+            <div class="modal-dialog">
+                @if (_resolvedAsset is null)
+                {
+                    <p><i class="bi bi-hourglass-split"></i> Resolving download...</p>
+                }
+                else
+                {
+                    <h3>Download Update</h3>
+                    <p>Download <code>@_resolvedAsset.FileName</code> (@FormatSize(_resolvedAsset.SizeBytes))?</p>
+                    <div class="modal-actions">
+                        <button class="btn btn-primary" @onclick="ConfirmDownload">Download</button>
+                        <button class="btn btn-secondary" @onclick="CancelUpdate">Cancel</button>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<Dependency> _dependencies = [];
+    private HashSet<string> _hasInstallPath = [];
+    private bool _checkingAll;
+    private Guid? _checkingId;
+    private Guid? _updatingId;
+    private string? _message;
+    private bool _messageIsError;
+    private bool _showUpdateDialog;
+    private AssetMatch? _resolvedAsset;
+    private Guid _updateTargetId;
+
+    [Inject] private ModuleDiscoveryService ModuleDiscovery { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDependencies();
+    }
+
+    private async Task LoadDependencies()
+    {
+        _dependencies = (await DepManager.GetAllDependenciesAsync()).ToList();
+        _hasInstallPath = ModuleDiscovery.Modules
+            .SelectMany(m => m.Dependencies)
+            .Where(d => d.InstallPath is not null)
+            .Select(d => d.Name)
+            .ToHashSet();
+    }
+
+    private async Task CheckAll()
+    {
+        _checkingAll = true;
+        _message = null;
+        StateHasChanged();
+
+        var results = await DepManager.CheckAllAsync();
+        var updates = results.Count(r => r.Status == DependencyStatus.UpdateAvailable);
+
+        _message = updates > 0
+            ? $"{updates} update(s) available"
+            : "All dependencies up to date";
+        _messageIsError = false;
+        _checkingAll = false;
+
+        await LoadDependencies();
+    }
+
+    private async Task CheckOne(Guid id)
+    {
+        _checkingId = id;
+        StateHasChanged();
+
+        await DepManager.CheckDependencyAsync(id);
+        _checkingId = null;
+
+        await LoadDependencies();
+    }
+
+    private async Task StartUpdate(Dependency dep)
+    {
+        _updateTargetId = dep.Id;
+        _showUpdateDialog = true;
+        _resolvedAsset = null;
+        StateHasChanged();
+
+        _resolvedAsset = await DepManager.ResolveDownloadAssetAsync(dep.Id);
+
+        if (_resolvedAsset is null)
+        {
+            _showUpdateDialog = false;
+            _message = $"Could not resolve download for {dep.Name}";
+            _messageIsError = true;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task ConfirmDownload()
+    {
+        _showUpdateDialog = false;
+        _updatingId = _updateTargetId;
+        StateHasChanged();
+
+        var result = await DepManager.DownloadAndInstallAsync(_updateTargetId, _resolvedAsset!);
+
+        _updatingId = null;
+        _message = result.Success
+            ? $"Updated to version {result.NewVersion}"
+            : $"Update failed: {result.ErrorMessage}";
+        _messageIsError = !result.Success;
+
+        await LoadDependencies();
+    }
+
+    private void CancelUpdate()
+    {
+        _showUpdateDialog = false;
+        _resolvedAsset = null;
+    }
+
+    private static string GetStatusClass(DependencyStatus status) => status switch
+    {
+        DependencyStatus.UpToDate => "status-ok",
+        DependencyStatus.UpdateAvailable => "status-warning",
+        DependencyStatus.UrlInvalid => "status-error",
+        DependencyStatus.CheckFailed => "status-error",
+        _ => ""
+    };
+
+    private static string FormatStatus(DependencyStatus status) => status switch
+    {
+        DependencyStatus.UpToDate => "Up to Date",
+        DependencyStatus.UpdateAvailable => "Update Available",
+        DependencyStatus.UrlInvalid => "URL Invalid",
+        DependencyStatus.CheckFailed => "Check Failed",
+        _ => status.ToString()
+    };
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+}
