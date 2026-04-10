@@ -1,0 +1,141 @@
+@page "/android/pixel"
+@page "/android/pixel/{DeviceId:guid}"
+@using ControlMenu.Data.Entities
+@using ControlMenu.Data.Enums
+@using ControlMenu.Services
+@using ControlMenu.Modules.AndroidDevices.Services
+
+<PageTitle>Pixel - @(_device?.Name ?? "Select Device")</PageTitle>
+
+<h1><i class="bi bi-phone"></i> Pixel</h1>
+
+@if (_device is null)
+{
+    <p>No device selected. <a href="/android/devices">Select a device</a>.</p>
+}
+else
+{
+    <div class="device-header">
+        <h2>@_device.Name</h2>
+        <span class="status-badge @(_connected ? "connected" : "disconnected")">
+            <i class="bi @(_connected ? "bi-wifi" : "bi-wifi-off")"></i>
+            @(_connected ? "Connected" : "Disconnected")
+        </span>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_statusMessage))
+    {
+        <div class="status-bar @_statusClass">
+            <i class="bi @_statusIcon"></i> @_statusMessage
+        </div>
+    }
+
+    <div class="action-card-grid">
+        <!-- Reset ADB Port -->
+        <div class="action-card">
+            <div class="action-card-icon"><i class="bi bi-usb-plug"></i></div>
+            <h3>Reset ADB Port</h3>
+            <p>Reset TCP/IP port to 5555 after reboot. Requires USB connection.</p>
+            <button class="btn btn-warning" @onclick="ResetAdbPort" disabled="@_busy">
+                <i class="bi bi-arrow-counterclockwise"></i> Reset Port
+            </button>
+        </div>
+
+        <!-- Connect -->
+        <div class="action-card">
+            <div class="action-card-icon"><i class="bi bi-plug"></i></div>
+            <h3>ADB Connect</h3>
+            <p>Connect to device over WiFi</p>
+            <button class="btn btn-primary" @onclick="ConnectDevice" disabled="@_busy">
+                <i class="bi bi-wifi"></i> Connect
+            </button>
+        </div>
+
+        <!-- Screen Mirror -->
+        <div class="action-card">
+            <div class="action-card-icon"><i class="bi bi-display"></i></div>
+            <h3>Screen Mirror</h3>
+            <p>Launch scrcpy for screen mirroring</p>
+            <button class="btn btn-primary" @onclick="LaunchScreenMirror" disabled="@_busy">
+                <i class="bi bi-cast"></i> Mirror
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid? DeviceId { get; set; }
+    [Inject] private IDeviceService DeviceService { get; set; } = default!;
+    [Inject] private IAdbService AdbService { get; set; } = default!;
+
+    private Device? _device;
+    private bool _connected;
+    private bool _busy;
+    private string _statusMessage = "";
+    private string _statusClass = "";
+    private string _statusIcon = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (DeviceId.HasValue)
+        {
+            _device = await DeviceService.GetDeviceAsync(DeviceId.Value);
+        }
+        else
+        {
+            var devices = await DeviceService.GetAllDevicesAsync();
+            _device = devices.FirstOrDefault(d => d.Type == DeviceType.AndroidPhone && d.ModuleId == "android-devices");
+        }
+
+        if (_device?.LastKnownIp is not null)
+        {
+            _connected = await AdbService.ConnectAsync(_device.LastKnownIp, _device.AdbPort);
+        }
+    }
+
+    private string Ip => _device!.LastKnownIp!;
+    private int Port => _device!.AdbPort;
+
+    private async Task ResetAdbPort()
+    {
+        _busy = true;
+        SetStatus("Connect device via USB, then this will reset TCP port to 5555...", "status-warning", "bi-usb-plug");
+        await AdbService.ResetTcpPortAsync(5555);
+        SetStatus("ADB port reset to 5555. You can disconnect USB now.", "status-success", "bi-check-circle");
+        _busy = false;
+    }
+
+    private async Task ConnectDevice()
+    {
+        if (_device?.LastKnownIp is null)
+        {
+            SetStatus("No IP address known for this device. Run a network scan in Settings.", "status-warning", "bi-exclamation-triangle");
+            return;
+        }
+        _busy = true;
+        _connected = await AdbService.ConnectAsync(Ip, Port);
+        SetStatus(_connected ? "Connected successfully." : "Connection failed.", _connected ? "status-success" : "status-warning", _connected ? "bi-check-circle" : "bi-x-circle");
+        _busy = false;
+    }
+
+    private async Task LaunchScreenMirror()
+    {
+        if (!_connected)
+        {
+            await ConnectDevice();
+            if (!_connected) return;
+        }
+        _busy = true;
+        SetStatus("Launching screen mirror...", "status-info", "bi-cast");
+        await AdbService.LaunchScrcpyAsync(Ip, Port);
+        SetStatus("Screen mirror closed.", "status-info", "bi-info-circle");
+        _busy = false;
+    }
+
+    private void SetStatus(string message, string cssClass, string icon)
+    {
+        _statusMessage = message;
+        _statusClass = cssClass;
+        _statusIcon = icon;
+    }
+}
