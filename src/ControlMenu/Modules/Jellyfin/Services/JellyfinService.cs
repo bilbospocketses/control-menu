@@ -6,11 +6,13 @@ public class JellyfinService : IJellyfinService
 {
     private readonly ICommandExecutor _executor;
     private readonly IConfigurationService _config;
+    private readonly IHttpClientFactory _httpFactory;
 
-    public JellyfinService(ICommandExecutor executor, IConfigurationService config)
+    public JellyfinService(ICommandExecutor executor, IConfigurationService config, IHttpClientFactory httpFactory)
     {
         _executor = executor;
         _config = config;
+        _httpFactory = httpFactory;
     }
 
     public async Task<string?> GetContainerIdAsync(CancellationToken ct = default)
@@ -77,5 +79,42 @@ public class JellyfinService : IJellyfinService
         };
 
         await _executor.ExecuteAsync(definition, ct);
+    }
+
+    public async Task<IReadOnlyList<JellyfinPerson>> GetPersonsMissingImagesAsync(CancellationToken ct = default)
+    {
+        var baseUrl = await _config.GetSettingAsync("jellyfin-base-url") ?? "http://127.0.0.1:8096";
+        var apiKey = await _config.GetSecretAsync("jellyfin-api-key");
+        if (apiKey is null) throw new InvalidOperationException("Jellyfin API key not configured");
+
+        var client = _httpFactory.CreateClient();
+        var url = $"{baseUrl}/emby/Persons?api_key={apiKey}";
+        var json = await client.GetStringAsync(url, ct);
+
+        var persons = new List<JellyfinPerson>();
+        var itemRegex = new System.Text.RegularExpressions.Regex(
+            @"""Id""\s*:\s*""(?<id>[^""]+)"".*?""Name""\s*:\s*""(?<name>[^""]+)"".*?""ImageTags""\s*:\s*\{(?<tags>[^}]*)\}",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        foreach (System.Text.RegularExpressions.Match match in itemRegex.Matches(json))
+        {
+            var tags = match.Groups["tags"].Value.Trim();
+            if (string.IsNullOrEmpty(tags))
+                persons.Add(new JellyfinPerson(match.Groups["id"].Value, match.Groups["name"].Value));
+        }
+
+        return persons.DistinctBy(p => p.Id).ToList();
+    }
+
+    public async Task TriggerPersonImageDownloadAsync(string personId, CancellationToken ct = default)
+    {
+        var baseUrl = await _config.GetSettingAsync("jellyfin-base-url") ?? "http://127.0.0.1:8096";
+        var apiKey = await _config.GetSecretAsync("jellyfin-api-key");
+        var userId = await _config.GetSettingAsync("jellyfin-user-id");
+        if (apiKey is null || userId is null) return;
+
+        var client = _httpFactory.CreateClient();
+        var url = $"{baseUrl}/Users/{userId}/Items/{personId}?api_key={apiKey}";
+        await client.GetAsync(url, ct);
     }
 }

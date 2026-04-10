@@ -8,8 +8,9 @@ public class JellyfinServiceTests
 {
     private readonly Mock<ICommandExecutor> _mockExecutor = new();
     private readonly Mock<IConfigurationService> _mockConfig = new();
+    private readonly Mock<IHttpClientFactory> _mockHttpFactory = new();
 
-    private JellyfinService CreateService() => new(_mockExecutor.Object, _mockConfig.Object);
+    private JellyfinService CreateService() => new(_mockExecutor.Object, _mockConfig.Object, _mockHttpFactory.Object);
 
     [Fact]
     public async Task GetContainerIdAsync_ParsesDockerPsOutput()
