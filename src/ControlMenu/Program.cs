@@ -1,7 +1,6 @@
 using System.Reflection;
 using ControlMenu.Data;
 using ControlMenu.Modules;
-using ControlMenu.Modules.AndroidDevices.Services;
 using ControlMenu.Modules.Utilities.Services;
 using ControlMenu.Services;
 using Microsoft.AspNetCore.DataProtection;
@@ -31,9 +30,6 @@ builder.Services.AddScoped<ISecretStore, SecretStore>();
 builder.Services.AddScoped<IConfigurationService, ConfigurationService>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
 builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
-
-// Android Devices module services
-builder.Services.AddSingleton<IAdbService, AdbService>();
 
 // Utilities module services
 builder.Services.AddSingleton<IIconConversionService, IconConversionService>();
