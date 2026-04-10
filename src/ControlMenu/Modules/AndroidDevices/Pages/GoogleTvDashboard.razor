@@ -1,0 +1,312 @@
+@page "/android/googletv"
+@page "/android/googletv/{DeviceId:guid}"
+@using ControlMenu.Data.Entities
+@using ControlMenu.Data.Enums
+@using ControlMenu.Services
+@using ControlMenu.Modules.AndroidDevices.Services
+
+<PageTitle>Google TV - @(_device?.Name ?? "Select Device")</PageTitle>
+
+<h1><i class="bi bi-tv"></i> Google TV</h1>
+
+@if (_device is null)
+{
+    <p>No device selected. <a href="/android/devices">Select a device</a>.</p>
+}
+else
+{
+    <div class="device-header">
+        <h2>@_device.Name</h2>
+        <span class="status-badge @(_connected ? "connected" : "disconnected")">
+            <i class="bi @(_connected ? "bi-wifi" : "bi-wifi-off")"></i>
+            @(_connected ? "Connected" : "Disconnected")
+        </span>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_statusMessage))
+    {
+        <div class="status-bar @_statusClass">
+            <i class="bi @_statusIcon"></i> @_statusMessage
+        </div>
+    }
+
+    <div class="action-card-grid">
+        <!-- Power Status -->
+        <div class="action-card">
+            <div class="action-card-icon"><i class="bi bi-lightning-charge"></i></div>
+            <h3>Power Status</h3>
+            <p class="action-value">@_powerState</p>
+            <button class="btn btn-secondary" @onclick="CheckPowerStatus" disabled="@_busy">
+                <i class="bi bi-arrow-clockwise"></i> Check
+            </button>
+        </div>
+
+        <!-- Power Toggle -->
+        <div class="action-card">
+            <div class="action-card-icon"><i class="bi bi-power"></i></div>
+            <h3>Power On/Off</h3>
+            <p>Toggle power state</p>
+            <button class="btn btn-warning" @onclick="TogglePower" disabled="@_busy">
+                <i class="bi bi-power"></i> Toggle
+            </button>
+        </div>
+
+        <!-- Reboot -->
+        <div class="action-card">
+            <div class="action-card-icon"><i class="bi bi-arrow-repeat"></i></div>
+            <h3>Reboot</h3>
+            <p>Restart the device</p>
+            <button class="btn btn-danger" @onclick="RebootDevice" disabled="@_busy">
+                <i class="bi bi-arrow-repeat"></i> Reboot
+            </button>
+        </div>
+
+        <!-- Screen Mirror -->
+        <div class="action-card">
+            <div class="action-card-icon"><i class="bi bi-display"></i></div>
+            <h3>Screen Mirror</h3>
+            <p>Launch scrcpy</p>
+            <button class="btn btn-primary" @onclick="LaunchScreenMirror" disabled="@_busy">
+                <i class="bi bi-cast"></i> Mirror
+            </button>
+        </div>
+
+        <!-- Shizuku -->
+        <div class="action-card">
+            <div class="action-card-icon"><i class="bi bi-shield-check"></i></div>
+            <h3>Shizuku</h3>
+            <p>Start Shizuku service</p>
+            <button class="btn btn-primary" @onclick="StartShizuku" disabled="@_busy">
+                <i class="bi bi-play-circle"></i> Start
+            </button>
+        </div>
+
+        <!-- Screensaver -->
+        <div class="action-card">
+            <div class="action-card-icon"><i class="bi bi-image"></i></div>
+            <h3>Screensaver</h3>
+            <p class="action-value">Current: @_screensaver</p>
+            <div class="action-button-group">
+                <button class="btn btn-secondary" @onclick="CheckScreensaver" disabled="@_busy">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+                <button class="btn btn-primary" @onclick="ToggleScreensaver" disabled="@_busy">
+                    <i class="bi bi-arrow-left-right"></i> Switch
+                </button>
+            </div>
+        </div>
+
+        <!-- Screen Timeout -->
+        <div class="action-card">
+            <div class="action-card-icon"><i class="bi bi-clock"></i></div>
+            <h3>Screen Timeout</h3>
+            <p class="action-value">@FormatTimeout(_screenTimeout)</p>
+            <div class="timeout-input-group">
+                <input type="number" @bind="_newTimeout" min="300000" step="60000" placeholder="ms" class="form-input" />
+                <button class="btn btn-primary" @onclick="SetTimeout" disabled="@_busy">Set</button>
+            </div>
+        </div>
+
+        <!-- Android TV Launcher -->
+        <div class="action-card">
+            <div class="action-card-icon"><i class="bi bi-grid-3x3-gap"></i></div>
+            <h3>TV Launcher</h3>
+            <p class="action-value">@(_launcherDisabled == null ? "Unknown" : _launcherDisabled.Value ? "Disabled" : "Enabled")</p>
+            <button class="btn btn-warning" @onclick="ToggleLauncher" disabled="@_busy">
+                <i class="bi bi-toggle-on"></i> Toggle
+            </button>
+        </div>
+
+        <!-- Projectivy Restore -->
+        <div class="action-card wide">
+            <div class="action-card-icon"><i class="bi bi-cloud-download"></i></div>
+            <h3>Restore Projectivy</h3>
+            @if (_projectivyBackups.Count == 0)
+            {
+                <p>No backups found.</p>
+                <button class="btn btn-secondary" @onclick="LoadProjectivyBackups" disabled="@_busy">
+                    <i class="bi bi-arrow-clockwise"></i> Scan
+                </button>
+            }
+            else
+            {
+                <select @bind="_selectedBackup" class="form-select">
+                    <option value="">Select a backup...</option>
+                    @foreach (var backup in _projectivyBackups)
+                    {
+                        <option value="@backup">@backup</option>
+                    }
+                </select>
+                <button class="btn btn-primary" @onclick="RestoreProjectivy" disabled="@(_busy || string.IsNullOrEmpty(_selectedBackup))">
+                    <i class="bi bi-cloud-download"></i> Restore
+                </button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid? DeviceId { get; set; }
+    [Inject] private IDeviceService DeviceService { get; set; } = default!;
+    [Inject] private IAdbService AdbService { get; set; } = default!;
+
+    private Device? _device;
+    private bool _connected;
+    private bool _busy;
+    private string _statusMessage = "";
+    private string _statusClass = "";
+    private string _statusIcon = "";
+    private string _powerState = "Unknown";
+    private string _screensaver = "Unknown";
+    private int _screenTimeout;
+    private int _newTimeout = 300000;
+    private bool? _launcherDisabled;
+    private List<string> _projectivyBackups = [];
+    private string? _selectedBackup;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (DeviceId.HasValue)
+        {
+            _device = await DeviceService.GetDeviceAsync(DeviceId.Value);
+        }
+        else
+        {
+            // Default to first Google TV device
+            var devices = await DeviceService.GetAllDevicesAsync();
+            _device = devices.FirstOrDefault(d => d.Type == DeviceType.GoogleTV && d.ModuleId == "android-devices");
+        }
+
+        if (_device?.LastKnownIp is not null)
+        {
+            await ConnectToDevice();
+        }
+    }
+
+    private async Task ConnectToDevice()
+    {
+        if (_device?.LastKnownIp is null) return;
+        _connected = await AdbService.ConnectAsync(_device.LastKnownIp, _device.AdbPort);
+        if (_connected)
+        {
+            await CheckPowerStatus();
+            await CheckScreensaver();
+            _screenTimeout = await AdbService.GetScreenTimeoutAsync(_device.LastKnownIp, _device.AdbPort);
+            _launcherDisabled = await AdbService.IsLauncherDisabledAsync(_device.LastKnownIp, _device.AdbPort);
+        }
+    }
+
+    private string Ip => _device!.LastKnownIp!;
+    private int Port => _device!.AdbPort;
+
+    private async Task CheckPowerStatus()
+    {
+        _busy = true;
+        var state = await AdbService.GetPowerStateAsync(Ip, Port);
+        _powerState = state.ToString();
+        _busy = false;
+    }
+
+    private async Task TogglePower()
+    {
+        _busy = true;
+        await AdbService.TogglePowerAsync(Ip, Port);
+        SetStatus("Power toggled", "status-success", "bi-check-circle");
+        await Task.Delay(1000);
+        await CheckPowerStatus();
+        _busy = false;
+    }
+
+    private async Task RebootDevice()
+    {
+        _busy = true;
+        SetStatus("Rebooting device...", "status-warning", "bi-hourglass-split");
+        await AdbService.RebootAsync(Ip, Port);
+        SetStatus("Reboot sent. Device will reconnect when ready.", "status-success", "bi-check-circle");
+        _busy = false;
+    }
+
+    private async Task LaunchScreenMirror()
+    {
+        _busy = true;
+        SetStatus("Launching screen mirror...", "status-info", "bi-cast");
+        await AdbService.LaunchScrcpyAsync(Ip, Port);
+        SetStatus("Screen mirror closed.", "status-info", "bi-info-circle");
+        _busy = false;
+    }
+
+    private async Task StartShizuku()
+    {
+        _busy = true;
+        await AdbService.StartShizukuAsync(Ip, Port);
+        SetStatus("Shizuku started.", "status-success", "bi-check-circle");
+        _busy = false;
+    }
+
+    private async Task CheckScreensaver()
+    {
+        _screensaver = await AdbService.GetScreensaverAsync(Ip, Port);
+    }
+
+    private async Task ToggleScreensaver()
+    {
+        _busy = true;
+        var newSaver = _screensaver == "SkyFolio" ? "Google" : "SkyFolio";
+        await AdbService.SetScreensaverAsync(Ip, Port, newSaver);
+        _screensaver = newSaver;
+        SetStatus($"Screensaver set to {newSaver}.", "status-success", "bi-check-circle");
+        _busy = false;
+    }
+
+    private async Task SetTimeout()
+    {
+        if (_newTimeout < 300000) return;
+        _busy = true;
+        await AdbService.SetScreenTimeoutAsync(Ip, Port, _newTimeout);
+        _screenTimeout = _newTimeout;
+        SetStatus($"Screen timeout set to {FormatTimeout(_newTimeout)}.", "status-success", "bi-check-circle");
+        _busy = false;
+    }
+
+    private async Task ToggleLauncher()
+    {
+        _busy = true;
+        var enable = _launcherDisabled == true;
+        await AdbService.SetLauncherEnabledAsync(Ip, Port, enable);
+        _launcherDisabled = !enable;
+        SetStatus($"TV Launcher {(enable ? "enabled" : "disabled")}.", "status-success", "bi-check-circle");
+        _busy = false;
+    }
+
+    private async Task LoadProjectivyBackups()
+    {
+        _busy = true;
+        _projectivyBackups = (await AdbService.ListProjectivyBackupsAsync(Ip, Port)).ToList();
+        if (_projectivyBackups.Count == 0)
+            SetStatus("No Projectivy backups found on device.", "status-warning", "bi-exclamation-triangle");
+        _busy = false;
+    }
+
+    private async Task RestoreProjectivy()
+    {
+        if (string.IsNullOrEmpty(_selectedBackup)) return;
+        _busy = true;
+        await AdbService.RestoreProjectivyBackupAsync(Ip, Port, _selectedBackup);
+        SetStatus($"Restore initiated for {_selectedBackup}. Confirm on device.", "status-success", "bi-check-circle");
+        _busy = false;
+    }
+
+    private void SetStatus(string message, string cssClass, string icon)
+    {
+        _statusMessage = message;
+        _statusClass = cssClass;
+        _statusIcon = icon;
+    }
+
+    private static string FormatTimeout(int ms) =>
+        ms switch
+        {
+            0 => "Unknown",
+            _ => $"{ms / 60000} min ({ms:N0} ms)"
+        };
+}
