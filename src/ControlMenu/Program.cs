@@ -1,6 +1,7 @@
 using System.Reflection;
 using ControlMenu.Data;
 using ControlMenu.Modules;
+using ControlMenu.Modules.Utilities.Services;
 using ControlMenu.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -29,6 +30,10 @@ builder.Services.AddScoped<ISecretStore, SecretStore>();
 builder.Services.AddScoped<IConfigurationService, ConfigurationService>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
 builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
+
+// Utilities module services
+builder.Services.AddSingleton<IIconConversionService, IconConversionService>();
+builder.Services.AddSingleton<IFileUnblockService, FileUnblockService>();
 
 // Module discovery — scans the main assembly for IToolModule implementations
 builder.Services.AddSingleton(new ModuleDiscoveryService(
