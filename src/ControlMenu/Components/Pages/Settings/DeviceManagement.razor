@@ -1,8 +1,215 @@
+@inject IDeviceService DeviceService
+@inject INetworkDiscoveryService NetworkDiscovery
+
 <div class="settings-section">
     <h2>Device Management</h2>
-    <p>Manage registered devices.</p>
-    <p style="color: var(--text-muted);"><em>Loading...</em></p>
+    <p>Register and manage Android devices. Use "Scan Network" to auto-discover IP addresses via ARP.</p>
+
+    <div class="toolbar">
+        <button class="btn btn-primary" @onclick="ShowAddForm">
+            <i class="bi bi-plus-lg"></i> Add Device
+        </button>
+        <button class="btn btn-secondary" @onclick="ScanNetwork" disabled="@_scanning">
+            <i class="bi bi-broadcast"></i> @(_scanning ? "Scanning..." : "Scan Network")
+        </button>
+        <div class="toolbar-spacer"></div>
+        @if (!string.IsNullOrEmpty(_message))
+        {
+            <span class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin:0; padding:6px 12px;">@_message</span>
+        }
+    </div>
+
+    @if (_devices.Count == 0)
+    {
+        <p style="color: var(--text-muted);">No devices registered. Click "Add Device" to get started.</p>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>MAC Address</th>
+                    <th>IP Address</th>
+                    <th>ADB Port</th>
+                    <th>Last Seen</th>
+                    <th style="text-align:right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var device in _devices)
+                {
+                    <tr>
+                        <td><span class="status-dot @GetStatusClass(device)"></span></td>
+                        <td>@device.Name</td>
+                        <td>@device.Type</td>
+                        <td><code>@device.MacAddress</code></td>
+                        <td>@(device.LastKnownIp ?? "—")</td>
+                        <td>@device.AdbPort</td>
+                        <td>@FormatLastSeen(device.LastSeen)</td>
+                        <td class="actions">
+                            <button class="btn btn-secondary btn-sm" @onclick="() => ShowEditForm(device)">Edit</button>
+                            <button class="btn btn-danger btn-sm" @onclick="() => ConfirmDelete(device)">Delete</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
 </div>
 
+@if (_showForm)
+{
+    <DeviceForm Model="_formDevice" IsEdit="_isEditing" OnSave="SaveDevice" OnCancel="CloseForm" />
+}
+
+@if (_showDeleteConfirm)
+{
+    <div class="dialog-overlay" @onclick="CloseDeleteConfirm">
+        <div class="dialog" @onclick:stopPropagation="true">
+            <h3>Delete Device</h3>
+            <p>Are you sure you want to delete <strong>@_deleteTarget?.Name</strong>?</p>
+            <div class="dialog-actions">
+                <button class="btn btn-secondary" @onclick="CloseDeleteConfirm">Cancel</button>
+                <button class="btn btn-danger" @onclick="DeleteDevice">Delete</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
+    private List<ControlMenu.Data.Entities.Device> _devices = [];
+    private bool _showForm;
+    private bool _isEditing;
+    private ControlMenu.Data.Entities.Device _formDevice = new()
+    {
+        Name = "", MacAddress = "", ModuleId = "android-devices"
+    };
+    private bool _showDeleteConfirm;
+    private ControlMenu.Data.Entities.Device? _deleteTarget;
+    private bool _scanning;
+    private string? _message;
+    private bool _messageIsError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDevices();
+    }
+
+    private async Task LoadDevices()
+    {
+        _devices = (await DeviceService.GetAllDevicesAsync()).ToList();
+    }
+
+    private void ShowAddForm()
+    {
+        _formDevice = new ControlMenu.Data.Entities.Device
+        {
+            Name = "", MacAddress = "", ModuleId = "android-devices"
+        };
+        _isEditing = false;
+        _showForm = true;
+    }
+
+    private void ShowEditForm(ControlMenu.Data.Entities.Device device)
+    {
+        _formDevice = device;
+        _isEditing = true;
+        _showForm = true;
+    }
+
+    private void CloseForm()
+    {
+        _showForm = false;
+    }
+
+    private async Task SaveDevice()
+    {
+        _formDevice.MacAddress = NetworkDiscoveryService.NormalizeMac(_formDevice.MacAddress);
+
+        if (_isEditing)
+            await DeviceService.UpdateDeviceAsync(_formDevice);
+        else
+            await DeviceService.AddDeviceAsync(_formDevice);
+
+        _showForm = false;
+        await LoadDevices();
+        await ShowMessage($"Device {(_isEditing ? "updated" : "added")} successfully.");
+    }
+
+    private void ConfirmDelete(ControlMenu.Data.Entities.Device device)
+    {
+        _deleteTarget = device;
+        _showDeleteConfirm = true;
+    }
+
+    private void CloseDeleteConfirm()
+    {
+        _showDeleteConfirm = false;
+        _deleteTarget = null;
+    }
+
+    private async Task DeleteDevice()
+    {
+        if (_deleteTarget is not null)
+        {
+            await DeviceService.DeleteDeviceAsync(_deleteTarget.Id);
+            _showDeleteConfirm = false;
+            _deleteTarget = null;
+            await LoadDevices();
+            await ShowMessage("Device deleted.");
+        }
+    }
+
+    private async Task ScanNetwork()
+    {
+        _scanning = true;
+        StateHasChanged();
+
+        int updated = 0;
+        foreach (var device in _devices)
+        {
+            var ip = await NetworkDiscovery.ResolveIpFromMacAsync(device.MacAddress);
+            if (ip is not null)
+            {
+                await DeviceService.UpdateLastSeenAsync(device.Id, ip);
+                updated++;
+            }
+        }
+
+        await LoadDevices();
+        _scanning = false;
+        await ShowMessage($"Scan complete. {updated} of {_devices.Count} device(s) found on network.");
+    }
+
+    private static string GetStatusClass(ControlMenu.Data.Entities.Device device)
+    {
+        if (device.LastSeen is null) return "offline";
+        var age = DateTime.UtcNow - device.LastSeen.Value;
+        if (age.TotalMinutes < 10) return "online";
+        if (age.TotalHours < 24) return "stale";
+        return "offline";
+    }
+
+    private static string FormatLastSeen(DateTime? lastSeen)
+    {
+        if (lastSeen is null) return "Never";
+        var age = DateTime.UtcNow - lastSeen.Value;
+        if (age.TotalMinutes < 1) return "Just now";
+        if (age.TotalMinutes < 60) return $"{(int)age.TotalMinutes}m ago";
+        if (age.TotalHours < 24) return $"{(int)age.TotalHours}h ago";
+        return lastSeen.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+    }
+
+    private async Task ShowMessage(string message, bool isError = false)
+    {
+        _message = message;
+        _messageIsError = isError;
+        StateHasChanged();
+        await Task.Delay(3000);
+        _message = null;
+        StateHasChanged();
+    }
 }

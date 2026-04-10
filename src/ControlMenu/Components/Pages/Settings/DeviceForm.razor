@@ -1,0 +1,66 @@
+@using ControlMenu.Data.Entities
+@using ControlMenu.Data.Enums
+
+<div class="dialog-overlay" @onclick="OnCancel">
+    <div class="dialog" @onclick:stopPropagation="true">
+        <h3>@(IsEdit ? "Edit Device" : "Add Device")</h3>
+
+        <div class="form-group">
+            <label>Device Name</label>
+            <input class="form-control" @bind="Model.Name" placeholder="Living Room TV" />
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Device Type</label>
+                <select class="form-control" @bind="Model.Type">
+                    @foreach (var type in Enum.GetValues<DeviceType>())
+                    {
+                        <option value="@type">@type</option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>ADB Port</label>
+                <input type="number" class="form-control" @bind="Model.AdbPort" />
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>MAC Address</label>
+            <input class="form-control" @bind="Model.MacAddress" placeholder="b8-7b-d4-f3-ae-84" />
+            <div class="form-hint">Used for automatic IP discovery via ARP table.</div>
+        </div>
+
+        <div class="form-group">
+            <label>Serial Number (optional)</label>
+            <input class="form-control" @bind="Model.SerialNumber" placeholder="47121FDAQ000WC" />
+        </div>
+
+        <div class="dialog-actions">
+            <button class="btn btn-secondary" @onclick="OnCancel">Cancel</button>
+            <button class="btn btn-primary" @onclick="OnSave" disabled="@(!IsValid)">
+                @(IsEdit ? "Save Changes" : "Add Device")
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public Device Model { get; set; } = default!;
+
+    [Parameter]
+    public bool IsEdit { get; set; }
+
+    [Parameter]
+    public EventCallback OnSave { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private bool IsValid =>
+        !string.IsNullOrWhiteSpace(Model.Name) &&
+        !string.IsNullOrWhiteSpace(Model.MacAddress);
+}
