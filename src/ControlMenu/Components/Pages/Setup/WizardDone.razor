@@ -1,5 +1,151 @@
-<h2>Done</h2>
+<div class="done-container">
+    <i class="bi bi-check-circle-fill done-icon"></i>
+
+    <h2 class="done-heading">Setup Complete</h2>
+
+    <p class="done-description">
+        Here's a summary of what was configured. You can always change these in Settings.
+    </p>
+
+    <div class="summary-list">
+
+        <!-- Devices -->
+        <div class="summary-item">
+            @if (State.DevicesAdded > 0)
+            {
+                <i class="bi bi-check-circle-fill text-ok summary-icon"></i>
+                <span>@State.DevicesAdded device(s) added</span>
+            }
+            else
+            {
+                <i class="bi bi-exclamation-triangle-fill text-warning summary-icon"></i>
+                <span>No devices configured — <a href="/settings/devices">go to Settings</a></span>
+            }
+        </div>
+
+        <!-- Services -->
+        <div class="summary-item">
+            @if (State.SettingsTotal == 0)
+            {
+                <i class="bi bi-dash-circle summary-icon text-neutral"></i>
+                <span>No module settings to configure</span>
+            }
+            else if (State.SettingsConfigured == State.SettingsTotal)
+            {
+                <i class="bi bi-check-circle-fill text-ok summary-icon"></i>
+                <span>All settings configured</span>
+            }
+            else if (State.SettingsConfigured > 0)
+            {
+                <i class="bi bi-exclamation-triangle-fill text-warning summary-icon"></i>
+                <span>@State.SettingsConfigured of @State.SettingsTotal settings configured — <a href="/settings/modules">go to Settings</a></span>
+            }
+            else
+            {
+                <i class="bi bi-exclamation-triangle-fill text-warning summary-icon"></i>
+                <span>No settings configured — <a href="/settings/modules">go to Settings</a></span>
+            }
+        </div>
+
+        <!-- Dependencies -->
+        <div class="summary-item">
+            @if (State.DependenciesTotal == 0)
+            {
+                <i class="bi bi-dash-circle summary-icon text-neutral"></i>
+                <span>No dependencies to configure</span>
+            }
+            else if (State.DependenciesFound == State.DependenciesTotal)
+            {
+                <i class="bi bi-check-circle-fill text-ok summary-icon"></i>
+                <span>All dependencies found</span>
+            }
+            else if (State.DependenciesFound > 0)
+            {
+                <i class="bi bi-exclamation-triangle-fill text-warning summary-icon"></i>
+                <span>@State.DependenciesFound of @State.DependenciesTotal dependencies found — <a href="/settings/dependencies">go to Settings</a></span>
+            }
+            else
+            {
+                <i class="bi bi-exclamation-triangle-fill text-warning summary-icon"></i>
+                <span>No dependencies found — <a href="/settings/dependencies">go to Settings</a></span>
+            }
+        </div>
+
+    </div>
+
+    <p class="done-footer">You can re-run this wizard anytime from Settings &gt; General.</p>
+</div>
 
 @code {
     [Parameter] public SetupWizard.WizardState State { get; set; } = default!;
 }
+
+<style>
+    .done-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        max-width: 500px;
+        margin: 0 auto;
+    }
+
+    .done-icon {
+        font-size: 64px;
+        color: var(--status-ok, #2ea043);
+        margin-bottom: 1rem;
+    }
+
+    .done-heading {
+        color: var(--text-primary);
+        margin-bottom: 1rem;
+    }
+
+    .done-description {
+        color: var(--text-secondary);
+        margin-bottom: 1.5rem;
+    }
+
+    .summary-list {
+        width: 100%;
+        text-align: left;
+        margin-bottom: 1.5rem;
+    }
+
+    .summary-item {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-secondary);
+    }
+
+    .summary-item:last-child {
+        border-bottom: none;
+    }
+
+    .summary-icon {
+        font-size: 1.2rem;
+        flex-shrink: 0;
+    }
+
+    .text-ok {
+        color: var(--status-ok, #2ea043);
+    }
+
+    .text-warning {
+        color: var(--status-warning, #e6a700);
+    }
+
+    .text-neutral {
+        color: var(--text-muted, #888);
+    }
+
+    .done-footer {
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        margin-top: 0.5rem;
+    }
+</style>
