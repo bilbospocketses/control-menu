@@ -1,3 +1,5 @@
+@using ControlMenu.Services
+
 <header class="top-bar">
     <div class="top-bar-breadcrumb">
         <NavLink href="/" Match="NavLinkMatch.All">
@@ -8,6 +10,13 @@
     </div>
 
     <div class="top-bar-actions">
+        @if (_updateCount > 0)
+        {
+            <a class="update-badge" href="/settings/dependencies" title="@_updateCount update(s) available">
+                <i class="bi bi-download"></i>
+                <span class="badge">@_updateCount</span>
+            </a>
+        }
         <button class="theme-toggle" @onclick="CycleTheme" title="@ThemeLabel">
             <i class="bi @ThemeIcon"></i>
         </button>
@@ -36,6 +45,16 @@
 
     [Inject]
     private IJSRuntime JS { get; set; } = default!;
+
+    [Inject]
+    private IDependencyManagerService DepManager { get; set; } = default!;
+
+    private int _updateCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _updateCount = await DepManager.GetUpdateAvailableCountAsync();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
