@@ -1,0 +1,43 @@
+/* System/Light theme (default) */
+:root {
+    --bg-primary: #ffffff;
+    --content-bg: #f8f9fa;
+    --sidebar-bg: #f0f2f5;
+    --topbar-bg: #ffffff;
+    --border-color: #dee2e6;
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --text-muted: #adb5bd;
+    --hover-bg: rgba(0, 0, 0, 0.05);
+    --active-bg: rgba(13, 110, 253, 0.1);
+    --accent-color: #0d6efd;
+    --card-bg: #ffffff;
+    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --input-bg: #ffffff;
+    --input-border: #ced4da;
+    --danger-color: #dc3545;
+    --success-color: #198754;
+    --warning-color: #ffc107;
+}
+
+/* Dark theme */
+[data-theme="dark"] {
+    --bg-primary: #1a1a2e;
+    --content-bg: #16213e;
+    --sidebar-bg: #0f1629;
+    --topbar-bg: #1a1a2e;
+    --border-color: #2a2a4a;
+    --text-primary: #e0e0e0;
+    --text-secondary: #a0a0b8;
+    --text-muted: #6c6c80;
+    --hover-bg: rgba(255, 255, 255, 0.06);
+    --active-bg: rgba(99, 140, 255, 0.15);
+    --accent-color: #638cff;
+    --card-bg: #1e1e3a;
+    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --input-bg: #1e1e3a;
+    --input-border: #3a3a5a;
+    --danger-color: #f06c75;
+    --success-color: #50c878;
+    --warning-color: #ffd866;
+}

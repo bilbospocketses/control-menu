@@ -1,0 +1,119 @@
+/* Reset & Base */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-size: 14px;
+    color: var(--text-primary);
+    background-color: var(--bg-primary);
+    -webkit-font-smoothing: antialiased;
+}
+
+a {
+    color: var(--accent-color);
+}
+
+/* Home page styles */
+.home-container {
+    max-width: 960px;
+}
+
+.home-container h1 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    margin: 0 0 8px 0;
+}
+
+.home-subtitle {
+    color: var(--text-secondary);
+    font-size: 1rem;
+    margin: 0 0 32px 0;
+}
+
+.home-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 64px 24px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.home-empty-state i {
+    font-size: 3rem;
+}
+
+.home-empty-state h2 {
+    font-size: 1.25rem;
+    font-weight: 500;
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+.home-empty-state p {
+    max-width: 400px;
+    margin: 0;
+}
+
+.home-module-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.home-module-card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: var(--card-shadow);
+}
+
+.home-module-card i {
+    font-size: 1.5rem;
+    color: var(--accent-color);
+}
+
+.home-module-card h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 8px 0;
+}
+
+.module-nav-links {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.module-nav-links a {
+    font-size: 0.9rem;
+    text-decoration: none;
+}
+
+.module-nav-links a:hover {
+    text-decoration: underline;
+}
+
+/* Scrollbar styling for dark theme */
+[data-theme="dark"] ::-webkit-scrollbar {
+    width: 8px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-track {
+    background: var(--sidebar-bg);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 4px;
+}
+
+#blazor-error-ui {
+    display: none;
+}
