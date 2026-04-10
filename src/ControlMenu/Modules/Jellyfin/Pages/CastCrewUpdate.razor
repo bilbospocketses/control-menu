@@ -2,6 +2,7 @@
 @using ControlMenu.Data.Entities
 @using ControlMenu.Data.Enums
 @using ControlMenu.Services
+@using ControlMenu.Modules.Jellyfin.Services
 @implements IDisposable
 
 <PageTitle>Jellyfin — Cast & Crew Update</PageTitle>
@@ -96,6 +97,7 @@ else
 
 @code {
     [Inject] private IBackgroundJobService JobService { get; set; } = default!;
+    [Inject] private IJellyfinService JellyfinService { get; set; } = default!;
 
     private Job? _activeJob;
     private List<Job> _recentJobs = [];
@@ -136,11 +138,15 @@ else
         _starting = true;
         var job = await JobService.CreateJobAsync("jellyfin", "cast-crew-update");
         _activeJob = job;
-        // NOTE: In a full implementation, this would launch the worker process:
-        // var process = Process.Start("dotnet", $"run --project Workers/CastCrewWorker -- {job.Id}");
-        // await JobService.StartJobAsync(job.Id, process.Id);
-        // For now, the job is created in Queued state. Worker process launching
-        // will be implemented when the worker project is added.
+
+        // Launch worker in background
+        _ = Task.Run(async () =>
+        {
+            await JobService.StartJobAsync(job.Id, Environment.ProcessId);
+            var worker = new Workers.CastCrewUpdateWorker(JellyfinService, JobService);
+            await worker.ExecuteAsync(job.Id, CancellationToken.None);
+        });
+
         _starting = false;
     }
 
