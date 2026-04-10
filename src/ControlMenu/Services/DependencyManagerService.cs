@@ -1,0 +1,487 @@
+using System.Text.RegularExpressions;
+using ControlMenu.Data;
+using ControlMenu.Data.Entities;
+using ControlMenu.Data.Enums;
+using ControlMenu.Modules;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+namespace ControlMenu.Services;
+
+public class DependencyManagerService : IDependencyManagerService
+{
+    private readonly AppDbContext _db;
+    private readonly IReadOnlyList<IToolModule> _modules;
+    private readonly ICommandExecutor _executor;
+    private readonly IHttpClientFactory _httpFactory;
+    private readonly ILogger<DependencyManagerService> _logger;
+
+    public DependencyManagerService(
+        AppDbContext db,
+        IReadOnlyList<IToolModule> modules,
+        ICommandExecutor executor,
+        IHttpClientFactory httpFactory,
+        ILogger<DependencyManagerService> logger)
+    {
+        _db = db;
+        _modules = modules;
+        _executor = executor;
+        _httpFactory = httpFactory;
+        _logger = logger;
+    }
+
+    public async Task SyncDependenciesAsync()
+    {
+        var declared = _modules
+            .SelectMany(m => m.Dependencies.Select(d => (Module: m, Dep: d)))
+            .ToList();
+
+        var existing = await _db.Dependencies.ToListAsync();
+
+        // Remove orphaned
+        var declaredKeys = declared
+            .Select(d => (d.Module.Id, d.Dep.Name))
+            .ToHashSet();
+
+        var toRemove = existing
+            .Where(e => !declaredKeys.Contains((e.ModuleId, e.Name)))
+            .ToList();
+
+        _db.Dependencies.RemoveRange(toRemove);
+
+        // Upsert declared
+        foreach (var (module, dep) in declared)
+        {
+            var entity = existing.FirstOrDefault(e =>
+                e.ModuleId == module.Id && e.Name == dep.Name);
+
+            if (entity is null)
+            {
+                entity = new Dependency
+                {
+                    Id = Guid.NewGuid(),
+                    ModuleId = module.Id,
+                    Name = dep.Name,
+                    Status = DependencyStatus.UpToDate
+                };
+                _db.Dependencies.Add(entity);
+            }
+
+            // Update static fields from code
+            entity.SourceType = dep.SourceType;
+            entity.ProjectHomeUrl = dep.ProjectHomeUrl;
+            entity.DownloadUrl = entity.DownloadUrl ?? dep.DownloadUrl;
+
+            // Refresh installed version
+            entity.InstalledVersion = await GetInstalledVersionAsync(dep);
+        }
+
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task<int> GetUpdateAvailableCountAsync()
+    {
+        return await _db.Dependencies
+            .CountAsync(d => d.Status == DependencyStatus.UpdateAvailable);
+    }
+
+    public async Task<IReadOnlyList<Dependency>> GetAllDependenciesAsync()
+    {
+        return await _db.Dependencies
+            .OrderBy(d => d.ModuleId)
+            .ThenBy(d => d.Name)
+            .ToListAsync();
+    }
+
+    public async Task<DependencyCheckResult> CheckDependencyAsync(Guid dependencyId)
+    {
+        var entity = await _db.Dependencies.FindAsync(dependencyId);
+        if (entity is null)
+            return new DependencyCheckResult(dependencyId, "", DependencyStatus.CheckFailed,
+                null, null, "Dependency not found");
+
+        var moduleDep = FindModuleDependency(entity.ModuleId, entity.Name);
+        if (moduleDep is null)
+            return new DependencyCheckResult(dependencyId, entity.Name, DependencyStatus.CheckFailed,
+                entity.InstalledVersion, null, "Module dependency declaration not found");
+
+        try
+        {
+            // Refresh installed version
+            entity.InstalledVersion = await GetInstalledVersionAsync(moduleDep);
+
+            switch (entity.SourceType)
+            {
+                case UpdateSourceType.GitHub:
+                    await CheckGitHubVersionAsync(entity, moduleDep);
+                    break;
+                case UpdateSourceType.DirectUrl:
+                    await CheckDirectUrlVersionAsync(entity, moduleDep);
+                    break;
+                case UpdateSourceType.Manual:
+                    entity.Status = DependencyStatus.UpToDate;
+                    break;
+            }
+
+            entity.LastChecked = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            return new DependencyCheckResult(
+                entity.Id, entity.Name, entity.Status,
+                entity.InstalledVersion, entity.LatestKnownVersion, null);
+        }
+        catch (Exception ex)
+        {
+            entity.Status = DependencyStatus.CheckFailed;
+            entity.LastChecked = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            _logger.LogError(ex, "Failed to check dependency {Name}", entity.Name);
+            return new DependencyCheckResult(
+                entity.Id, entity.Name, DependencyStatus.CheckFailed,
+                entity.InstalledVersion, null, ex.Message);
+        }
+    }
+
+    public async Task<IReadOnlyList<DependencyCheckResult>> CheckAllAsync()
+    {
+        var deps = await _db.Dependencies.ToListAsync();
+        var results = new List<DependencyCheckResult>();
+
+        foreach (var dep in deps)
+        {
+            results.Add(await CheckDependencyAsync(dep.Id));
+        }
+
+        return results;
+    }
+
+    public async Task<AssetMatch?> ResolveDownloadAssetAsync(Guid dependencyId)
+    {
+        var entity = await _db.Dependencies.FindAsync(dependencyId);
+        if (entity is null) return null;
+
+        var moduleDep = FindModuleDependency(entity.ModuleId, entity.Name);
+        if (moduleDep is null || moduleDep.InstallPath is null) return null;
+
+        if (entity.SourceType == UpdateSourceType.GitHub && moduleDep.GitHubRepo is not null)
+        {
+            return await ResolveGitHubAssetAsync(moduleDep);
+        }
+
+        if (entity.SourceType == UpdateSourceType.DirectUrl && entity.DownloadUrl is not null)
+        {
+            // DirectUrl — deterministic URL, just need the file size
+            var client = _httpFactory.CreateClient("dependency-updates");
+            using var headResponse = await client.SendAsync(
+                new HttpRequestMessage(HttpMethod.Head, entity.DownloadUrl));
+
+            var size = headResponse.Content.Headers.ContentLength ?? 0;
+            var fileName = Path.GetFileName(new Uri(entity.DownloadUrl).AbsolutePath);
+
+            return new AssetMatch(fileName, entity.DownloadUrl, size, AutoSelected: true);
+        }
+
+        return null;
+    }
+
+    public async Task<UpdateResult> DownloadAndInstallAsync(Guid dependencyId, AssetMatch asset)
+    {
+        var entity = await _db.Dependencies.FindAsync(dependencyId);
+        if (entity is null)
+            return new UpdateResult(false, null, "Dependency not found", null);
+
+        var moduleDep = FindModuleDependency(entity.ModuleId, entity.Name);
+        if (moduleDep?.InstallPath is null)
+            return new UpdateResult(false, null, "No install path configured", null);
+
+        StaleUrlAction? urlAction = null;
+        var tempDir = Path.Combine(Path.GetTempPath(), "ControlMenu", Guid.NewGuid().ToString());
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            // 1. Download
+            var client = _httpFactory.CreateClient("dependency-updates");
+
+            var handler = new HttpClientHandler { AllowAutoRedirect = false };
+            using var redirectClient = new HttpClient(handler);
+            var response = await redirectClient.GetAsync(asset.DownloadUrl,
+                HttpCompletionOption.ResponseHeadersRead);
+
+            // Handle redirects
+            if ((int)response.StatusCode is >= 301 and <= 308)
+            {
+                var newUrl = response.Headers.Location?.ToString();
+                if (newUrl is not null)
+                {
+                    entity.DownloadUrl = newUrl;
+                    urlAction = StaleUrlAction.Redirected;
+                    response = await client.GetAsync(newUrl);
+                }
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                entity.Status = DependencyStatus.UrlInvalid;
+                await _db.SaveChangesAsync();
+                return new UpdateResult(false, null,
+                    $"Download failed: HTTP {(int)response.StatusCode}", StaleUrlAction.Invalid);
+            }
+
+            // Download to temp
+            var tempFile = Path.Combine(tempDir, asset.FileName);
+            await using (var fs = File.Create(tempFile))
+            {
+                await response.Content.CopyToAsync(fs);
+            }
+
+            // 2. Extract
+            var extractDir = Path.Combine(tempDir, "extracted");
+            if (tempFile.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                System.IO.Compression.ZipFile.ExtractToDirectory(tempFile, extractDir);
+            }
+            else if (tempFile.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
+            {
+                var result = await _executor.ExecuteAsync("tar", $"xzf \"{tempFile}\" -C \"{extractDir}\"");
+                if (result.ExitCode != 0)
+                    return new UpdateResult(false, null, $"Extraction failed: {result.StandardError}", urlAction);
+            }
+
+            // 3. Verify — find the executable in extracted dir and run version command
+            var newExe = FindExecutable(extractDir, moduleDep.ExecutableName);
+            if (newExe is null)
+                return new UpdateResult(false, null,
+                    $"Could not find {moduleDep.ExecutableName} in extracted archive", urlAction);
+
+            var verifyResult = await _executor.ExecuteAsync(newExe, moduleDep.VersionCommand.Split(' ').Last());
+            if (verifyResult.ExitCode != 0)
+                return new UpdateResult(false, null,
+                    $"New binary verification failed: {verifyResult.StandardError}", urlAction);
+
+            var newVersion = ExtractVersion(verifyResult.StandardOutput, moduleDep.VersionPattern);
+
+            // 4. Swap — backup old, move in new
+            if (Directory.Exists(moduleDep.InstallPath))
+            {
+                // Backup old files
+                foreach (var file in GetManagedFiles(moduleDep))
+                {
+                    var fullPath = Path.Combine(moduleDep.InstallPath, file);
+                    if (File.Exists(fullPath))
+                        File.Move(fullPath, fullPath + ".bak", overwrite: true);
+                }
+
+                // Copy new files — find the subdirectory in extracted (e.g., platform-tools/)
+                var sourceDir = FindInstallSource(extractDir, moduleDep.ExecutableName);
+                if (sourceDir is not null)
+                {
+                    foreach (var file in Directory.GetFiles(sourceDir))
+                    {
+                        File.Copy(file, Path.Combine(moduleDep.InstallPath, Path.GetFileName(file)),
+                            overwrite: true);
+                    }
+                }
+            }
+
+            // 5. Update DB
+            entity.InstalledVersion = newVersion;
+            entity.LatestKnownVersion = newVersion;
+            entity.Status = DependencyStatus.UpToDate;
+            entity.LastChecked = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            return new UpdateResult(true, newVersion, null, urlAction);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to install update for {Name}", entity.Name);
+            return new UpdateResult(false, null, ex.Message, urlAction);
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { /* best-effort cleanup */ }
+        }
+    }
+
+    // --- Private helpers ---
+
+    private async Task<string?> GetInstalledVersionAsync(ModuleDependency dep)
+    {
+        var parts = dep.VersionCommand.Split(' ', 2);
+        var command = parts[0];
+        var args = parts.Length > 1 ? parts[1] : null;
+
+        var result = await _executor.ExecuteAsync(command, args);
+        if (result.ExitCode != 0) return null;
+
+        return ExtractVersion(result.StandardOutput, dep.VersionPattern);
+    }
+
+    private static string? ExtractVersion(string output, string pattern)
+    {
+        var match = Regex.Match(output, pattern);
+        if (!match.Success) return null;
+
+        // If multiple capture groups (e.g., major.minor.micro), join them
+        if (match.Groups.Count > 2)
+        {
+            return string.Join(".",
+                Enumerable.Range(1, match.Groups.Count - 1)
+                    .Select(i => match.Groups[i].Value));
+        }
+
+        return match.Groups[1].Value;
+    }
+
+    private async Task CheckGitHubVersionAsync(Dependency entity, ModuleDependency moduleDep)
+    {
+        if (moduleDep.GitHubRepo is null) return;
+
+        var client = _httpFactory.CreateClient("github-api");
+        var url = $"https://api.github.com/repos/{moduleDep.GitHubRepo}/releases/latest";
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("Accept", "application/vnd.github+json");
+        request.Headers.Add("User-Agent", "ControlMenu");
+
+        var response = await client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync();
+        var tagMatch = Regex.Match(json, @"""tag_name""\s*:\s*""v?([\d.]+)""");
+        if (!tagMatch.Success) return;
+
+        entity.LatestKnownVersion = tagMatch.Groups[1].Value;
+        entity.Status = CompareVersions(entity.InstalledVersion, entity.LatestKnownVersion) < 0
+            ? DependencyStatus.UpdateAvailable
+            : DependencyStatus.UpToDate;
+    }
+
+    private async Task CheckDirectUrlVersionAsync(Dependency entity, ModuleDependency moduleDep)
+    {
+        if (moduleDep.VersionCheckUrl is null || moduleDep.VersionCheckPattern is null) return;
+
+        var client = _httpFactory.CreateClient("dependency-updates");
+        var content = await client.GetStringAsync(moduleDep.VersionCheckUrl);
+
+        var match = Regex.Match(content, moduleDep.VersionCheckPattern, RegexOptions.Singleline);
+        if (!match.Success) return;
+
+        string latestVersion;
+        if (match.Groups.Count > 2)
+            latestVersion = string.Join(".",
+                Enumerable.Range(1, match.Groups.Count - 1).Select(i => match.Groups[i].Value));
+        else
+            latestVersion = match.Groups[1].Value;
+
+        entity.LatestKnownVersion = latestVersion;
+        entity.Status = CompareVersions(entity.InstalledVersion, latestVersion) < 0
+            ? DependencyStatus.UpdateAvailable
+            : DependencyStatus.UpToDate;
+    }
+
+    private async Task<AssetMatch?> ResolveGitHubAssetAsync(ModuleDependency moduleDep)
+    {
+        var client = _httpFactory.CreateClient("github-api");
+        var url = $"https://api.github.com/repos/{moduleDep.GitHubRepo}/releases/latest";
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("Accept", "application/vnd.github+json");
+        request.Headers.Add("User-Agent", "ControlMenu");
+
+        var response = await client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync();
+
+        // Build platform-aware pattern
+        var basePattern = moduleDep.AssetPattern ?? moduleDep.ExecutableName;
+        var platformToken = GetPlatformToken();
+        var pattern = basePattern.Replace("win64", platformToken);
+
+        // Parse assets from JSON (simple regex — no JSON dependency needed)
+        var assets = Regex.Matches(json,
+            @"""name""\s*:\s*""(?<name>[^""]+)""\s*.*?" +
+            @"""size""\s*:\s*(?<size>\d+)\s*.*?" +
+            @"""browser_download_url""\s*:\s*""(?<url>[^""]+)""",
+            RegexOptions.Singleline);
+
+        var matches = new List<AssetMatch>();
+        foreach (Match a in assets)
+        {
+            var name = a.Groups["name"].Value;
+            if (Regex.IsMatch(name, basePattern) && name.Contains(platformToken))
+            {
+                matches.Add(new AssetMatch(
+                    name,
+                    a.Groups["url"].Value,
+                    long.Parse(a.Groups["size"].Value),
+                    AutoSelected: true));
+            }
+        }
+
+        if (matches.Count == 1)
+            return matches[0];
+
+        if (matches.Count > 1)
+            return matches[0] with { AutoSelected = false };
+
+        return null;
+    }
+
+    private static string GetPlatformToken()
+    {
+        if (OperatingSystem.IsWindows())
+            return System.Runtime.InteropServices.RuntimeInformation.OSArchitecture ==
+                   System.Runtime.InteropServices.Architecture.X64 ? "win64" : "win32";
+        if (OperatingSystem.IsLinux())
+            return "linux-x86_64";
+        return "unknown";
+    }
+
+    private ModuleDependency? FindModuleDependency(string moduleId, string name)
+    {
+        return _modules
+            .FirstOrDefault(m => m.Id == moduleId)
+            ?.Dependencies
+            .FirstOrDefault(d => d.Name == name);
+    }
+
+    private static int CompareVersions(string? installed, string? latest)
+    {
+        if (installed is null || latest is null) return -1;
+
+        var iParts = installed.Split('.').Select(s => int.TryParse(s, out var v) ? v : 0).ToArray();
+        var lParts = latest.Split('.').Select(s => int.TryParse(s, out var v) ? v : 0).ToArray();
+        var len = Math.Max(iParts.Length, lParts.Length);
+
+        for (var i = 0; i < len; i++)
+        {
+            var a = i < iParts.Length ? iParts[i] : 0;
+            var b = i < lParts.Length ? lParts[i] : 0;
+            if (a != b) return a.CompareTo(b);
+        }
+
+        return 0;
+    }
+
+    private static string? FindExecutable(string dir, string exeName)
+    {
+        var exe = OperatingSystem.IsWindows() && !exeName.EndsWith(".exe")
+            ? exeName + ".exe" : exeName;
+        return Directory.EnumerateFiles(dir, exe, SearchOption.AllDirectories).FirstOrDefault();
+    }
+
+    private static string? FindInstallSource(string extractDir, string exeName)
+    {
+        var exe = FindExecutable(extractDir, exeName);
+        return exe is not null ? Path.GetDirectoryName(exe) : null;
+    }
+
+    private static IEnumerable<string> GetManagedFiles(ModuleDependency dep)
+    {
+        var exe = OperatingSystem.IsWindows() && !dep.ExecutableName.EndsWith(".exe")
+            ? dep.ExecutableName + ".exe" : dep.ExecutableName;
+        return [exe, .. dep.RelatedFiles];
+    }
+}
