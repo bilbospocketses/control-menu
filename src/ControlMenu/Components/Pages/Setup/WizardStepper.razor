@@ -1,0 +1,105 @@
+<div class="wizard-stepper">
+    @for (int i = 0; i < Steps.Length; i++)
+    {
+        var stepIndex = i;
+        var isCompleted = stepIndex < CurrentStep;
+        var isActive = stepIndex == CurrentStep;
+
+        <div class="stepper-item @(isCompleted ? "completed" : "") @(isActive ? "active" : "")">
+            <div class="stepper-dot">
+                @if (isCompleted)
+                {
+                    <i class="bi bi-check-lg"></i>
+                }
+                else
+                {
+                    <span>@(stepIndex + 1)</span>
+                }
+            </div>
+            <div class="stepper-label">@Steps[stepIndex]</div>
+        </div>
+
+        @if (stepIndex < Steps.Length - 1)
+        {
+            <div class="stepper-connector @(isCompleted ? "completed" : "")"></div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string[] Steps { get; set; } = [];
+    [Parameter] public int CurrentStep { get; set; }
+}
+
+<style>
+    .wizard-stepper {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem 1rem;
+        gap: 0;
+    }
+
+    .stepper-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.4rem;
+        flex-shrink: 0;
+    }
+
+    .stepper-dot {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        border: 2px solid var(--border-color);
+        background: transparent;
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.85rem;
+        font-weight: 600;
+        transition: background 0.2s, border-color 0.2s, color 0.2s;
+    }
+
+    .stepper-item.active .stepper-dot {
+        border-color: var(--accent-color);
+        background: var(--accent-color);
+        color: #fff;
+    }
+
+    .stepper-item.completed .stepper-dot {
+        border-color: var(--status-ok);
+        background: var(--status-ok);
+        color: #fff;
+    }
+
+    .stepper-label {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        white-space: nowrap;
+    }
+
+    .stepper-item.active .stepper-label {
+        color: var(--text-primary);
+        font-weight: 600;
+    }
+
+    .stepper-item.completed .stepper-label {
+        color: var(--status-ok);
+    }
+
+    .stepper-connector {
+        flex: 1;
+        height: 2px;
+        background: var(--border-color);
+        margin-bottom: 1.2rem;
+        min-width: 24px;
+        transition: background 0.2s;
+    }
+
+    .stepper-connector.completed {
+        background: var(--status-ok);
+    }
+</style>

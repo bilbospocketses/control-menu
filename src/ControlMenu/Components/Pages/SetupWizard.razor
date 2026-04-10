@@ -1,0 +1,135 @@
+@page "/setup"
+@inject IConfigurationService Config
+@inject NavigationManager Nav
+
+<PageTitle>Setup Wizard</PageTitle>
+
+<div class="wizard-container">
+    <WizardStepper Steps="_stepLabels" CurrentStep="(int)_currentStep" />
+
+    <div class="wizard-content">
+        @switch (_currentStep)
+        {
+            case WizardStep.Welcome:
+                <WizardWelcome />
+                break;
+            case WizardStep.Devices:
+                <WizardDevices State="_state" />
+                break;
+            case WizardStep.Services:
+                <WizardServices State="_state" />
+                break;
+            case WizardStep.Dependencies:
+                <WizardDependencies State="_state" />
+                break;
+            case WizardStep.Done:
+                <WizardDone State="_state" />
+                break;
+        }
+    </div>
+
+    <div class="wizard-nav">
+        @if (_currentStep != WizardStep.Welcome)
+        {
+            <button class="btn btn-secondary" @onclick="GoBack">
+                <i class="bi bi-arrow-left"></i> Back
+            </button>
+        }
+        else
+        {
+            <span></span>
+        }
+
+        <div class="wizard-nav-spacer"></div>
+
+        @if (_currentStep == WizardStep.Welcome)
+        {
+            <button class="btn btn-primary" @onclick="GoNext">
+                Get Started <i class="bi bi-arrow-right"></i>
+            </button>
+        }
+        else if (_currentStep == WizardStep.Done)
+        {
+            <button class="btn btn-primary" @onclick="FinishSetup">
+                <i class="bi bi-check-circle"></i> Finish Setup
+            </button>
+        }
+        else
+        {
+            <button class="btn btn-secondary" @onclick="GoNext">Skip</button>
+            <button class="btn btn-primary" @onclick="GoNext">
+                Next <i class="bi bi-arrow-right"></i>
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    public class WizardState
+    {
+        public int DevicesAdded { get; set; }
+        public bool SettingsConfigured { get; set; }
+        public int SettingsTotal { get; set; }
+        public int DependenciesFound { get; set; }
+        public int DependenciesTotal { get; set; }
+    }
+
+    public enum WizardStep
+    {
+        Welcome = 0,
+        Devices = 1,
+        Services = 2,
+        Dependencies = 3,
+        Done = 4
+    }
+
+    private readonly string[] _stepLabels = ["Welcome", "Devices", "Services", "Dependencies", "Done"];
+    private WizardStep _currentStep = WizardStep.Welcome;
+    private readonly WizardState _state = new();
+
+    private async Task GoNext()
+    {
+        if (_currentStep < WizardStep.Done)
+            _currentStep = (WizardStep)((int)_currentStep + 1);
+        await Task.CompletedTask;
+    }
+
+    private async Task GoBack()
+    {
+        if (_currentStep > WizardStep.Welcome)
+            _currentStep = (WizardStep)((int)_currentStep - 1);
+        await Task.CompletedTask;
+    }
+
+    private async Task FinishSetup()
+    {
+        await Config.SetSettingAsync("setup-completed", "true");
+        Nav.NavigateTo("/", forceLoad: true);
+    }
+}
+
+<style>
+    .wizard-container {
+        max-width: 720px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+    }
+
+    .wizard-content {
+        min-height: 400px;
+        padding: 1.5rem;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+    }
+
+    .wizard-nav {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .wizard-nav-spacer {
+        flex: 1;
+    }
+</style>
