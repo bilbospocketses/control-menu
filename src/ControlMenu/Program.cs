@@ -7,6 +7,7 @@ using ControlMenu.Modules.Utilities.Services;
 using ControlMenu.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -44,6 +45,20 @@ builder.Services.AddScoped<IBackgroundJobService, BackgroundJobService>();
 builder.Services.AddSingleton<IIconConversionService, IconConversionService>();
 builder.Services.AddSingleton<IFileUnblockService, FileUnblockService>();
 
+// Dependency management
+builder.Services.AddHttpClient("github-api");
+builder.Services.AddHttpClient("dependency-updates");
+builder.Services.AddScoped<IDependencyManagerService>(sp =>
+{
+    var db = sp.GetRequiredService<AppDbContext>();
+    var modules = sp.GetRequiredService<ModuleDiscoveryService>().Modules;
+    var executor = sp.GetRequiredService<ICommandExecutor>();
+    var httpFactory = sp.GetRequiredService<IHttpClientFactory>();
+    var logger = sp.GetRequiredService<ILogger<DependencyManagerService>>();
+    return new DependencyManagerService(db, modules, executor, httpFactory, logger);
+});
+builder.Services.AddHostedService<DependencyCheckHostedService>();
+
 // Module discovery — scans the main assembly for IToolModule implementations
 builder.Services.AddSingleton(new ModuleDiscoveryService(
     [Assembly.GetExecutingAssembly()]));
@@ -66,6 +81,9 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+
+    var depManager = scope.ServiceProvider.GetRequiredService<IDependencyManagerService>();
+    await depManager.SyncDependenciesAsync();
 }
 
-app.Run();
+await app.RunAsync();
