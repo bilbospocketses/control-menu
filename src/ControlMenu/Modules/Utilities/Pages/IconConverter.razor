@@ -1,0 +1,150 @@
+@page "/utilities/icon-converter"
+@using ControlMenu.Modules.Utilities.Services
+@using Microsoft.AspNetCore.Components.Forms
+@inject IIconConversionService IconService
+@inject IWebHostEnvironment Env
+
+<PageTitle>Icon Converter</PageTitle>
+
+<h1><i class="bi bi-file-earmark-image"></i> Icon Converter</h1>
+<p class="page-subtitle">Convert an image file (PNG, JPG, etc.) to an ICO file with multiple sizes.</p>
+
+<div class="converter-panel">
+    <div class="form-group">
+        <label class="form-label">Source Image</label>
+        <InputFile OnChange="OnFileSelected" accept=".png,.jpg,.jpeg,.bmp,.gif" class="form-input" />
+        @if (_selectedFile is not null)
+        {
+            <span class="file-info">@_selectedFile.Name (@FormatSize(_selectedFile.Size))</span>
+        }
+    </div>
+
+    <div class="form-group">
+        <label class="form-label">Icon Sizes</label>
+        <div class="size-options">
+            @foreach (var size in _availableSizes)
+            {
+                <label class="size-checkbox">
+                    <input type="checkbox" checked="@_selectedSizes.Contains(size)" @onchange="e => ToggleSize(size, (bool)e.Value!)" />
+                    @(size)px
+                </label>
+            }
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label class="form-label">Output Filename</label>
+        <input type="text" @bind="_outputName" class="form-input" placeholder="icon.ico" />
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="error-panel">
+            <i class="bi bi-exclamation-triangle"></i> @_error
+        </div>
+    }
+
+    @if (_converting)
+    {
+        <div class="status-info">
+            <i class="bi bi-arrow-repeat spin"></i> Converting...
+        </div>
+    }
+
+    <button class="btn btn-primary btn-lg" @onclick="Convert" disabled="@(_selectedFile is null || _converting || _selectedSizes.Count == 0)">
+        <i class="bi bi-arrow-right-circle"></i> Convert to ICO
+    </button>
+
+    @if (_downloadReady)
+    {
+        <div class="download-panel">
+            <i class="bi bi-check-circle-fill"></i>
+            <span>Conversion complete!</span>
+            <a href="@_downloadUrl" download="@_outputName" class="btn btn-success">
+                <i class="bi bi-download"></i> Download @_outputName
+            </a>
+        </div>
+    }
+</div>
+
+@code {
+    private IBrowserFile? _selectedFile;
+    private readonly int[] _availableSizes = new[] { 16, 32, 48, 64, 128, 256 };
+    private HashSet<int> _selectedSizes = new HashSet<int> { 64, 128, 256 };
+    private string _outputName = "icon.ico";
+    private bool _converting;
+    private bool _downloadReady;
+    private string? _downloadUrl;
+    private string? _error;
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _selectedFile = e.File;
+        _downloadReady = false;
+        _error = null;
+
+        // Auto-set output name from source
+        var baseName = Path.GetFileNameWithoutExtension(e.File.Name);
+        _outputName = $"{baseName}.ico";
+    }
+
+    private void ToggleSize(int size, bool selected)
+    {
+        if (selected) _selectedSizes.Add(size);
+        else _selectedSizes.Remove(size);
+    }
+
+    private async Task Convert()
+    {
+        if (_selectedFile is null || _selectedSizes.Count == 0) return;
+
+        _converting = true;
+        _downloadReady = false;
+        _error = null;
+
+        try
+        {
+            // Save uploaded file to temp
+            var tempDir = Path.Combine(Env.WebRootPath, "temp");
+            Directory.CreateDirectory(tempDir);
+
+            var sourcePath = Path.Combine(tempDir, $"{Guid.NewGuid():N}{Path.GetExtension(_selectedFile.Name)}");
+            var targetPath = Path.Combine(tempDir, $"{Guid.NewGuid():N}.ico");
+
+            await using (var stream = _selectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024))
+            await using (var fileStream = new FileStream(sourcePath, FileMode.Create))
+            {
+                await stream.CopyToAsync(fileStream);
+            }
+
+            // Convert
+            var sizes = _selectedSizes.OrderBy(s => s).ToArray();
+            await IconService.ConvertToIcoAsync(sourcePath, targetPath, sizes);
+
+            // Make available for download
+            var downloadName = $"{Guid.NewGuid():N}.ico";
+            var downloadPath = Path.Combine(tempDir, downloadName);
+            File.Move(targetPath, downloadPath);
+            _downloadUrl = $"/temp/{downloadName}";
+            _downloadReady = true;
+
+            // Cleanup source
+            File.Delete(sourcePath);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Conversion failed: {ex.Message}";
+        }
+        finally
+        {
+            _converting = false;
+        }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024):F1} MB";
+    }
+}
