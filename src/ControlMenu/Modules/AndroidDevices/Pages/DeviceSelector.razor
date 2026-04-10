@@ -1,0 +1,81 @@
+@page "/android/devices"
+@using ControlMenu.Data.Entities
+@using ControlMenu.Data.Enums
+@using ControlMenu.Services
+@using ControlMenu.Modules.AndroidDevices.Services
+
+<PageTitle>Android Devices</PageTitle>
+
+<h1>Android Devices</h1>
+<p class="page-subtitle">Select a device to manage.</p>
+
+@if (_loading)
+{
+    <div class="loading-spinner">
+        <i class="bi bi-arrow-repeat spin"></i> Loading devices...
+    </div>
+}
+else if (_devices.Count == 0)
+{
+    <div class="empty-state">
+        <i class="bi bi-phone"></i>
+        <h2>No devices registered</h2>
+        <p>Add Android devices in <a href="/settings">Settings > Device Management</a>.</p>
+    </div>
+}
+else
+{
+    <div class="device-card-grid">
+        @foreach (var device in _devices)
+        {
+            <div class="device-card @(device.LastSeen.HasValue && device.LastSeen > DateTime.UtcNow.AddMinutes(-5) ? "online" : "offline")">
+                <div class="device-card-header">
+                    <i class="bi @(device.Type == DeviceType.GoogleTV ? "bi-tv" : "bi-phone")"></i>
+                    <h3>@device.Name</h3>
+                </div>
+                <div class="device-card-body">
+                    <div class="device-info-row">
+                        <span class="label">IP:</span>
+                        <span>@(device.LastKnownIp ?? "Unknown")</span>
+                    </div>
+                    <div class="device-info-row">
+                        <span class="label">MAC:</span>
+                        <span>@device.MacAddress</span>
+                    </div>
+                    <div class="device-info-row">
+                        <span class="label">Last Seen:</span>
+                        <span>@(device.LastSeen?.ToLocalTime().ToString("g") ?? "Never")</span>
+                    </div>
+                </div>
+                <div class="device-card-actions">
+                    @if (device.Type == DeviceType.GoogleTV)
+                    {
+                        <a href="/android/googletv/@device.Id" class="btn btn-primary">
+                            <i class="bi bi-gear"></i> Manage
+                        </a>
+                    }
+                    else
+                    {
+                        <a href="/android/pixel/@device.Id" class="btn btn-primary">
+                            <i class="bi bi-gear"></i> Manage
+                        </a>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Inject] private IDeviceService DeviceService { get; set; } = default!;
+
+    private List<Device> _devices = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var allDevices = await DeviceService.GetAllDevicesAsync();
+        _devices = allDevices.Where(d => d.ModuleId == "android-devices").ToList();
+        _loading = false;
+    }
+}
