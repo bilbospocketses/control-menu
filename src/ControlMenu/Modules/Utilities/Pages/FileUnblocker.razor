@@ -1,0 +1,94 @@
+@page "/utilities/file-unblocker"
+@using ControlMenu.Modules.Utilities.Services
+@inject IFileUnblockService FileUnblockService
+
+<PageTitle>File Unblocker</PageTitle>
+
+<h1><i class="bi bi-unlock"></i> File Unblocker</h1>
+
+@if (!FileUnblockService.IsSupported)
+{
+    <div class="unsupported-panel">
+        <i class="bi bi-info-circle"></i>
+        <div>
+            <p>File unblocking is a Windows-only feature. It removes the "blocked" attribute from files downloaded from the internet.</p>
+            <p>This feature is not available on your current operating system.</p>
+        </div>
+    </div>
+}
+else
+{
+    <p class="page-subtitle">Remove the "blocked" attribute from all files in a directory and subdirectories. This is equivalent to right-clicking each file and checking "Unblock" in Properties.</p>
+
+    <div class="unblocker-panel">
+        <div class="form-group">
+            <label class="form-label">Directory Path</label>
+            <input type="text" @bind="_directoryPath" class="form-input" placeholder="C:\Downloads\SomeFolder" />
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="error-panel">
+                <i class="bi bi-exclamation-triangle"></i> @_error
+            </div>
+        }
+
+        @if (_processing)
+        {
+            <div class="status-info">
+                <i class="bi bi-arrow-repeat spin"></i> Unblocking files...
+            </div>
+        }
+
+        <button class="btn btn-primary" @onclick="UnblockFiles" disabled="@(string.IsNullOrWhiteSpace(_directoryPath) || _processing)">
+            <i class="bi bi-unlock"></i> Unblock All Files
+        </button>
+
+        @if (_result is not null)
+        {
+            @if (_result.Success)
+            {
+                <div class="success-panel">
+                    <i class="bi bi-check-circle-fill"></i>
+                    <span>Successfully unblocked @_result.FileCount file(s) in @_directoryPath.</span>
+                </div>
+            }
+            else
+            {
+                <div class="error-panel">
+                    <i class="bi bi-x-circle"></i>
+                    <span>@_result.ErrorMessage</span>
+                </div>
+            }
+        }
+    </div>
+}
+
+@code {
+    private string _directoryPath = "";
+    private bool _processing;
+    private string? _error;
+    private UnblockResult? _result;
+
+    private async Task UnblockFiles()
+    {
+        if (string.IsNullOrWhiteSpace(_directoryPath)) return;
+
+        _processing = true;
+        _error = null;
+        _result = null;
+
+        try
+        {
+            _result = await FileUnblockService.UnblockDirectoryAsync(_directoryPath);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Unexpected error: {ex.Message}";
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+}
