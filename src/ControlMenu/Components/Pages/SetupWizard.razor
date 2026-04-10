@@ -17,7 +17,7 @@
                 <WizardDevices State="_state" />
                 break;
             case WizardStep.Services:
-                <WizardServices State="_state" />
+                <WizardServices @ref="_servicesRef" State="_state" />
                 break;
             case WizardStep.Dependencies:
                 <WizardDependencies State="_state" />
@@ -68,7 +68,7 @@
     public class WizardState
     {
         public int DevicesAdded { get; set; }
-        public bool SettingsConfigured { get; set; }
+        public int SettingsConfigured { get; set; }
         public int SettingsTotal { get; set; }
         public int DependenciesFound { get; set; }
         public int DependenciesTotal { get; set; }
@@ -86,12 +86,15 @@
     private readonly string[] _stepLabels = ["Welcome", "Devices", "Services", "Dependencies", "Done"];
     private WizardStep _currentStep = WizardStep.Welcome;
     private readonly WizardState _state = new();
+    private Setup.WizardServices? _servicesRef;
 
     private async Task GoNext()
     {
+        if (_currentStep == WizardStep.Services && _servicesRef is not null)
+            await _servicesRef.SaveAsync();
+
         if (_currentStep < WizardStep.Done)
             _currentStep = (WizardStep)((int)_currentStep + 1);
-        await Task.CompletedTask;
     }
 
     private async Task GoBack()

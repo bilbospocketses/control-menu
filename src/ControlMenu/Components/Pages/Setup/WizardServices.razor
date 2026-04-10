@@ -1,5 +1,129 @@
-<h2>Services</h2>
+@inject IConfigurationService Config
+@inject ModuleDiscoveryService ModuleDiscovery
+
+<h2><i class="bi bi-sliders"></i> Configure Services</h2>
+<p>Set up connections for your modules. Leave fields empty to configure later in Settings.</p>
+
+@if (_moduleGroups.Count == 0)
+{
+    <p style="color: var(--text-muted);">No modules require configuration.</p>
+}
+else
+{
+    @foreach (var group in _moduleGroups)
+    {
+        <div class="settings-section">
+            <h3><i class="bi @group.Icon"></i> @group.DisplayName</h3>
+
+            @foreach (var entry in group.Entries)
+            {
+                <div class="form-group">
+                    <label>@entry.ConfigRequirement.DisplayName</label>
+                    @if (entry.ConfigRequirement.IsSecret)
+                    {
+                        <input type="password" class="form-control" style="max-width: 400px;"
+                               value="@entry.Value"
+                               placeholder="Enter secret..."
+                               @onchange="e => OnValueChanged(entry, e)" />
+                    }
+                    else
+                    {
+                        <input class="form-control" style="max-width: 400px;"
+                               value="@entry.Value"
+                               placeholder="@(entry.ConfigRequirement.DefaultValue ?? "")"
+                               @onchange="e => OnValueChanged(entry, e)" />
+                    }
+                    <div class="form-hint">@entry.ConfigRequirement.Description</div>
+                </div>
+            }
+        </div>
+    }
+}
 
 @code {
     [Parameter] public SetupWizard.WizardState State { get; set; } = default!;
+
+    private List<ModuleGroup> _moduleGroups = new();
+    private List<SettingEntry> _allEntries = new();
+
+    private class SettingEntry
+    {
+        public string ModuleId { get; init; } = "";
+        public ConfigRequirement ConfigRequirement { get; init; } = default!;
+        public string Value { get; set; } = "";
+    }
+
+    private class ModuleGroup
+    {
+        public string DisplayName { get; init; } = "";
+        public string Icon { get; init; } = "";
+        public List<SettingEntry> Entries { get; init; } = new();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        foreach (var module in ModuleDiscovery.Modules)
+        {
+            var requirements = module.ConfigRequirements.ToList();
+            if (requirements.Count == 0)
+                continue;
+
+            var entries = new List<SettingEntry>();
+
+            foreach (var req in requirements)
+            {
+                string? existingValue;
+                if (req.IsSecret)
+                    existingValue = await Config.GetSecretAsync(req.Key, module.Id);
+                else
+                    existingValue = await Config.GetSettingAsync(req.Key, module.Id);
+
+                entries.Add(new SettingEntry
+                {
+                    ModuleId = module.Id,
+                    ConfigRequirement = req,
+                    Value = existingValue ?? req.DefaultValue ?? ""
+                });
+            }
+
+            _moduleGroups.Add(new ModuleGroup
+            {
+                DisplayName = module.DisplayName,
+                Icon = module.Icon,
+                Entries = entries
+            });
+
+            _allEntries.AddRange(entries);
+        }
+
+        UpdateStateCounts();
+    }
+
+    private void OnValueChanged(SettingEntry entry, ChangeEventArgs e)
+    {
+        entry.Value = e.Value?.ToString() ?? "";
+        UpdateStateCounts();
+    }
+
+    private void UpdateStateCounts()
+    {
+        State.SettingsTotal = _allEntries.Count;
+        State.SettingsConfigured = _allEntries.Count(e => !string.IsNullOrEmpty(e.Value));
+    }
+
+    public async Task SaveAsync()
+    {
+        foreach (var entry in _allEntries)
+        {
+            if (string.IsNullOrEmpty(entry.Value))
+                continue;
+
+            if (entry.ConfigRequirement.IsSecret)
+                await Config.SetSecretAsync(entry.ConfigRequirement.Key, entry.Value, entry.ModuleId);
+            else
+                await Config.SetSettingAsync(entry.ConfigRequirement.Key, entry.Value, entry.ModuleId);
+        }
+
+        UpdateStateCounts();
+    }
 }
