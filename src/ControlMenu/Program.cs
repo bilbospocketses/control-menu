@@ -1,6 +1,7 @@
 using System.Reflection;
 using ControlMenu.Data;
 using ControlMenu.Modules;
+using ControlMenu.Modules.Jellyfin.Services;
 using ControlMenu.Modules.Utilities.Services;
 using ControlMenu.Services;
 using Microsoft.AspNetCore.DataProtection;
@@ -30,6 +31,10 @@ builder.Services.AddScoped<ISecretStore, SecretStore>();
 builder.Services.AddScoped<IConfigurationService, ConfigurationService>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
 builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
+
+// Jellyfin module services
+builder.Services.AddScoped<IJellyfinService, JellyfinService>();
+builder.Services.AddScoped<IBackgroundJobService, BackgroundJobService>();
 
 // Utilities module services
 builder.Services.AddSingleton<IIconConversionService, IconConversionService>();
