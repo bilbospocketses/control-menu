@@ -1,8 +1,106 @@
+@inject ModuleDiscoveryService ModuleDiscovery
+@inject IConfigurationService Config
+
 <div class="settings-section">
     <h2>Module Settings</h2>
-    <p>Configure module-specific settings.</p>
-    <p style="color: var(--text-muted);"><em>No modules configured.</em></p>
+    <p>Configure settings for each installed module.</p>
+
+    @if (ModuleDiscovery.Modules.Count == 0)
+    {
+        <p style="color: var(--text-muted);">No modules installed. Module settings will appear here when modules are added in later phases.</p>
+    }
+    else
+    {
+        @foreach (var module in ModuleDiscovery.Modules)
+        {
+            var requirements = module.ConfigRequirements.ToList();
+            if (requirements.Count == 0)
+                continue;
+
+            <div class="module-config-card">
+                <h3><i class="bi @module.Icon"></i> @module.DisplayName</h3>
+
+                @foreach (var req in requirements)
+                {
+                    var key = $"{module.Id}:{req.Key}";
+                    <div class="form-group">
+                        <label>@req.DisplayName</label>
+                        @if (req.IsSecret)
+                        {
+                            <input type="password" class="form-control" style="max-width: 400px;"
+                                   value="@GetValue(key)"
+                                   placeholder="@(req.DefaultValue ?? "Enter secret...")"
+                                   @onchange="e => SetSecret(module.Id, req.Key, e)" />
+                        }
+                        else
+                        {
+                            <input class="form-control" style="max-width: 400px;"
+                                   value="@GetValue(key)"
+                                   placeholder="@(req.DefaultValue ?? "")"
+                                   @onchange="e => SetSetting(module.Id, req.Key, e)" />
+                        }
+                        <div class="form-hint">@req.Description</div>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (_saved)
+        {
+            <div class="alert alert-success">Setting saved.</div>
+        }
+    }
 </div>
 
 @code {
+    private readonly Dictionary<string, string> _values = new();
+    private bool _saved;
+
+    protected override async Task OnInitializedAsync()
+    {
+        foreach (var module in ModuleDiscovery.Modules)
+        {
+            foreach (var req in module.ConfigRequirements)
+            {
+                var key = $"{module.Id}:{req.Key}";
+                string? value;
+                if (req.IsSecret)
+                    value = await Config.GetSecretAsync(req.Key, module.Id);
+                else
+                    value = await Config.GetSettingAsync(req.Key, module.Id);
+
+                _values[key] = value ?? "";
+            }
+        }
+    }
+
+    private string GetValue(string key) => _values.GetValueOrDefault(key, "");
+
+    private async Task SetSetting(string moduleId, string settingKey, ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? "";
+        await Config.SetSettingAsync(settingKey, val, moduleId);
+        _values[$"{moduleId}:{settingKey}"] = val;
+        await ShowSaved();
+    }
+
+    private async Task SetSecret(string moduleId, string settingKey, ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? "";
+        if (!string.IsNullOrEmpty(val))
+        {
+            await Config.SetSecretAsync(settingKey, val, moduleId);
+            _values[$"{moduleId}:{settingKey}"] = val;
+            await ShowSaved();
+        }
+    }
+
+    private async Task ShowSaved()
+    {
+        _saved = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _saved = false;
+        StateHasChanged();
+    }
 }
