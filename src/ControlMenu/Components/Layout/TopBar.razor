@@ -1,0 +1,60 @@
+<header class="top-bar">
+    <div class="top-bar-breadcrumb">
+        <NavLink href="/" Match="NavLinkMatch.All">
+            <i class="bi bi-house"></i>
+        </NavLink>
+        <span class="breadcrumb-separator">/</span>
+        <span class="breadcrumb-current">@PageTitle</span>
+    </div>
+
+    <div class="top-bar-actions">
+        <button class="theme-toggle" @onclick="CycleTheme" title="@ThemeLabel">
+            <i class="bi @ThemeIcon"></i>
+        </button>
+    </div>
+</header>
+
+@code {
+    [Parameter]
+    public string PageTitle { get; set; } = "Home";
+
+    private string CurrentTheme { get; set; } = "system";
+
+    private string ThemeIcon => CurrentTheme switch
+    {
+        "dark" => "bi-moon-fill",
+        "light" => "bi-sun-fill",
+        _ => "bi-circle-half"
+    };
+
+    private string ThemeLabel => CurrentTheme switch
+    {
+        "dark" => "Dark theme",
+        "light" => "Light theme",
+        _ => "System theme"
+    };
+
+    [Inject]
+    private IJSRuntime JS { get; set; } = default!;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            CurrentTheme = await JS.InvokeAsync<string>("themeManager.get");
+            StateHasChanged();
+        }
+    }
+
+    private async Task CycleTheme()
+    {
+        CurrentTheme = CurrentTheme switch
+        {
+            "system" => "dark",
+            "dark" => "light",
+            "light" => "system",
+            _ => "system"
+        };
+        await JS.InvokeVoidAsync("themeManager.set", CurrentTheme);
+    }
+}

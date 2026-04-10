@@ -1,0 +1,83 @@
+@inject ModuleDiscoveryService ModuleDiscovery
+
+<nav class="sidebar @(Collapsed ? "collapsed" : "")">
+    <div class="sidebar-header">
+        @if (!Collapsed)
+        {
+            <span class="sidebar-title">Control Menu</span>
+        }
+        <button class="sidebar-toggle" @onclick="ToggleCollapsed" title="@(Collapsed ? "Expand sidebar" : "Collapse sidebar")">
+            <i class="bi @(Collapsed ? "bi-chevron-right" : "bi-chevron-left")"></i>
+        </button>
+    </div>
+
+    <div class="sidebar-nav">
+        @if (ModuleDiscovery.Modules.Count == 0)
+        {
+            @if (!Collapsed)
+            {
+                <div class="sidebar-empty">
+                    <i class="bi bi-inbox"></i>
+                    <span>No modules loaded</span>
+                </div>
+            }
+        }
+        else
+        {
+            @foreach (var module in ModuleDiscovery.Modules)
+            {
+                <div class="sidebar-group">
+                    <div class="sidebar-group-header" @onclick="() => ToggleGroup(module.Id)">
+                        <i class="bi @module.Icon"></i>
+                        @if (!Collapsed)
+                        {
+                            <span>@module.DisplayName</span>
+                            <i class="bi bi-chevron-@(IsGroupExpanded(module.Id) ? "up" : "down") sidebar-chevron"></i>
+                        }
+                    </div>
+
+                    @if (IsGroupExpanded(module.Id) && !Collapsed)
+                    {
+                        <div class="sidebar-group-items">
+                            @foreach (var entry in module.GetNavEntries().OrderBy(e => e.SortOrder))
+                            {
+                                <NavLink class="sidebar-link" href="@entry.Href" Match="NavLinkMatch.All">
+                                    @if (entry.Icon is not null)
+                                    {
+                                        <i class="bi @entry.Icon"></i>
+                                    }
+                                    <span>@entry.Title</span>
+                                </NavLink>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    <div class="sidebar-footer">
+        <NavLink class="sidebar-link" href="/settings" Match="NavLinkMatch.Prefix">
+            <i class="bi bi-gear"></i>
+            @if (!Collapsed)
+            {
+                <span>Settings</span>
+            }
+        </NavLink>
+    </div>
+</nav>
+
+@code {
+    private bool Collapsed { get; set; }
+    private readonly HashSet<string> _expandedGroups = new();
+
+    private void ToggleCollapsed() => Collapsed = !Collapsed;
+
+    private void ToggleGroup(string moduleId)
+    {
+        if (!_expandedGroups.Remove(moduleId))
+            _expandedGroups.Add(moduleId);
+    }
+
+    private bool IsGroupExpanded(string moduleId) => _expandedGroups.Contains(moduleId);
+}
