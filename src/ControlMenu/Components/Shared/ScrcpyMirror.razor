@@ -1,5 +1,6 @@
 @* src/ControlMenu/Components/Shared/ScrcpyMirror.razor *@
 @inject WsScrcpyService WsScrcpy
+@inject IJSRuntime JS
 
 <div class="scrcpy-mirror">
     @if (!WsScrcpy.IsRunning)
@@ -11,23 +12,9 @@
     }
     else
     {
-        <button class="btn @(_visible ? "btn-secondary" : "btn-primary")" @onclick="Toggle">
-            <i class="bi bi-cast"></i>
-            @(_visible ? "Hide Mirror" : "Screen Mirror")
+        <button class="btn btn-primary" @onclick="OpenMirrorWindow">
+            <i class="bi bi-cast"></i> Screen Mirror
         </button>
-
-        @if (_visible)
-        {
-            <div class="scrcpy-mirror-frame mt-2">
-                <iframe src="@GetStreamUrl()"
-                        width="960"
-                        height="540"
-                        style="border: 1px solid var(--border-color); border-radius: 8px;"
-                        allow="autoplay"
-                        sandbox="allow-scripts allow-same-origin">
-                </iframe>
-            </div>
-        }
     }
 </div>
 
@@ -35,13 +22,11 @@
     [Parameter, EditorRequired]
     public string Udid { get; set; } = string.Empty;
 
-    private bool _visible;
-
-    private void Toggle() => _visible = !_visible;
-
-    private string GetStreamUrl()
+    private async Task OpenMirrorWindow()
     {
         var encoded = Uri.EscapeDataString(Udid);
-        return $"{WsScrcpy.BaseUrl}/#!action=stream&udid={encoded}&player=webcodecs";
+        var url = $"{WsScrcpy.BaseUrl}/#!action=stream&udid={encoded}&player=webcodecs";
+        // 1080 wide = 960 stream + ~120 toolbar, 600 tall = 540 stream + chrome
+        await JS.InvokeVoidAsync("open", url, "_blank", "width=1080,height=600,menubar=no,toolbar=no,location=no,status=no");
     }
 }
