@@ -37,6 +37,10 @@ builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>
 // Android Devices module services
 builder.Services.AddSingleton<IAdbService, AdbService>();
 
+// ws-scrcpy-web process management
+builder.Services.AddSingleton<WsScrcpyService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<WsScrcpyService>());
+
 // Jellyfin module services
 builder.Services.AddScoped<IJellyfinService, JellyfinService>();
 builder.Services.AddScoped<IBackgroundJobService, BackgroundJobService>();
