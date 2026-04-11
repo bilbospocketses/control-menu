@@ -34,6 +34,25 @@ public class AndroidDevicesModule : IToolModule
             SourceType = UpdateSourceType.GitHub,
             GitHubRepo = "Genymobile/scrcpy",
             AssetPattern = @"scrcpy-win64-v[\d.]+\.zip"
+        },
+        new ModuleDependency
+        {
+            Name = "node",
+            ExecutableName = "node",
+            VersionCommand = "node --version",
+            VersionPattern = @"v([\d.]+)",
+            SourceType = UpdateSourceType.DirectUrl,
+            ProjectHomeUrl = "https://nodejs.org/",
+            DownloadUrl = "https://nodejs.org/en/download/"
+        },
+        new ModuleDependency
+        {
+            Name = "ws-scrcpy-web",
+            ExecutableName = "node",
+            VersionCommand = "node -e \"console.log('installed')\"",
+            VersionPattern = @"(installed)",
+            SourceType = UpdateSourceType.Manual,
+            ProjectHomeUrl = "https://github.com/bilbospocketses/ws-scrcpy-web"
         }
     ];
 
