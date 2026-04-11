@@ -40,6 +40,15 @@ keys/
 # Jellyfin backup directory
 /jellyfin-db-bkup-and-logs/
 
+# Superpowers brainstorm artifacts
+.superpowers/
+
+# ws-scrcpy-web (separate repo, linked at runtime)
+ws-scrcpy-web/
+
+# Android platform-tools notices (bundled binary licenses)
+NOTICE.txt
+
 # Keep these directories
 !src/
 !tests/
