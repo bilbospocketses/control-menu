@@ -65,10 +65,8 @@ else
         <div class="action-card">
             <div class="action-card-icon"><i class="bi bi-display"></i></div>
             <h3>Screen Mirror</h3>
-            <p>Launch scrcpy</p>
-            <button class="btn btn-primary" @onclick="LaunchScreenMirror" disabled="@_busy">
-                <i class="bi bi-cast"></i> Mirror
-            </button>
+            <p>Browser-based screen mirroring</p>
+            <ScrcpyMirror Udid="@($"{Ip}:{Port}")" />
         </div>
 
         <!-- Shizuku -->
@@ -223,15 +221,6 @@ else
         SetStatus("Rebooting device...", "status-warning", "bi-hourglass-split");
         await AdbService.RebootAsync(Ip, Port);
         SetStatus("Reboot sent. Device will reconnect when ready.", "status-success", "bi-check-circle");
-        _busy = false;
-    }
-
-    private async Task LaunchScreenMirror()
-    {
-        _busy = true;
-        SetStatus("Launching screen mirror...", "status-info", "bi-cast");
-        await AdbService.LaunchScrcpyAsync(Ip, Port);
-        SetStatus("Screen mirror closed.", "status-info", "bi-info-circle");
         _busy = false;
     }
 

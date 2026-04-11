@@ -55,10 +55,8 @@ else
         <div class="action-card">
             <div class="action-card-icon"><i class="bi bi-display"></i></div>
             <h3>Screen Mirror</h3>
-            <p>Launch scrcpy for screen mirroring</p>
-            <button class="btn btn-primary" @onclick="LaunchScreenMirror" disabled="@_busy">
-                <i class="bi bi-cast"></i> Mirror
-            </button>
+            <p>Browser-based screen mirroring</p>
+            <ScrcpyMirror Udid="@($"{Ip}:{Port}")" />
         </div>
     </div>
 }
@@ -115,20 +113,6 @@ else
         _busy = true;
         _connected = await AdbService.ConnectAsync(Ip, Port);
         SetStatus(_connected ? "Connected successfully." : "Connection failed.", _connected ? "status-success" : "status-warning", _connected ? "bi-check-circle" : "bi-x-circle");
-        _busy = false;
-    }
-
-    private async Task LaunchScreenMirror()
-    {
-        if (!_connected)
-        {
-            await ConnectDevice();
-            if (!_connected) return;
-        }
-        _busy = true;
-        SetStatus("Launching screen mirror...", "status-info", "bi-cast");
-        await AdbService.LaunchScrcpyAsync(Ip, Port);
-        SetStatus("Screen mirror closed.", "status-info", "bi-info-circle");
         _busy = false;
     }
 
