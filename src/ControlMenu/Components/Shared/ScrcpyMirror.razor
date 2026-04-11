@@ -1,0 +1,47 @@
+@* src/ControlMenu/Components/Shared/ScrcpyMirror.razor *@
+@inject WsScrcpyService WsScrcpy
+
+<div class="scrcpy-mirror">
+    @if (!WsScrcpy.IsRunning)
+    {
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle"></i>
+            Screen mirroring unavailable — configure ws-scrcpy-web path in Settings
+        </div>
+    }
+    else
+    {
+        <button class="btn @(_visible ? "btn-secondary" : "btn-primary")" @onclick="Toggle">
+            <i class="bi bi-cast"></i>
+            @(_visible ? "Hide Mirror" : "Screen Mirror")
+        </button>
+
+        @if (_visible)
+        {
+            <div class="scrcpy-mirror-frame mt-2">
+                <iframe src="@GetStreamUrl()"
+                        width="960"
+                        height="540"
+                        style="border: 1px solid var(--border-color); border-radius: 8px;"
+                        allow="autoplay"
+                        sandbox="allow-scripts allow-same-origin">
+                </iframe>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Udid { get; set; } = string.Empty;
+
+    private bool _visible;
+
+    private void Toggle() => _visible = !_visible;
+
+    private string GetStreamUrl()
+    {
+        var encoded = Uri.EscapeDataString(Udid);
+        return $"{WsScrcpy.BaseUrl}/#!action=stream&udid={encoded}&player=webcodecs";
+    }
+}
