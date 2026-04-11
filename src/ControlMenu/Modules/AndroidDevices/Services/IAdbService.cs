@@ -26,5 +26,4 @@ public interface IAdbService
     Task ResetTcpPortAsync(int port, CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetConnectedDevicesAsync(CancellationToken ct = default);
     Task DisconnectAllAsync(CancellationToken ct = default);
-    Task LaunchScrcpyAsync(string ip, int port, CancellationToken ct = default);
 }

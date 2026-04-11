@@ -247,19 +247,4 @@ public class AdbServiceTests
         _mockExecutor.Verify(e => e.ExecuteAsync("adb", "disconnect 192.168.1.100:5555", null, default), Times.Once);
     }
 
-    [Fact]
-    public async Task LaunchScrcpyAsync_BuildsCorrectCommand()
-    {
-        _mockExecutor.Setup(e => e.ExecuteAsync("scrcpy",
-            "--video-encoder=OMX.google.h264.encoder --no-audio -s 192.168.1.100:5555",
-            null, default))
-            .ReturnsAsync(new CommandResult(0, "", "", false));
-
-        var service = CreateService();
-        await service.LaunchScrcpyAsync("192.168.1.100", 5555);
-
-        _mockExecutor.Verify(e => e.ExecuteAsync("scrcpy",
-            "--video-encoder=OMX.google.h264.encoder --no-audio -s 192.168.1.100:5555",
-            null, default), Times.Once);
-    }
 }

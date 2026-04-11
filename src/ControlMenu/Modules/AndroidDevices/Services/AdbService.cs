@@ -141,8 +141,4 @@ public class AdbService : IAdbService
         }
     }
 
-    public async Task LaunchScrcpyAsync(string ip, int port, CancellationToken ct = default)
-    {
-        await _executor.ExecuteAsync("scrcpy", $"--video-encoder=OMX.google.h264.encoder --no-audio -s {ip}:{port}", null, ct);
-    }
 }
