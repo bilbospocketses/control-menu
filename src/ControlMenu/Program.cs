@@ -15,8 +15,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-// Database
-builder.Services.AddDbContext<AppDbContext>(options =>
+// Database — factory pattern required for Blazor Server (avoids stale change-tracker state)
+builder.Services.AddDbContextFactory<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Data Protection (used by SecretStore for encrypting settings)

@@ -6,56 +6,66 @@ namespace ControlMenu.Services;
 
 public class DeviceService : IDeviceService
 {
-    private readonly AppDbContext _db;
+    private readonly IDbContextFactory<AppDbContext> _dbFactory;
 
-    public DeviceService(AppDbContext db)
+    public DeviceService(IDbContextFactory<AppDbContext> dbFactory)
     {
-        _db = db;
+        _dbFactory = dbFactory;
     }
 
     public async Task<IReadOnlyList<Device>> GetAllDevicesAsync()
     {
-        return await _db.Devices.OrderBy(d => d.Name).ToListAsync();
+        using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Devices.AsNoTracking().OrderBy(d => d.Name).ToListAsync();
     }
 
     public async Task<Device?> GetDeviceAsync(Guid id)
     {
-        return await _db.Devices.FindAsync(id);
+        using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id);
     }
 
     public async Task<Device> AddDeviceAsync(Device device)
     {
+        using var db = await _dbFactory.CreateDbContextAsync();
         if (device.Id == Guid.Empty)
             device.Id = Guid.NewGuid();
-        _db.Devices.Add(device);
-        await _db.SaveChangesAsync();
+        db.Devices.Add(device);
+        await db.SaveChangesAsync();
         return device;
     }
 
     public async Task UpdateDeviceAsync(Device device)
     {
-        _db.Devices.Update(device);
-        await _db.SaveChangesAsync();
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = await db.Devices.FindAsync(device.Id);
+        if (existing is null)
+            throw new InvalidOperationException($"Device {device.Id} not found in database.");
+
+        db.Entry(existing).CurrentValues.SetValues(device);
+        await db.SaveChangesAsync();
     }
 
     public async Task DeleteDeviceAsync(Guid id)
     {
-        var device = await _db.Devices.FindAsync(id);
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var device = await db.Devices.FindAsync(id);
         if (device is not null)
         {
-            _db.Devices.Remove(device);
-            await _db.SaveChangesAsync();
+            db.Devices.Remove(device);
+            await db.SaveChangesAsync();
         }
     }
 
     public async Task UpdateLastSeenAsync(Guid id, string ipAddress)
     {
-        var device = await _db.Devices.FindAsync(id);
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var device = await db.Devices.FindAsync(id);
         if (device is not null)
         {
             device.LastKnownIp = ipAddress;
             device.LastSeen = DateTime.UtcNow;
-            await _db.SaveChangesAsync();
+            await db.SaveChangesAsync();
         }
     }
 }

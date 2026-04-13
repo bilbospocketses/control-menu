@@ -127,16 +127,26 @@
 
     private async Task SaveDevice()
     {
-        _formDevice.MacAddress = NetworkDiscoveryService.NormalizeMac(_formDevice.MacAddress);
+        try
+        {
+            _formDevice.MacAddress = NetworkDiscoveryService.NormalizeMac(_formDevice.MacAddress);
+            var isEdit = _isEditing;
+            _showForm = false;
 
-        if (_isEditing)
-            await DeviceService.UpdateDeviceAsync(_formDevice);
-        else
-            await DeviceService.AddDeviceAsync(_formDevice);
+            if (isEdit)
+                await DeviceService.UpdateDeviceAsync(_formDevice);
+            else
+                await DeviceService.AddDeviceAsync(_formDevice);
 
-        _showForm = false;
-        await LoadDevices();
-        await ShowMessage($"Device {(_isEditing ? "updated" : "added")} successfully.");
+            await LoadDevices();
+            await ShowMessage($"Device {(isEdit ? "updated" : "added")} successfully.");
+        }
+        catch (Exception ex)
+        {
+            _showForm = false;
+            var op = _isEditing ? "Update" : "Add";
+            await ShowMessage($"{op} failed (Id={_formDevice.Id}): {ex.Message}", isError: true);
+        }
     }
 
     private void ConfirmDelete(ControlMenu.Data.Entities.Device device)
@@ -208,7 +218,7 @@
         _message = message;
         _messageIsError = isError;
         StateHasChanged();
-        await Task.Delay(3000);
+        await Task.Delay(isError ? 10000 : 5000);
         _message = null;
         StateHasChanged();
     }
