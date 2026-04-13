@@ -67,6 +67,7 @@ else
     [Parameter] public Guid? DeviceId { get; set; }
     [Inject] private IDeviceService DeviceService { get; set; } = default!;
     [Inject] private IAdbService AdbService { get; set; } = default!;
+    [Inject] private INetworkDiscoveryService NetworkDiscovery { get; set; } = default!;
 
     private Device? _device;
     private bool _connected;
@@ -107,13 +108,30 @@ else
 
     private async Task ConnectDevice()
     {
-        if (_device?.LastKnownIp is null)
+        if (_device is null) return;
+
+        // Resolve IP from ARP table if not known
+        if (_device.LastKnownIp is null && !string.IsNullOrEmpty(_device.MacAddress))
+        {
+            var ip = await NetworkDiscovery.ResolveIpFromMacAsync(_device.MacAddress);
+            if (ip is not null)
+            {
+                _device.LastKnownIp = ip;
+                await DeviceService.UpdateLastSeenAsync(_device.Id, ip);
+            }
+        }
+
+        if (_device.LastKnownIp is null)
         {
             SetStatus("No IP address known for this device. Run a network scan in Settings.", "status-warning", "bi-exclamation-triangle");
             return;
         }
         _busy = true;
         _connected = await AdbService.ConnectAsync(Ip, Port);
+        if (_connected)
+        {
+            await DeviceService.UpdateLastSeenAsync(_device.Id, _device.LastKnownIp);
+        }
         SetStatus(_connected ? "Connected successfully." : "Connection failed.", _connected ? "status-success" : "status-warning", _connected ? "bi-check-circle" : "bi-x-circle");
         _busy = false;
     }

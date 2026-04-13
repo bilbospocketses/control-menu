@@ -149,6 +149,7 @@ else
     [Parameter] public Guid? DeviceId { get; set; }
     [Inject] private IDeviceService DeviceService { get; set; } = default!;
     [Inject] private IAdbService AdbService { get; set; } = default!;
+    [Inject] private INetworkDiscoveryService NetworkDiscovery { get; set; } = default!;
 
     private Device? _device;
     private bool _connected;
@@ -185,10 +186,25 @@ else
 
     private async Task ConnectToDevice()
     {
-        if (_device?.LastKnownIp is null) return;
+        if (_device is null) return;
+
+        // Resolve IP from ARP table if not known
+        if (_device.LastKnownIp is null && !string.IsNullOrEmpty(_device.MacAddress))
+        {
+            var ip = await NetworkDiscovery.ResolveIpFromMacAsync(_device.MacAddress);
+            if (ip is not null)
+            {
+                _device.LastKnownIp = ip;
+                await DeviceService.UpdateLastSeenAsync(_device.Id, ip);
+            }
+        }
+
+        if (_device.LastKnownIp is null) return;
+
         _connected = await AdbService.ConnectAsync(_device.LastKnownIp, _device.AdbPort);
         if (_connected)
         {
+            await DeviceService.UpdateLastSeenAsync(_device.Id, _device.LastKnownIp);
             await CheckPowerStatus();
             await CheckScreensaver();
             _screenTimeout = await AdbService.GetScreenTimeoutAsync(_device.LastKnownIp, _device.AdbPort);
