@@ -30,33 +30,35 @@ else
         </div>
     }
 
-    <div class="action-card-grid">
-        <!-- Reset ADB Port -->
-        <div class="action-card">
-            <div class="action-card-icon"><i class="bi bi-usb-plug"></i></div>
-            <h3>Reset ADB Port</h3>
-            <p>Reset TCP/IP port to 5555 after reboot. Requires USB connection.</p>
-            <button class="btn btn-warning" @onclick="ResetAdbPort" disabled="@_busy">
-                <i class="bi bi-arrow-counterclockwise"></i> Reset Port
-            </button>
+    <div class="dashboard-layout">
+        <div class="controls-panel">
+            <h3 class="panel-heading">Quick Actions</h3>
+
+            <!-- Reset ADB Port -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-usb-plug"></i> Reset ADB Port
+                </div>
+                <span class="action-status">Requires USB</span>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-warning" @onclick="ResetAdbPort" disabled="@_busy">Reset</button>
+                </div>
+            </div>
+
+            <!-- ADB Connect -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-plug"></i> ADB Connect
+                </div>
+                <span class="action-status">WiFi connection</span>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-primary" @onclick="ConnectDevice" disabled="@_busy">Connect</button>
+                </div>
+            </div>
         </div>
 
-        <!-- Connect -->
-        <div class="action-card">
-            <div class="action-card-icon"><i class="bi bi-plug"></i></div>
-            <h3>ADB Connect</h3>
-            <p>Connect to device over WiFi</p>
-            <button class="btn btn-primary" @onclick="ConnectDevice" disabled="@_busy">
-                <i class="bi bi-wifi"></i> Connect
-            </button>
-        </div>
-
-        <!-- Screen Mirror -->
-        <div class="action-card">
-            <div class="action-card-icon"><i class="bi bi-display"></i></div>
-            <h3>Screen Mirror</h3>
-            <p>Browser-based screen mirroring</p>
-            <ScrcpyMirror Udid="@($"{Ip}:{Port}")" />
+        <div class="mirror-panel">
+            <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" />
         </div>
     </div>
 }
