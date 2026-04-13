@@ -9,6 +9,8 @@ public class AndroidDevicesModule : IToolModule
     public string Icon => "bi-phone";
     public int SortOrder => 1;
 
+    private static string DepsRoot => Path.Combine(AppContext.BaseDirectory, "dependencies");
+
     public IEnumerable<ModuleDependency> Dependencies =>
     [
         new ModuleDependency
@@ -23,7 +25,8 @@ public class AndroidDevicesModule : IToolModule
                 ? "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
                 : "https://dl.google.com/android/repository/platform-tools-latest-linux.zip",
             VersionCheckUrl = "https://dl.google.com/android/repository/repository2-3.xml",
-            VersionCheckPattern = @"<major>(\d+)</major>\s*<minor>(\d+)</minor>\s*<micro>(\d+)</micro>"
+            VersionCheckPattern = @"<major>(\d+)</major>\s*<minor>(\d+)</minor>\s*<micro>(\d+)</micro>",
+            InstallPath = Path.Combine(DepsRoot, "platform-tools")
         },
         new ModuleDependency
         {
@@ -33,7 +36,8 @@ public class AndroidDevicesModule : IToolModule
             VersionPattern = @"scrcpy ([\d.]+)",
             SourceType = UpdateSourceType.GitHub,
             GitHubRepo = "Genymobile/scrcpy",
-            AssetPattern = @"scrcpy-win64-v[\d.]+\.zip"
+            AssetPattern = @"scrcpy-win64-v[\d.]+\.zip",
+            InstallPath = Path.Combine(DepsRoot, "scrcpy")
         },
         new ModuleDependency
         {
@@ -43,7 +47,8 @@ public class AndroidDevicesModule : IToolModule
             VersionPattern = @"v([\d.]+)",
             SourceType = UpdateSourceType.DirectUrl,
             ProjectHomeUrl = "https://nodejs.org/",
-            DownloadUrl = "https://nodejs.org/en/download/"
+            DownloadUrl = "https://nodejs.org/en/download/",
+            InstallPath = Path.Combine(DepsRoot, "node")
         },
         new ModuleDependency
         {

@@ -11,6 +11,17 @@ using Microsoft.Extensions.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Prepend bundled dependency folders to PATH for self-contained operation
+var depsRoot = Path.Combine(AppContext.BaseDirectory, "dependencies");
+if (Directory.Exists(depsRoot))
+{
+    var depPaths = Directory.GetDirectories(depsRoot)
+        .Where(d => !Path.GetFileName(d).StartsWith('.'));
+    var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+    var newPath = string.Join(Path.PathSeparator, depPaths) + Path.PathSeparator + currentPath;
+    Environment.SetEnvironmentVariable("PATH", newPath);
+}
+
 // Blazor Server
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
