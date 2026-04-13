@@ -30,115 +30,113 @@ else
         </div>
     }
 
-    <div class="action-card-grid">
-        <!-- Power Status -->
-        <div class="action-card">
-            <div class="action-card-icon"><i class="bi bi-lightning-charge"></i></div>
-            <h3>Power Status</h3>
-            <p class="action-value">@_powerState</p>
-            <button class="btn btn-secondary" @onclick="CheckPowerStatus" disabled="@_busy">
-                <i class="bi bi-arrow-clockwise"></i> Check
-            </button>
-        </div>
+    <div class="dashboard-layout">
+        <div class="controls-panel">
+            <h3 class="panel-heading">Quick Actions</h3>
 
-        <!-- Power Toggle -->
-        <div class="action-card">
-            <div class="action-card-icon"><i class="bi bi-power"></i></div>
-            <h3>Power On/Off</h3>
-            <p>Toggle power state</p>
-            <button class="btn btn-warning" @onclick="TogglePower" disabled="@_busy">
-                <i class="bi bi-power"></i> Toggle
-            </button>
-        </div>
+            <!-- Power Status -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-lightning-charge"></i> Power
+                </div>
+                <span class="action-status">@_powerState</span>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-secondary" @onclick="CheckPowerStatus" disabled="@_busy">Check</button>
+                    <button class="btn btn-sm btn-warning" @onclick="TogglePower" disabled="@_busy">Toggle</button>
+                </div>
+            </div>
 
-        <!-- Reboot -->
-        <div class="action-card">
-            <div class="action-card-icon"><i class="bi bi-arrow-repeat"></i></div>
-            <h3>Reboot</h3>
-            <p>Restart the device</p>
-            <button class="btn btn-danger" @onclick="RebootDevice" disabled="@_busy">
-                <i class="bi bi-arrow-repeat"></i> Reboot
-            </button>
-        </div>
+            <!-- Reboot -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-arrow-repeat"></i> Reboot
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-danger" @onclick="RebootDevice" disabled="@_busy">Reboot</button>
+                </div>
+            </div>
 
-        <!-- Screen Mirror -->
-        <div class="action-card">
-            <div class="action-card-icon"><i class="bi bi-display"></i></div>
-            <h3>Screen Mirror</h3>
-            <p>Browser-based screen mirroring</p>
-            <ScrcpyMirror Udid="@($"{Ip}:{Port}")" />
-        </div>
+            <!-- Shizuku -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-shield-check"></i> Shizuku
+                </div>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-primary" @onclick="StartShizuku" disabled="@_busy">Start</button>
+                </div>
+            </div>
 
-        <!-- Shizuku -->
-        <div class="action-card">
-            <div class="action-card-icon"><i class="bi bi-shield-check"></i></div>
-            <h3>Shizuku</h3>
-            <p>Start Shizuku service</p>
-            <button class="btn btn-primary" @onclick="StartShizuku" disabled="@_busy">
-                <i class="bi bi-play-circle"></i> Start
-            </button>
-        </div>
+            <!-- Screensaver -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-image"></i> Screensaver
+                </div>
+                <span class="action-status">@_screensaver</span>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-secondary" @onclick="CheckScreensaver" disabled="@_busy">Refresh</button>
+                    <button class="btn btn-sm btn-primary" @onclick="ToggleScreensaver" disabled="@_busy">Switch</button>
+                </div>
+            </div>
 
-        <!-- Screensaver -->
-        <div class="action-card">
-            <div class="action-card-icon"><i class="bi bi-image"></i></div>
-            <h3>Screensaver</h3>
-            <p class="action-value">Current: @_screensaver</p>
-            <div class="action-button-group">
-                <button class="btn btn-secondary" @onclick="CheckScreensaver" disabled="@_busy">
-                    <i class="bi bi-arrow-clockwise"></i> Refresh
-                </button>
-                <button class="btn btn-primary" @onclick="ToggleScreensaver" disabled="@_busy">
-                    <i class="bi bi-arrow-left-right"></i> Switch
-                </button>
+            <!-- Screen Timeout -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-clock"></i> Timeout
+                </div>
+                <span class="action-status">@FormatTimeout(_screenTimeout)</span>
+                <div class="action-buttons timeout-group">
+                    <input type="number" @bind="_newTimeout" min="300000" step="60000" placeholder="ms" class="form-input form-input-sm" />
+                    <button class="btn btn-sm btn-primary" @onclick="SetTimeout" disabled="@_busy">Set</button>
+                </div>
+            </div>
+
+            <!-- Google TV Launcher -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-grid-3x3-gap"></i> Google TV Launcher
+                </div>
+                <span class="action-status">
+                    @(_launcherDisabled == null ? "Unknown" : _launcherDisabled.Value ? "Disabled" : "Enabled")
+                </span>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-warning" @onclick="ToggleLauncher" disabled="@_busy">Toggle</button>
+                </div>
+            </div>
+            @if (_launcherDisabled == true)
+            {
+                <div class="action-note">
+                    <i class="bi bi-info-circle"></i> Projectivy Launcher is currently the default
+                </div>
+            }
+
+            <!-- Restore Projectivy -->
+            <div class="panel-section">
+                <h3 class="panel-heading">Restore Projectivy</h3>
+                @if (_projectivyBackups.Count == 0)
+                {
+                    <button class="btn btn-sm btn-secondary" @onclick="LoadProjectivyBackups" disabled="@_busy">
+                        <i class="bi bi-arrow-clockwise"></i> Scan for Backups
+                    </button>
+                }
+                else
+                {
+                    <select @bind="_selectedBackup" class="form-select form-select-sm projectivy-select">
+                        <option value="">Select a backup...</option>
+                        @foreach (var backup in _projectivyBackups)
+                        {
+                            <option value="@backup">@backup</option>
+                        }
+                    </select>
+                    <div class="action-buttons" style="margin-top: 0.5rem;">
+                        <button class="btn btn-sm btn-secondary" @onclick="LoadProjectivyBackups" disabled="@_busy">Scan</button>
+                        <button class="btn btn-sm btn-primary" @onclick="RestoreProjectivy" disabled="@(_busy || string.IsNullOrEmpty(_selectedBackup))">Restore</button>
+                    </div>
+                }
             </div>
         </div>
 
-        <!-- Screen Timeout -->
-        <div class="action-card">
-            <div class="action-card-icon"><i class="bi bi-clock"></i></div>
-            <h3>Screen Timeout</h3>
-            <p class="action-value">@FormatTimeout(_screenTimeout)</p>
-            <div class="timeout-input-group">
-                <input type="number" @bind="_newTimeout" min="300000" step="60000" placeholder="ms" class="form-input" />
-                <button class="btn btn-primary" @onclick="SetTimeout" disabled="@_busy">Set</button>
-            </div>
-        </div>
-
-        <!-- Android TV Launcher -->
-        <div class="action-card">
-            <div class="action-card-icon"><i class="bi bi-grid-3x3-gap"></i></div>
-            <h3>TV Launcher</h3>
-            <p class="action-value">@(_launcherDisabled == null ? "Unknown" : _launcherDisabled.Value ? "Disabled" : "Enabled")</p>
-            <button class="btn btn-warning" @onclick="ToggleLauncher" disabled="@_busy">
-                <i class="bi bi-toggle-on"></i> Toggle
-            </button>
-        </div>
-
-        <!-- Projectivy Restore -->
-        <div class="action-card wide">
-            <div class="action-card-icon"><i class="bi bi-cloud-download"></i></div>
-            <h3>Restore Projectivy</h3>
-            @if (_projectivyBackups.Count == 0)
-            {
-                <p>No backups found.</p>
-                <button class="btn btn-secondary" @onclick="LoadProjectivyBackups" disabled="@_busy">
-                    <i class="bi bi-arrow-clockwise"></i> Scan
-                </button>
-            }
-            else
-            {
-                <select @bind="_selectedBackup" class="form-select">
-                    <option value="">Select a backup...</option>
-                    @foreach (var backup in _projectivyBackups)
-                    {
-                        <option value="@backup">@backup</option>
-                    }
-                </select>
-                <button class="btn btn-primary" @onclick="RestoreProjectivy" disabled="@(_busy || string.IsNullOrEmpty(_selectedBackup))">
-                    <i class="bi bi-cloud-download"></i> Restore
-                </button>
-            }
+        <div class="mirror-panel">
+            <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" />
         </div>
     </div>
 }
