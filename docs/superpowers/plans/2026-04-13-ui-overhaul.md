@@ -237,58 +237,115 @@ git commit -m "feat: restyle sidebar nav as pill buttons"
 
 ---
 
-### Task 4: Add InstallPath to Updatable Dependencies
+### Task 4: Self-Contained Dependencies Folder + PATH Injection
 
 **Files:**
-- Modify: `src/ControlMenu/Modules/AndroidDevices/AndroidDevicesModule.cs:14-27, 28-37`
+- Modify: `src/ControlMenu/Program.cs:1-12`
+- Modify: `src/ControlMenu/Modules/AndroidDevices/AndroidDevicesModule.cs:12-57`
+- Modify: `src/ControlMenu/Modules/Jellyfin/JellyfinModule.cs` (dependencies section)
 
-The per-dependency "Update" button exists but never renders because no dependency declares `InstallPath`. The install pipeline in `DependencyManagerService.DownloadAndInstallAsync()` uses `InstallPath` to know where to swap files.
+Dependencies live in subfolders under the app root: `dependencies/<name>/`. At startup, each subfolder is prepended to `PATH` so `CommandExecutor` finds bundled executables automatically. `InstallPath` on each `ModuleDependency` points to its subfolder so the update pipeline knows where to swap files.
 
-- [ ] **Step 1: Add InstallPath to ADB dependency**
+- [ ] **Step 1: Create dependencies directory structure**
 
-In `AndroidDevicesModule.cs`, add `InstallPath` to the adb `ModuleDependency` (after line 26, before the closing brace):
-
-```csharp
-InstallPath = Path.GetDirectoryName(
-    Environment.GetEnvironmentVariable("PATH")!
-        .Split(Path.PathSeparator)
-        .Select(p => Path.Combine(p, OperatingSystem.IsWindows() ? "adb.exe" : "adb"))
-        .FirstOrDefault(File.Exists)) ?? ""
+```bash
+mkdir -p src/ControlMenu/dependencies/platform-tools
+mkdir -p src/ControlMenu/dependencies/scrcpy
+mkdir -p src/ControlMenu/dependencies/node
 ```
 
-Note: This resolves ADB's install directory from PATH at startup. If adb isn't on PATH, it returns empty string and the Update button won't show (correct behavior — we don't know where to install).
+Add a `.gitkeep` in each so the folders are tracked:
 
-- [ ] **Step 2: Add InstallPath to scrcpy dependency**
-
-Same pattern for scrcpy (after line 36):
-
-```csharp
-InstallPath = Path.GetDirectoryName(
-    Environment.GetEnvironmentVariable("PATH")!
-        .Split(Path.PathSeparator)
-        .Select(p => Path.Combine(p, OperatingSystem.IsWindows() ? "scrcpy.exe" : "scrcpy"))
-        .FirstOrDefault(File.Exists)) ?? ""
+```bash
+touch src/ControlMenu/dependencies/platform-tools/.gitkeep
+touch src/ControlMenu/dependencies/scrcpy/.gitkeep
+touch src/ControlMenu/dependencies/node/.gitkeep
 ```
 
-- [ ] **Step 3: Add using directive**
+- [ ] **Step 2: Add PATH injection to Program.cs**
 
-Add at the top of `AndroidDevicesModule.cs`:
+Add this block immediately after line 12 (`var builder = WebApplication.CreateBuilder(args);`):
 
 ```csharp
-using ControlMenu.Data.Enums;
+// Prepend bundled dependency folders to PATH for self-contained operation
+var depsRoot = Path.Combine(AppContext.BaseDirectory, "dependencies");
+if (Directory.Exists(depsRoot))
+{
+    var depPaths = Directory.GetDirectories(depsRoot)
+        .Where(d => !Path.GetFileName(d).StartsWith('.'));
+    var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+    var newPath = string.Join(Path.PathSeparator, depPaths) + Path.PathSeparator + currentPath;
+    Environment.SetEnvironmentVariable("PATH", newPath);
+}
 ```
 
-(Already present — verify `System.IO` is available via implicit usings.)
+- [ ] **Step 3: Set InstallPath on Android module dependencies**
 
-- [ ] **Step 4: Verify in browser**
+Replace the `Dependencies` property in `AndroidDevicesModule.cs` with:
 
-Run "Check All" in Settings → Dependencies. If ADB or scrcpy have updates available, the "Update" button should now appear in their row.
+```csharp
+private static string DepsRoot => Path.Combine(AppContext.BaseDirectory, "dependencies");
+
+public IEnumerable<ModuleDependency> Dependencies =>
+[
+    new ModuleDependency
+    {
+        Name = "adb",
+        ExecutableName = "adb",
+        VersionCommand = "adb --version",
+        VersionPattern = @"Android Debug Bridge version ([\d.]+)",
+        SourceType = UpdateSourceType.DirectUrl,
+        ProjectHomeUrl = "https://developer.android.com/tools/releases/platform-tools",
+        DownloadUrl = OperatingSystem.IsWindows()
+            ? "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
+            : "https://dl.google.com/android/repository/platform-tools-latest-linux.zip",
+        VersionCheckUrl = "https://dl.google.com/android/repository/repository2-3.xml",
+        VersionCheckPattern = @"<major>(\d+)</major>\s*<minor>(\d+)</minor>\s*<micro>(\d+)</micro>",
+        InstallPath = Path.Combine(DepsRoot, "platform-tools")
+    },
+    new ModuleDependency
+    {
+        Name = "scrcpy",
+        ExecutableName = "scrcpy",
+        VersionCommand = "scrcpy --version",
+        VersionPattern = @"scrcpy ([\d.]+)",
+        SourceType = UpdateSourceType.GitHub,
+        GitHubRepo = "Genymobile/scrcpy",
+        AssetPattern = @"scrcpy-win64-v[\d.]+\.zip",
+        InstallPath = Path.Combine(DepsRoot, "scrcpy")
+    },
+    new ModuleDependency
+    {
+        Name = "node",
+        ExecutableName = "node",
+        VersionCommand = "node --version",
+        VersionPattern = @"v([\d.]+)",
+        SourceType = UpdateSourceType.DirectUrl,
+        ProjectHomeUrl = "https://nodejs.org/",
+        DownloadUrl = "https://nodejs.org/en/download/",
+        InstallPath = Path.Combine(DepsRoot, "node")
+    },
+    new ModuleDependency
+    {
+        Name = "ws-scrcpy-web",
+        ExecutableName = "node",
+        VersionCommand = "node -e \"console.log('installed')\"",
+        VersionPattern = @"(installed)",
+        SourceType = UpdateSourceType.Manual,
+        ProjectHomeUrl = "https://github.com/bilbospocketses/ws-scrcpy-web"
+    }
+];
+```
+
+- [ ] **Step 4: Verify PATH injection**
+
+Build and run the app. In the app logs or via a debug breakpoint, confirm that `dependencies/platform-tools`, `dependencies/scrcpy`, and `dependencies/node` appear at the front of `PATH`. Run "Check All" in Settings → Dependencies — the "Update" button should appear for dependencies with available updates.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ControlMenu/Modules/AndroidDevices/AndroidDevicesModule.cs
-git commit -m "feat: add InstallPath to ADB and scrcpy dependencies for auto-update"
+git add src/ControlMenu/Program.cs src/ControlMenu/Modules/AndroidDevices/AndroidDevicesModule.cs src/ControlMenu/dependencies/
+git commit -m "feat: self-contained dependencies folder with PATH injection at startup"
 ```
 
 ---
@@ -347,7 +404,7 @@ private async Task LoadDependencies()
     _dependencies = (await DepManager.GetAllDependenciesAsync()).ToList();
     _hasInstallPath = ModuleDiscovery.Modules
         .SelectMany(m => m.Dependencies)
-        .Where(d => d.InstallPath is not null)
+        .Where(d => !string.IsNullOrEmpty(d.InstallPath))
         .Select(d => d.Name)
         .ToHashSet();
     _updatableCount = _dependencies.Count(d =>
