@@ -10,6 +10,10 @@
             Screen mirroring unavailable — configure ws-scrcpy-web path in Settings
         </div>
     }
+    else if (Inline)
+    {
+        <iframe src="@StreamUrl" class="scrcpy-iframe" allow="autoplay; fullscreen"></iframe>
+    }
     else
     {
         <button class="btn btn-primary" @onclick="OpenMirrorWindow">
@@ -22,11 +26,14 @@
     [Parameter, EditorRequired]
     public string Udid { get; set; } = string.Empty;
 
+    [Parameter]
+    public bool Inline { get; set; }
+
+    private string StreamUrl =>
+        $"{WsScrcpy.BaseUrl}/#!action=stream&udid={Uri.EscapeDataString(Udid)}&player=webcodecs";
+
     private async Task OpenMirrorWindow()
     {
-        var encoded = Uri.EscapeDataString(Udid);
-        var url = $"{WsScrcpy.BaseUrl}/#!action=stream&udid={encoded}&player=webcodecs";
-        // 1080 wide = 960 stream + ~120 toolbar, 600 tall = 540 stream + chrome
-        await JS.InvokeVoidAsync("open", url, "_blank", "width=1080,height=600,menubar=no,toolbar=no,location=no,status=no");
+        await JS.InvokeVoidAsync("open", StreamUrl, "_blank", "width=1080,height=600,menubar=no,toolbar=no,location=no,status=no");
     }
 }
