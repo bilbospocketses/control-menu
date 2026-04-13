@@ -20,23 +20,23 @@
     --warning-color: #ffc107;
 }
 
-/* Dark theme */
+/* Dark theme — OAO grey palette */
 [data-theme="dark"] {
-    --bg-primary: #1a1a2e;
-    --content-bg: #16213e;
-    --sidebar-bg: #0f1629;
-    --topbar-bg: #1a1a2e;
-    --border-color: #2a2a4a;
+    --bg-primary: #2a2a2a;
+    --content-bg: #333333;
+    --sidebar-bg: #252525;
+    --topbar-bg: #252525;
+    --border-color: #444444;
     --text-primary: #e0e0e0;
-    --text-secondary: #a0a0b8;
-    --text-muted: #6c6c80;
-    --hover-bg: rgba(255, 255, 255, 0.06);
-    --active-bg: rgba(99, 140, 255, 0.15);
-    --accent-color: #638cff;
-    --card-bg: #1e1e3a;
+    --text-secondary: #aaaaaa;
+    --text-muted: #888888;
+    --hover-bg: rgba(255, 255, 255, 0.05);
+    --active-bg: rgba(16, 185, 129, 0.1);
+    --accent-color: #10b981;
+    --card-bg: #333333;
     --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    --input-bg: #1e1e3a;
-    --input-border: #3a3a5a;
+    --input-bg: #2e2e2e;
+    --input-border: #444444;
     --danger-color: #f06c75;
     --success-color: #50c878;
     --warning-color: #ffd866;
