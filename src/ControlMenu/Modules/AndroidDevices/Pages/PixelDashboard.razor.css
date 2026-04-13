@@ -65,11 +65,11 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.4rem;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--border-color, #dee2e6);
-}
-.action-row:last-of-type {
-    border-bottom: none;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border-color, #dee2e6);
+    border-radius: 0.5rem;
+    background: var(--sidebar-bg, #e9ecef);
+    margin-bottom: 0.4rem;
 }
 
 .action-label {
@@ -93,6 +93,7 @@
 .action-buttons {
     display: flex;
     gap: 0.35rem;
+    margin-left: auto;
 }
 
 .btn-sm {

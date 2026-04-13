@@ -12,7 +12,8 @@
     }
     else if (Inline)
     {
-        <iframe src="@StreamUrl" class="scrcpy-iframe" allow="autoplay; fullscreen"></iframe>
+        <iframe @ref="_iframeRef" src="@StreamUrl" class="scrcpy-iframe" tabindex="0"
+                allow="autoplay; fullscreen" @onload="FocusIframe"></iframe>
     }
     else
     {
@@ -30,7 +31,14 @@
     public bool Inline { get; set; }
 
     private string StreamUrl =>
-        $"{WsScrcpy.BaseUrl}/#!action=stream&udid={Uri.EscapeDataString(Udid)}&player=webcodecs";
+        $"{WsScrcpy.BaseUrl}/#!action=stream&udid={Uri.EscapeDataString(Udid)}&player=webcodecs&embed={Inline.ToString().ToLower()}";
+
+    private ElementReference _iframeRef;
+
+    private async Task FocusIframe()
+    {
+        await JS.InvokeVoidAsync("eval", "document.querySelector('.scrcpy-iframe')?.focus()");
+    }
 
     private async Task OpenMirrorWindow()
     {

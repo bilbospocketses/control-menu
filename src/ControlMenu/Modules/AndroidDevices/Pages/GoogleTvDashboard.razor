@@ -35,11 +35,13 @@ else
             <h3 class="panel-heading">Quick Actions</h3>
 
             <!-- Power Status -->
-            <div class="action-row">
-                <div class="action-label">
-                    <i class="bi bi-lightning-charge"></i> Power
+            <div class="action-row action-row-power">
+                <div class="action-label-power">
+                    <div><i class="bi bi-lightning-charge"></i> Power</div>
+                    <div class="power-status @(_powerState == "Awake" ? "status-awake" : _powerState == "Asleep" ? "status-asleep" : "")">
+                        <span class="power-dot"></span> @_powerState
+                    </div>
                 </div>
-                <span class="action-status">@_powerState</span>
                 <div class="action-buttons">
                     <button class="btn btn-sm btn-secondary" @onclick="CheckPowerStatus" disabled="@_busy">Check</button>
                     <button class="btn btn-sm btn-warning" @onclick="TogglePower" disabled="@_busy">Toggle</button>
@@ -47,7 +49,7 @@ else
             </div>
 
             <!-- Reboot -->
-            <div class="action-row">
+            <div class="action-row action-row-inline">
                 <div class="action-label">
                     <i class="bi bi-arrow-repeat"></i> Reboot
                 </div>
@@ -57,7 +59,7 @@ else
             </div>
 
             <!-- Shizuku -->
-            <div class="action-row">
+            <div class="action-row action-row-inline">
                 <div class="action-label">
                     <i class="bi bi-shield-check"></i> Shizuku
                 </div>
@@ -79,14 +81,16 @@ else
             </div>
 
             <!-- Screen Timeout -->
-            <div class="action-row">
+            <div class="action-row action-row-inline">
                 <div class="action-label">
                     <i class="bi bi-clock"></i> Timeout
                 </div>
-                <span class="action-status">@FormatTimeout(_screenTimeout)</span>
-                <div class="action-buttons timeout-group">
-                    <input type="number" @bind="_newTimeout" min="300000" step="60000" placeholder="ms" class="form-input form-input-sm" />
-                    <button class="btn btn-sm btn-primary" @onclick="SetTimeout" disabled="@_busy">Set</button>
+                <div class="timeout-controls">
+                    <span class="action-status-inline">@FormatTimeout(_screenTimeout)</span>
+                    <div class="action-buttons">
+                        <input type="number" @bind="_newTimeout" min="300000" step="60000" placeholder="ms" class="form-input form-input-sm timeout-input" />
+                        <button class="btn btn-sm btn-primary" @onclick="SetTimeout" disabled="@_busy">Set</button>
+                    </div>
                 </div>
             </div>
 
@@ -101,13 +105,13 @@ else
                 <div class="action-buttons">
                     <button class="btn btn-sm btn-warning" @onclick="ToggleLauncher" disabled="@_busy">Toggle</button>
                 </div>
+                @if (_launcherDisabled == true)
+                {
+                    <div class="action-note">
+                        <i class="bi bi-info-circle"></i> Projectivy Launcher is currently the default
+                    </div>
+                }
             </div>
-            @if (_launcherDisabled == true)
-            {
-                <div class="action-note">
-                    <i class="bi bi-info-circle"></i> Projectivy Launcher is currently the default
-                </div>
-            }
 
             <!-- Restore Projectivy -->
             <div class="panel-section">
@@ -283,11 +287,26 @@ else
         _busy = false;
     }
 
-    private void SetStatus(string message, string cssClass, string icon)
+    private CancellationTokenSource? _statusCts;
+
+    private void SetStatus(string message, string cssClass, string icon, int dismissMs = 5000)
     {
         _statusMessage = message;
         _statusClass = cssClass;
         _statusIcon = icon;
+
+        _statusCts?.Cancel();
+        _statusCts = new CancellationTokenSource();
+        var token = _statusCts.Token;
+
+        _ = Task.Delay(dismissMs, token).ContinueWith(_ =>
+        {
+            InvokeAsync(() =>
+            {
+                _statusMessage = "";
+                StateHasChanged();
+            });
+        }, TaskContinuationOptions.OnlyOnRanToCompletion);
     }
 
     private static string FormatTimeout(int ms) =>

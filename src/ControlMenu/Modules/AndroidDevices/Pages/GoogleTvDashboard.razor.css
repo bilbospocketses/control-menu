@@ -36,7 +36,7 @@
     display: grid;
     grid-template-columns: 280px 1fr;
     gap: 1.25rem;
-    min-height: 500px;
+    height: calc(100vh - 180px);
 }
 
 /* Left panel — controls */
@@ -73,11 +73,11 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.4rem;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid var(--border-color, #dee2e6);
-}
-.action-row:last-of-type {
-    border-bottom: none;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border-color, #dee2e6);
+    border-radius: 0.5rem;
+    background: var(--sidebar-bg, #e9ecef);
+    margin-bottom: 0.4rem;
 }
 
 .action-label {
@@ -91,6 +91,15 @@
     margin-right: 0.3rem;
 }
 
+/* Inline rows: label and button on same line */
+.action-row-inline {
+    flex-wrap: nowrap;
+}
+.action-row-inline .action-label {
+    min-width: auto;
+    flex: 1;
+}
+
 .action-status {
     font-size: 0.8rem;
     font-weight: 500;
@@ -98,23 +107,85 @@
     flex: 1;
 }
 
+/* Power row — single line, buttons vertically centered */
+.action-row-power {
+    flex-wrap: nowrap;
+    align-items: center;
+}
+.action-label-power {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-primary, #212529);
+    flex: 1;
+}
+.action-label-power i {
+    color: var(--accent-color, #0d6efd);
+    margin-right: 0.3rem;
+}
+
+/* Power status with colored dot — dot sits where icon is, text aligns with "Power" */
+.power-status {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-top: 0.15rem;
+    margin-left: 0.05rem; /* nudge to align dot under icon center */
+    color: var(--text-muted, #adb5bd);
+}
+.power-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--text-muted, #adb5bd);
+}
+.power-status.status-awake {
+    color: var(--success-color, #198754);
+}
+.power-status.status-awake .power-dot {
+    background: var(--success-color, #198754);
+}
+.power-status.status-asleep {
+    color: var(--danger-color, #dc3545);
+}
+.power-status.status-asleep .power-dot {
+    background: var(--danger-color, #dc3545);
+}
+
+/* Inline status shown next to controls */
+.action-status-inline {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #ffffff;
+}
+
 .action-buttons {
     display: flex;
     gap: 0.35rem;
     flex-wrap: wrap;
+    margin-left: auto;
 }
 
 .action-note {
     font-size: 0.75rem;
     color: var(--accent-color, #638cff);
-    padding: 0.25rem 0 0.5rem 1.4rem;
+    padding: 0.25rem 0 0;
+    min-width: 100%;
 }
 
-/* Timeout input within action row */
-.timeout-group {
-    width: 100%;
+/* Timeout controls — status above input, left-aligned with text box */
+.timeout-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+    margin-left: auto;
 }
-.timeout-group input {
+
+/* Timeout input */
+.timeout-input {
     width: 90px;
     font-size: 0.8rem;
     padding: 0.2rem 0.4rem;
@@ -146,7 +217,7 @@
     padding: 0.5rem;
     display: flex;
     flex-direction: column;
-    min-height: 500px;
+    overflow: hidden;
 }
 
 .mirror-panel ::deep .scrcpy-mirror {
@@ -158,7 +229,7 @@
 .mirror-panel ::deep .scrcpy-iframe {
     flex: 1;
     width: 100%;
-    min-height: 480px;
+    height: 100%;
     border: none;
     border-radius: 0.5rem;
 }

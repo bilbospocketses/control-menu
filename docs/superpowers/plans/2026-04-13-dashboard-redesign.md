@@ -17,7 +17,7 @@
 
 The current component only opens a popup window. Add an `Inline` parameter that renders an iframe instead.
 
-- [ ] **Step 1: Replace ScrcpyMirror.razor with dual-mode component**
+- [x] **Step 1: Replace ScrcpyMirror.razor with dual-mode component**
 
 ```razor
 @* src/ControlMenu/Components/Shared/ScrcpyMirror.razor *@
@@ -61,12 +61,12 @@ The current component only opens a popup window. Add an `Inline` parameter that 
 }
 ```
 
-- [ ] **Step 2: Verify build**
+- [x] **Step 2: Verify build**
 
 Run: `dotnet build src/ControlMenu`
 Expected: 0 errors
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/ControlMenu/Components/Shared/ScrcpyMirror.razor
@@ -82,7 +82,7 @@ git commit -m "feat: add inline iframe mode to ScrcpyMirror component"
 
 Replace the action-card grid with a two-column layout. Left panel has compact action rows. Right panel has the inline ScrcpyMirror iframe. Restore Projectivy section at bottom of left panel. Rename "TV Launcher" to "Google TV Launcher" and show Projectivy note when disabled.
 
-- [ ] **Step 1: Replace GoogleTvDashboard.razor markup**
+- [x] **Step 1: Replace GoogleTvDashboard.razor markup**
 
 Replace everything from `<div class="action-card-grid">` through its closing `</div>` (lines 33–143) with the new two-column layout:
 
@@ -200,12 +200,12 @@ Replace everything from `<div class="action-card-grid">` through its closing `</
 
 The `@code` block, `@page` directives, `@using` statements, device header, and status bar all remain unchanged. Only the body below the status bar changes.
 
-- [ ] **Step 2: Verify build**
+- [x] **Step 2: Verify build**
 
 Run: `dotnet build src/ControlMenu`
 Expected: 0 errors
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/ControlMenu/Modules/AndroidDevices/Pages/GoogleTvDashboard.razor
@@ -221,7 +221,7 @@ git commit -m "feat: redesign Google TV dashboard — compact controls + inline 
 
 Replace the card grid styles with two-column layout styles.
 
-- [ ] **Step 1: Replace GoogleTvDashboard.razor.css**
+- [x] **Step 1: Replace GoogleTvDashboard.razor.css**
 
 ```css
 /* Device header */
@@ -400,12 +400,12 @@ Replace the card grid styles with two-column layout styles.
 }
 ```
 
-- [ ] **Step 2: Verify build**
+- [x] **Step 2: Verify build**
 
 Run: `dotnet build src/ControlMenu`
 Expected: 0 errors
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/ControlMenu/Modules/AndroidDevices/Pages/GoogleTvDashboard.razor.css
@@ -421,7 +421,7 @@ git commit -m "style: Google TV dashboard — two-column layout with compact act
 
 Replace the action-card grid with the same two-column layout. Left panel has Reset ADB Port and ADB Connect. Right panel has inline ScrcpyMirror.
 
-- [ ] **Step 1: Replace PixelDashboard.razor markup**
+- [x] **Step 1: Replace PixelDashboard.razor markup**
 
 Replace everything from `<div class="action-card-grid">` through its closing `</div>` (lines 33–61) with:
 
@@ -461,12 +461,12 @@ Replace everything from `<div class="action-card-grid">` through its closing `</
 
 The `@code` block, `@page` directives, `@using` statements, device header, and status bar all remain unchanged.
 
-- [ ] **Step 2: Verify build**
+- [x] **Step 2: Verify build**
 
 Run: `dotnet build src/ControlMenu`
 Expected: 0 errors
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/ControlMenu/Modules/AndroidDevices/Pages/PixelDashboard.razor
@@ -482,7 +482,7 @@ git commit -m "feat: redesign Pixel dashboard — compact controls + inline mirr
 
 Apply the same two-column styles. Identical to GoogleTvDashboard CSS minus the Projectivy-specific styles.
 
-- [ ] **Step 1: Replace PixelDashboard.razor.css**
+- [x] **Step 1: Replace PixelDashboard.razor.css**
 
 ```css
 /* Device header */
@@ -619,12 +619,12 @@ Apply the same two-column styles. Identical to GoogleTvDashboard CSS minus the P
 }
 ```
 
-- [ ] **Step 2: Verify build**
+- [x] **Step 2: Verify build**
 
 Run: `dotnet build src/ControlMenu`
 Expected: 0 errors
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/ControlMenu/Modules/AndroidDevices/Pages/PixelDashboard.razor.css
@@ -637,11 +637,85 @@ git commit -m "style: Pixel dashboard — two-column layout with compact action 
 
 **Files:** None (verification only)
 
-- [ ] **Step 1: Run full test suite**
+- [x] **Step 1: Run full test suite**
 
 Run: `dotnet test tests/ControlMenu.Tests`
 Expected: All 128 tests pass
 
-- [ ] **Step 2: Commit all remaining changes (if any unstaged)**
+- [x] **Step 2: Commit all remaining changes (if any unstaged)**
 
 Verify `git status` is clean. If any files were missed, stage and commit.
+
+---
+
+### Task 7: Fix WsScrcpyService startup reliability
+
+**Files:**
+- Modify: `src/ControlMenu/Services/WsScrcpyService.cs`
+
+WsScrcpyService had several issues preventing ws-scrcpy-web from starting reliably when launched from Control Menu:
+
+1. **Missing WorkingDirectory** — Node process was spawned without a CWD, causing relative path resolution failures in ws-scrcpy-web
+2. **No stdout/stderr capture** — crashes were silent; no way to diagnose startup failures
+3. **IsRunning flicker** — `IsRunning` returned false between health check and process start
+4. **Orphan processes** — when Control Menu crashed or was killed, the ws-scrcpy-web node process stayed alive on port 8000, causing EADDRINUSE crash loops on next startup
+
+**Fixes applied:**
+- Set `WorkingDirectory` to ws-scrcpy-web project root (parent of `dist/`)
+- Added `OutputDataReceived`/`ErrorDataReceived` handlers logging to ILogger
+- Added `_serviceReady` flag so `IsRunning` stays true after health check passes
+- Added `KillOrphanOnPortAsync()` — on startup, checks if port 8000 is occupied, finds the owning PID via `netstat` (Windows) or `lsof` (Linux), and kills it before spawning a fresh instance
+
+- [x] **Step 1: Implement all fixes in WsScrcpyService.cs**
+- [x] **Step 2: Verify orphan cleanup works with live orphan on port 8000**
+- [x] **Step 3: Run test suite — 127 tests passing**
+
+---
+
+### Task 8: Dashboard UI polish
+
+**Files:**
+- Modify: `src/ControlMenu/Modules/AndroidDevices/Pages/GoogleTvDashboard.razor`
+- Modify: `src/ControlMenu/Modules/AndroidDevices/Pages/GoogleTvDashboard.razor.css`
+- Modify: `src/ControlMenu/Modules/AndroidDevices/Pages/PixelDashboard.razor`
+- Modify: `src/ControlMenu/Modules/AndroidDevices/Pages/PixelDashboard.razor.css`
+
+**Changes:**
+- Reboot and Shizuku rows made single-line (label left, button right)
+- Power status shows colored dot (green=Awake, red=Asleep) under label
+- Power row buttons vertically centered
+- Timeout status text in white, positioned above text box (right-aligned)
+- Action row backgrounds use `--sidebar-bg` for darker contrast
+- All buttons right-aligned via `margin-left: auto`
+- Projectivy note moved inside Google TV Launcher action-row
+- Status messages auto-dismiss after 5 seconds on both dashboards
+- Dashboard layout fills viewport height via `calc(100vh - 180px)`
+
+- [x] All changes implemented and verified visually
+
+---
+
+### Task 9: ws-scrcpy-web embed mode
+
+**Files (ws-scrcpy-web repo):**
+- Modify: `src/app/index.ts` — parse `embed=true` from hash, add body class
+- Modify: `src/app/client/BaseClient.ts` — preserve `embed` class across `setBodyClass()` calls
+- Modify: `src/app/googDevice/client/StreamClientScrcpy.ts` — force `fitToScreen` in embed, auto-enable keyboard capture
+- Modify: `src/style/app.css` — embed CSS hides toolbar/morebox, flexbox video layout
+
+**Files (Control Menu repo):**
+- Modify: `src/ControlMenu/Components/Shared/ScrcpyMirror.razor` — pass `embed=true` in iframe URL, auto-focus iframe on load
+
+**How it works:**
+- When `embed=true` is in the hash params, `body.embed` class is added
+- CSS hides `.control-buttons-list` and `.more-box`, switches `.device-view` from float to flex
+- `fitToScreen` forced true so video scales to iframe size instead of native 1080p
+- Keyboard capture auto-enabled so D-pad keys work without toolbar toggle
+- `setBodyClass()` patched to preserve `embed` class (was being wiped by `className = text`)
+
+**Known issues:**
+- Mouse clicks send touch events which freeze the scrcpy video stream (pre-existing scrcpy issue, not embed-specific)
+- Video stream occasionally shows black on first load (scrcpy connection timing)
+- Keyboard D-pad input needs testing — may require iframe focus
+
+- [x] All changes implemented, video rendering confirmed in iframe

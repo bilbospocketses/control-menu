@@ -1,5 +1,7 @@
 // src/ControlMenu/Services/WsScrcpyService.cs
 using System.Diagnostics;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using ControlMenu.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,9 +14,10 @@ public class WsScrcpyService : IHostedService, IDisposable
     private Process? _process;
     private int _crashCount;
     private DateTime _lastCrash = DateTime.MinValue;
+    private bool _serviceReady;
 
     public string BaseUrl { get; private set; } = "http://localhost:8000";
-    public bool IsRunning => _process is { HasExited: false };
+    public bool IsRunning => _process is { HasExited: false } || _serviceReady;
 
     public WsScrcpyService(IServiceScopeFactory scopeFactory, ILogger<WsScrcpyService> logger)
     {
@@ -38,6 +41,8 @@ public class WsScrcpyService : IHostedService, IDisposable
             return;
         }
 
+        await KillOrphanOnPortAsync(cancellationToken);
+
         SpawnProcess(indexJs);
 
         // Wait for HTTP 200
@@ -50,6 +55,7 @@ public class WsScrcpyService : IHostedService, IDisposable
                 var response = await http.GetAsync(BaseUrl, cancellationToken);
                 if (response.IsSuccessStatusCode)
                 {
+                    _serviceReady = true;
                     _logger.LogInformation("ws-scrcpy-web ready at {Url}", BaseUrl);
                     return;
                 }
@@ -63,18 +69,21 @@ public class WsScrcpyService : IHostedService, IDisposable
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
+        _serviceReady = false;
         KillProcess();
         return Task.CompletedTask;
     }
 
     private void SpawnProcess(string indexJs)
     {
+        var workingDir = Path.GetDirectoryName(Path.GetDirectoryName(indexJs))!;
         _process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
                 FileName = "node",
                 Arguments = indexJs,
+                WorkingDirectory = workingDir,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
@@ -84,6 +93,16 @@ public class WsScrcpyService : IHostedService, IDisposable
             EnableRaisingEvents = true
         };
 
+        _process.OutputDataReceived += (_, e) =>
+        {
+            if (!string.IsNullOrEmpty(e.Data))
+                _logger.LogDebug("ws-scrcpy-web: {Line}", e.Data);
+        };
+        _process.ErrorDataReceived += (_, e) =>
+        {
+            if (!string.IsNullOrEmpty(e.Data))
+                _logger.LogWarning("ws-scrcpy-web stderr: {Line}", e.Data);
+        };
         _process.Exited += OnProcessExited;
         _process.Start();
         _process.BeginOutputReadLine();
@@ -151,6 +170,97 @@ public class WsScrcpyService : IHostedService, IDisposable
         }
         _process?.Dispose();
         _process = null;
+    }
+
+    private async Task KillOrphanOnPortAsync(CancellationToken cancellationToken)
+    {
+        // Quick check: is anything listening on our port?
+        try
+        {
+            using var tcp = new TcpClient();
+            await tcp.ConnectAsync("127.0.0.1", 8000, cancellationToken);
+        }
+        catch
+        {
+            return; // Port is free
+        }
+
+        _logger.LogWarning("Port 8000 already in use — killing orphan ws-scrcpy-web process");
+
+        var pid = await FindPidOnPortAsync(cancellationToken);
+        if (pid is null)
+        {
+            _logger.LogWarning("Could not determine PID on port 8000 — ws-scrcpy-web may fail to start");
+            return;
+        }
+
+        try
+        {
+            var orphan = Process.GetProcessById(pid.Value);
+            orphan.Kill(entireProcessTree: true);
+            orphan.WaitForExit(3000);
+            _logger.LogInformation("Killed orphan process PID {Pid} on port 8000", pid.Value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to kill orphan PID {Pid} on port 8000", pid.Value);
+        }
+    }
+
+    private async Task<int?> FindPidOnPortAsync(CancellationToken cancellationToken)
+    {
+        string fileName, arguments;
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            fileName = "netstat";
+            arguments = "-ano";
+        }
+        else
+        {
+            fileName = "lsof";
+            arguments = "-t -i :8000";
+        }
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = fileName,
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true
+            };
+            using var proc = Process.Start(psi);
+            if (proc is null) return null;
+
+            var output = await proc.StandardOutput.ReadToEndAsync(cancellationToken);
+            await proc.WaitForExitAsync(cancellationToken);
+
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                // lsof -t returns just the PID
+                return int.TryParse(output.Trim(), out var lsofPid) ? lsofPid : null;
+            }
+
+            // Parse netstat -ano: find LISTENING line with :8000
+            foreach (var line in output.Split('\n'))
+            {
+                var trimmed = line.Trim();
+                if (!trimmed.Contains(":8000") || !trimmed.Contains("LISTENING"))
+                    continue;
+
+                var parts = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 5 && int.TryParse(parts[^1], out var netstatPid))
+                    return netstatPid;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Failed to find PID on port 8000");
+        }
+
+        return null;
     }
 
     private async Task<string?> GetWsScrcpyPathAsync()

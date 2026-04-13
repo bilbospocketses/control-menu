@@ -118,10 +118,25 @@ else
         _busy = false;
     }
 
-    private void SetStatus(string message, string cssClass, string icon)
+    private CancellationTokenSource? _statusCts;
+
+    private void SetStatus(string message, string cssClass, string icon, int dismissMs = 5000)
     {
         _statusMessage = message;
         _statusClass = cssClass;
         _statusIcon = icon;
+
+        _statusCts?.Cancel();
+        _statusCts = new CancellationTokenSource();
+        var token = _statusCts.Token;
+
+        _ = Task.Delay(dismissMs, token).ContinueWith(_ =>
+        {
+            InvokeAsync(() =>
+            {
+                _statusMessage = "";
+                StateHasChanged();
+            });
+        }, TaskContinuationOptions.OnlyOnRanToCompletion);
     }
 }
