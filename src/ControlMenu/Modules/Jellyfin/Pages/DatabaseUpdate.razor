@@ -65,6 +65,34 @@ else
     </div>
 }
 
+@if (_recentLogs.Count > 0)
+{
+    <h2 style="margin-top:2rem;">Recent Operations</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Summary</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var log in _recentLogs)
+            {
+                <tr>
+                    <td>@log.Timestamp.ToLocalTime().ToString("g")</td>
+                    <td>
+                        <span class="status-badge @(log.Success ? "status-ok" : "status-error")">
+                            @(log.Success ? "Success" : "Failed")
+                        </span>
+                    </td>
+                    <td style="font-size:0.85rem;color:var(--text-secondary);">@log.Summary</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
 @code {
     [Inject] private IJellyfinService JellyfinService { get; set; } = default!;
 
@@ -72,6 +100,14 @@ else
     private bool _running;
     private bool _completed;
     private string? _error;
+    private List<OperationLogEntry> _recentLogs = [];
+
+    protected override void OnInitialized()
+    {
+        _recentLogs = OperationLogger.GetRecentLogs(10)
+            .Where(l => l.Operation == "db-date-update")
+            .ToList();
+    }
 
     private async Task RunUpdate()
     {
@@ -87,10 +123,13 @@ else
             new("Complete")
         ];
 
+        using var logger = OperationLogger.Create("db-date-update");
+
         try
         {
             // Step 1: Get container ID
             _steps[0].Status = StepStatus.Running;
+            logger.Step("Stopping Docker container");
             StateHasChanged();
             var containerId = await JellyfinService.GetContainerIdAsync();
             if (containerId is null)
@@ -99,6 +138,7 @@ else
                 _steps[0].Detail = "Jellyfin container not found. Is it running?";
                 _error = "Could not find Jellyfin Docker container.";
                 _running = false;
+                logger.Fail("Container not found");
                 return;
             }
 
@@ -108,46 +148,60 @@ else
                 _steps[0].Status = StepStatus.Failed;
                 _error = "Failed to stop container.";
                 _running = false;
+                logger.Fail("Failed to stop container");
                 return;
             }
             _steps[0].Status = StepStatus.Completed;
             _steps[0].Detail = $"Container {containerId[..12]} stopped.";
+            logger.Ok($"Container {containerId[..12]} stopped");
             StateHasChanged();
 
             // Step 2: Backup
             _steps[1].Status = StepStatus.Running;
+            logger.Step("Creating database backup");
             StateHasChanged();
-            var backupPath = await JellyfinService.BackupDatabaseAsync();
+            var backupPath = await JellyfinService.BackupDatabaseAsync(logger);
             _steps[1].Status = backupPath is not null ? StepStatus.Completed : StepStatus.Failed;
             _steps[1].Detail = backupPath is not null ? $"Saved to {Path.GetFileName(backupPath)}" : "Backup failed";
+            if (backupPath is not null) logger.Ok($"Backup saved to {Path.GetFileName(backupPath)}");
+            else logger.Fail("Backup failed");
             StateHasChanged();
 
             // Step 3: SQL Update
             _steps[2].Status = StepStatus.Running;
+            logger.Step("Running SQL update");
             StateHasChanged();
-            var updated = await JellyfinService.UpdateDateCreatedAsync();
+            var updated = await JellyfinService.UpdateDateCreatedAsync(logger);
             _steps[2].Status = updated ? StepStatus.Completed : StepStatus.Failed;
             _steps[2].Detail = updated ? "DateCreated = PremiereDate applied." : "SQL update failed.";
+            if (updated) logger.Ok("DateCreated = PremiereDate applied");
+            else logger.Fail("SQL update failed");
             StateHasChanged();
 
             // Step 4: Start container
             _steps[3].Status = StepStatus.Running;
+            logger.Step("Starting Docker container");
             StateHasChanged();
             var started = await JellyfinService.StartContainerAsync(containerId);
             _steps[3].Status = started ? StepStatus.Completed : StepStatus.Failed;
             _steps[3].Detail = started ? "Container restarted." : "Failed to start container.";
+            if (started) logger.Ok("Container restarted");
+            else logger.Fail("Failed to start container");
             StateHasChanged();
 
             // Step 5: Cleanup
             _steps[4].Status = StepStatus.Running;
+            logger.Step("Cleaning up old backups");
             StateHasChanged();
-            await JellyfinService.CleanupOldBackupsAsync();
+            await JellyfinService.CleanupOldBackupsAsync(logger);
             _steps[4].Status = StepStatus.Completed;
             _steps[4].Detail = "Backups older than 5 days removed.";
+            logger.Ok("Old backups removed");
             StateHasChanged();
 
             // Done
             _steps[5].Status = StepStatus.Completed;
+            logger.Done("All steps completed successfully");
             _completed = true;
         }
         catch (Exception ex)
@@ -155,10 +209,14 @@ else
             _error = $"Unexpected error: {ex.Message}";
             var current = _steps.FirstOrDefault(s => s.Status == StepStatus.Running);
             if (current is not null) current.Status = StepStatus.Failed;
+            logger.Fail($"Unexpected error: {ex.Message}");
         }
         finally
         {
             _running = false;
+            _recentLogs = OperationLogger.GetRecentLogs(10)
+                .Where(l => l.Operation == "db-date-update")
+                .ToList();
         }
     }
 
