@@ -21,27 +21,29 @@
 Control Menu replaces a collection of PowerShell scripts with a cross-platform web UI. It manages:
 
 - **Android Devices** &mdash; Connect, reboot, toggle power/screensaver, manage ADB settings, and screen mirror Google TVs and Pixel phones via [ws-scrcpy-web](https://github.com/ANG-DEVELOPERS/ws-scrcpy-web)
-- **Jellyfin Media Server** &mdash; Database date updates, cast & crew image refresh (background worker with resume support), Docker container management, automated backups with retention
-- **Utilities** &mdash; PNG-to-ICO icon conversion (via SkiaSharp), Windows Zone.Identifier file unblocker
-- **Dependency Management** &mdash; Tracks tool versions (ADB, scrcpy, Docker, sqlite3), checks GitHub/direct URLs for updates, downloads and installs updates in-place
+- **Jellyfin Media Server** &mdash; Database date updates, cast & crew image refresh (background worker with resume support), Docker container management, automated backups with configurable retention
+- **Utilities** &mdash; Image-to-ICO icon conversion (PNG, JPG, BMP, GIF, WEBP, TIFF via SkiaSharp) with native file picker, Windows Zone.Identifier file unblocker
+- **Dependency Management** &mdash; Auto-installs and updates ADB, scrcpy, Node.js, and sqlite3 to a self-contained `dependencies/` folder. Configurable install paths per tool. Version checks via GitHub API and direct URL scraping.
 
 ## Features
 
 - **Modular architecture** &mdash; `IToolModule` interface with auto-discovery via reflection
-- **First-run wizard** &mdash; Guided setup for devices, services, and dependencies
-- **Dark/light theme** &mdash; OAO grey palette with system-aware toggle
+- **First-run wizard** &mdash; 6 steps: Welcome, Devices, Jellyfin, Email, Dependencies, Done
+- **Dark/light theme** &mdash; OAO grey palette with two-state toggle
 - **Cross-platform** &mdash; `CommandExecutor` strategy pattern abstracts Windows vs Linux commands
 - **Encrypted secrets** &mdash; ASP.NET Data Protection API for API keys and passwords
 - **Background jobs** &mdash; Long-running tasks with progress tracking, cancellation, and resume
-- **Self-contained dependencies** &mdash; Bundled tools folder with PATH injection at startup
+- **Self-contained dependencies** &mdash; Bundled tools folder with PATH injection at startup; install/update buttons in UI
+- **Email notifications** &mdash; Configurable SMTP with dedicated From address for provider authorization
+- **File System Access API** &mdash; Native OS file picker for icon conversion in Chrome/Edge
 
 ## Quick Start
 
 ### Prerequisites
 
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
-- [Node.js](https://nodejs.org/) (for ws-scrcpy-web screen mirroring, optional)
-- [ADB / Platform Tools](https://developer.android.com/tools/releases/platform-tools) (for Android device management)
+- [Node.js](https://nodejs.org/) (for ws-scrcpy-web screen mirroring, optional &mdash; auto-installable)
+- [ADB / Platform Tools](https://developer.android.com/tools/releases/platform-tools) (optional &mdash; auto-installable)
 - [Docker](https://docs.docker.com/get-docker/) (for Jellyfin management)
 
 ### Run
@@ -74,8 +76,8 @@ src/ControlMenu/
     AndroidDevices/     #   ADB service, Google TV & Pixel dashboards
     Jellyfin/           #   Docker ops, DB updates, Cast/Crew worker
     Utilities/          #   Icon converter, File unblocker
-  Services/             # Core services (config, secrets, jobs, dependencies)
-  wwwroot/              # Static assets, CSS, theme
+  Services/             # Core services (config, secrets, jobs, dependencies, email)
+  wwwroot/              # Static assets, CSS, theme, JS interop
 tests/ControlMenu.Tests/
 ```
 
@@ -89,6 +91,28 @@ tests/ControlMenu.Tests/
 | SQLite | Single-file DB, no external database server needed |
 | SkiaSharp for images | Cross-platform replacement for System.Drawing.Common |
 | ws-scrcpy-web via iframe | Screen mirroring without native scrcpy binary dependency |
+| File System Access API | Native OS file dialogs for icon converter (Chrome/Edge) |
+| Self-contained dependencies | 4 auto-managed tools in `dependencies/`; 2 external (Docker, ws-scrcpy-web) |
+
+## Dependencies
+
+Control Menu manages two types of dependencies:
+
+**Auto-installable** (downloaded to `dependencies/` folder):
+| Tool | Source | Purpose |
+|------|--------|---------|
+| ADB | Google (DirectUrl) | Android device management |
+| scrcpy | GitHub (Genymobile/scrcpy) | Screen mirroring server binary |
+| Node.js | nodejs.org (DirectUrl) | ws-scrcpy-web runtime |
+| sqlite3 | sqlite.org (DirectUrl) | Jellyfin database operations |
+
+**External** (installed separately):
+| Tool | Purpose |
+|------|---------|
+| Docker | Jellyfin container management |
+| ws-scrcpy-web | Browser-based screen mirroring |
+
+Install paths are configurable per-tool in Settings > Dependencies.
 
 ## Module System
 
