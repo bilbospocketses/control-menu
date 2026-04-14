@@ -1,10 +1,15 @@
-using System.Collections.Concurrent;
 using System.Net;
 using System.Text.RegularExpressions;
 using ControlMenu.Modules.Cameras.Services;
 
 namespace ControlMenu.Modules.Cameras;
 
+/// <summary>
+/// Reverse proxy middleware for Hikvision/LTS cameras. Forwards requests from
+/// /cameras/{index}/proxy/** to the camera's IP with HTTP Digest Authentication.
+/// Strips iframe-blocking headers and rewrites absolute paths in HTML/JS/CSS
+/// so the camera's web UI works inside an iframe.
+/// </summary>
 public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraProxyMiddleware> logger)
 {
     private static readonly string[] _stripHeaders =
@@ -56,7 +61,6 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         var baseUri = new Uri($"http://{camera.IpAddress}:{camera.Port}");
         var proxyPrefix = $"/cameras/{cameraIndex}/proxy";
 
-        // HttpClient with digest auth, cookies flow transparently via headers
         var handler = new HttpClientHandler
         {
             Credentials = new NetworkCredential(credentials.Value.Username, credentials.Value.Password),
@@ -67,19 +71,16 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         using var client = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(30) };
 
         var targetUri = new Uri(baseUri, $"/{proxyPath}{context.Request.QueryString}");
+        var response = await ForwardRequestAsync(client, context, targetUri);
 
-        var response = await ForwardRequestAsync(client, context, targetUri, cameraIndex);
-
-        await WriteProxyResponseAsync(context, response, cameraIndex, proxyPrefix,
-            credentials.Value.Username, credentials.Value.Password);
+        await WriteProxyResponseAsync(context, response, cameraIndex, proxyPrefix);
     }
 
     private static async Task<HttpResponseMessage> ForwardRequestAsync(
-        HttpClient client, HttpContext context, Uri targetUri, int cameraIndex)
+        HttpClient client, HttpContext context, Uri targetUri)
     {
         var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUri);
 
-        // Forward all headers except Host (rewritten by HttpClient)
         foreach (var header in context.Request.Headers)
         {
             if (string.Equals(header.Key, "Host", StringComparison.OrdinalIgnoreCase))
@@ -98,12 +99,10 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
     }
 
     private static async Task WriteProxyResponseAsync(
-        HttpContext context, HttpResponseMessage response, int cameraIndex,
-        string proxyPrefix, string username, string password)
+        HttpContext context, HttpResponseMessage response, int cameraIndex, string proxyPrefix)
     {
         context.Response.StatusCode = (int)response.StatusCode;
 
-        // Copy response headers
         foreach (var header in response.Headers.Concat(response.Content.Headers))
         {
             if (_stripHeaders.Any(h => string.Equals(h, header.Key, StringComparison.OrdinalIgnoreCase)))
@@ -113,12 +112,11 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
             if (string.Equals(header.Key, "Content-Length", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // Forward Set-Cookie from camera to browser (rewrite path)
+            // Forward Set-Cookie with rewritten path
             if (string.Equals(header.Key, "Set-Cookie", StringComparison.OrdinalIgnoreCase))
             {
                 foreach (var val in header.Value)
                 {
-                    // Rewrite Path= to proxy path so browser sends cookie back through proxy
                     var rewritten = Regex.Replace(val, @"[Pp]ath=/[^;]*", $"Path={proxyPrefix}/");
                     if (!rewritten.Contains("Path=", StringComparison.OrdinalIgnoreCase))
                         rewritten += $"; Path={proxyPrefix}/";
@@ -143,46 +141,11 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
             context.Response.Headers.Append(header.Key, header.Value.ToArray());
         }
 
-        // Read body and handle text content
         var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
         if (_rewritableContentTypes.Any(ct => contentType.Contains(ct, StringComparison.OrdinalIgnoreCase)))
         {
             var body = await response.Content.ReadAsStringAsync();
-
-            // Rewrite absolute paths to go through proxy
             body = AbsolutePathRegex().Replace(body, $"{proxyPrefix}/$1");
-
-            // Auto-login injection: if this is the login page, inject script to auto-fill and submit
-            if (body.Contains("id=\"username\"") && body.Contains("id=\"password\"") && body.Contains("login()"))
-            {
-                var autoLoginScript = $@"
-<script>
-(function() {{
-    // Wait for AngularJS to initialize, then auto-login
-    var attempts = 0;
-    var timer = setInterval(function() {{
-        attempts++;
-        var scope = null;
-        try {{
-            var el = document.querySelector('[ng-controller=""loginController""]');
-            if (el) scope = angular.element(el).scope();
-        }} catch(e) {{}}
-        if (scope && scope.login) {{
-            clearInterval(timer);
-            scope.$apply(function() {{
-                scope.username = '{EscapeJs(username)}';
-                scope.password = '{EscapeJs(password)}';
-            }});
-            setTimeout(function() {{ scope.login(); }}, 200);
-        }} else if (attempts > 50) {{
-            clearInterval(timer);
-        }}
-    }}, 100);
-}})();
-</script>";
-                body = body.Replace("</html>", autoLoginScript + "\n</html>");
-            }
-
             await context.Response.WriteAsync(body);
         }
         else
@@ -191,15 +154,12 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         }
     }
 
-    private static string EscapeJs(string value) =>
-        value.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\"", "\\\"");
-
     /// <summary>
-    /// Clears cached auth state for a camera. Called by settings UI when credentials change.
+    /// Clears cached state for a camera. Called by settings UI when credentials change.
     /// </summary>
     public static void ClearSession(int cameraIndex)
     {
-        // No cached state to clear in current implementation,
-        // but kept for API compatibility with settings UI
+        // Stateless — each request creates a fresh HttpClient with digest auth.
+        // Kept for API compatibility with settings UI.
     }
 }
