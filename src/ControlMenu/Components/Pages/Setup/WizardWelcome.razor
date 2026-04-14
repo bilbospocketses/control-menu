@@ -1,3 +1,6 @@
+@using ControlMenu.Services
+@inject IConfigurationService Config
+
 <div class="welcome-container">
     <i class="bi bi-gear-wide-connected welcome-icon"></i>
 
@@ -7,6 +10,46 @@
         This wizard will help you register devices, connect services, and locate required tools.
         Everything is optional — you can skip any step and configure it later in Settings.
     </p>
+
+    <div class="form-group" style="width:100%;margin-bottom:1.5rem;">
+        <label style="color:var(--text-primary);font-weight:600;">Timezone</label>
+        <select class="form-control" style="max-width:300px;" value="@_timezone" @onchange="SaveTimezone">
+            <option value="UTC">UTC (±00:00)</option>
+            <option value="-12:00">UTC−12:00</option>
+            <option value="-11:00">UTC−11:00</option>
+            <option value="-10:00">UTC−10:00 (Hawaii)</option>
+            <option value="-09:00">UTC−09:00 (Alaska)</option>
+            <option value="-08:00">UTC−08:00 (Pacific)</option>
+            <option value="-07:00">UTC−07:00 (Mountain)</option>
+            <option value="-06:00">UTC−06:00 (Central)</option>
+            <option value="-05:00">UTC−05:00 (Eastern)</option>
+            <option value="-04:00">UTC−04:00 (Atlantic)</option>
+            <option value="-03:30">UTC−03:30 (Newfoundland)</option>
+            <option value="-03:00">UTC−03:00</option>
+            <option value="-02:00">UTC−02:00</option>
+            <option value="-01:00">UTC−01:00</option>
+            <option value="+01:00">UTC+01:00 (Central Europe)</option>
+            <option value="+02:00">UTC+02:00 (Eastern Europe)</option>
+            <option value="+03:00">UTC+03:00 (Moscow)</option>
+            <option value="+03:30">UTC+03:30 (Iran)</option>
+            <option value="+04:00">UTC+04:00 (Gulf)</option>
+            <option value="+04:30">UTC+04:30 (Afghanistan)</option>
+            <option value="+05:00">UTC+05:00 (Pakistan)</option>
+            <option value="+05:30">UTC+05:30 (India)</option>
+            <option value="+05:45">UTC+05:45 (Nepal)</option>
+            <option value="+06:00">UTC+06:00 (Bangladesh)</option>
+            <option value="+06:30">UTC+06:30 (Myanmar)</option>
+            <option value="+07:00">UTC+07:00 (Indochina)</option>
+            <option value="+08:00">UTC+08:00 (China/Singapore)</option>
+            <option value="+09:00">UTC+09:00 (Japan/Korea)</option>
+            <option value="+09:30">UTC+09:30 (Australia Central)</option>
+            <option value="+10:00">UTC+10:00 (Australia Eastern)</option>
+            <option value="+11:00">UTC+11:00</option>
+            <option value="+12:00">UTC+12:00 (New Zealand)</option>
+            <option value="+13:00">UTC+13:00</option>
+        </select>
+        <div class="form-hint" style="color:var(--text-secondary);font-size:0.8rem;margin-top:4px;">Used for log timestamps. Defaults to UTC if not set.</div>
+    </div>
 
     <div class="overview-section">
         <p class="overview-label">We'll walk through:</p>
@@ -18,6 +61,21 @@
         </ol>
     </div>
 </div>
+
+@code {
+    private string _timezone = "UTC";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _timezone = await Config.GetSettingAsync("app-timezone") ?? "UTC";
+    }
+
+    private async Task SaveTimezone(ChangeEventArgs e)
+    {
+        _timezone = e.Value?.ToString() ?? "UTC";
+        await Config.SetSettingAsync("app-timezone", _timezone);
+    }
+}
 
 <style>
     .welcome-container {

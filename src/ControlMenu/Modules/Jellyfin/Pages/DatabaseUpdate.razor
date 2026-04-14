@@ -1,5 +1,6 @@
 @page "/jellyfin/db-update"
 @using ControlMenu.Modules.Jellyfin.Services
+@using ControlMenu.Services
 
 <PageTitle>Jellyfin — DB Date Update</PageTitle>
 
@@ -82,9 +83,18 @@ else
                 <tr>
                     <td>@log.Timestamp.ToLocalTime().ToString("g")</td>
                     <td>
-                        <span class="status-badge @(log.Success ? "status-ok" : "status-error")">
-                            @(log.Success ? "Success" : "Failed")
-                        </span>
+                        @if (log.Status == OperationLogStatus.InProgress)
+                        {
+                            <span class="status-badge status-running">Running</span>
+                        }
+                        else if (log.Status == OperationLogStatus.Success)
+                        {
+                            <span class="status-badge status-ok">Success</span>
+                        }
+                        else
+                        {
+                            <span class="status-badge status-error">Failed</span>
+                        }
                     </td>
                     <td style="font-size:0.85rem;color:var(--text-secondary);">@log.Summary</td>
                 </tr>
@@ -95,6 +105,7 @@ else
 
 @code {
     [Inject] private IJellyfinService JellyfinService { get; set; } = default!;
+    [Inject] private IConfigurationService Config { get; set; } = default!;
 
     private List<ProgressStep> _steps = [];
     private bool _running;
@@ -123,7 +134,9 @@ else
             new("Complete")
         ];
 
-        using var logger = OperationLogger.Create("db-date-update");
+        var tzSetting = await Config.GetSettingAsync("app-timezone");
+        var utcOffset = OperationLogger.ParseTimezoneOffset(tzSetting);
+        using var logger = OperationLogger.Create("db-date-update", utcOffset);
         string? containerId = null;
 
         try

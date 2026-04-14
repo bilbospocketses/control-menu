@@ -13,11 +13,13 @@ public class CastCrewUpdateWorkerTests : IDisposable
     private readonly AppDbContext _db;
     private readonly Mock<IJellyfinService> _mockJellyfin = new();
     private readonly Mock<IBackgroundJobService> _mockJobService;
+    private static readonly JellyfinApiConfig TestApiConfig = new("http://localhost:8096", "test-key", "test-user");
 
     public CastCrewUpdateWorkerTests()
     {
         _db = TestDbContextFactory.Create();
         _mockJobService = new Mock<IBackgroundJobService>();
+        _mockJellyfin.Setup(j => j.GetApiConfigAsync()).ReturnsAsync(TestApiConfig);
     }
 
     public void Dispose() => _db.Dispose();
@@ -33,8 +35,8 @@ public class CastCrewUpdateWorkerTests : IDisposable
             .ReturnsAsync(persons);
 
         var processedIds = new System.Collections.Concurrent.ConcurrentBag<string>();
-        _mockJellyfin.Setup(j => j.TriggerPersonImageDownloadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Returns<string, CancellationToken>(async (id, ct) =>
+        _mockJellyfin.Setup(j => j.TriggerPersonImageDownloadAsync(It.IsAny<string>(), It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()))
+            .Returns<string, JellyfinApiConfig, CancellationToken>(async (id, _, ct) =>
             {
                 await Task.Delay(10, ct); // simulate network
                 processedIds.Add(id);
@@ -68,8 +70,8 @@ public class CastCrewUpdateWorkerTests : IDisposable
             .ReturnsAsync(persons);
 
         var processedCount = 0;
-        _mockJellyfin.Setup(j => j.TriggerPersonImageDownloadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Returns<string, CancellationToken>(async (id, ct) =>
+        _mockJellyfin.Setup(j => j.TriggerPersonImageDownloadAsync(It.IsAny<string>(), It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()))
+            .Returns<string, JellyfinApiConfig, CancellationToken>(async (_, _, ct) =>
             {
                 await Task.Delay(50, ct);
                 Interlocked.Increment(ref processedCount);
@@ -105,7 +107,7 @@ public class CastCrewUpdateWorkerTests : IDisposable
 
         _mockJellyfin.Setup(j => j.GetPersonsMissingImagesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(persons);
-        _mockJellyfin.Setup(j => j.TriggerPersonImageDownloadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        _mockJellyfin.Setup(j => j.TriggerPersonImageDownloadAsync(It.IsAny<string>(), It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         var jobId = Guid.NewGuid();

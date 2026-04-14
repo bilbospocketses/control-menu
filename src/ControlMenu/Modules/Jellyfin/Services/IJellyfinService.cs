@@ -12,4 +12,6 @@ public interface IJellyfinService
     Task<ComposeParseResult> ParseComposeFileAsync(CancellationToken ct = default);
     Task<IReadOnlyList<JellyfinPerson>> GetPersonsMissingImagesAsync(CancellationToken ct = default);
     Task TriggerPersonImageDownloadAsync(string personId, CancellationToken ct = default);
+    Task<JellyfinApiConfig> GetApiConfigAsync();
+    Task TriggerPersonImageDownloadAsync(string personId, JellyfinApiConfig apiConfig, CancellationToken ct = default);
 }

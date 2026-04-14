@@ -182,13 +182,27 @@ public class JellyfinService : IJellyfinService
 
     public async Task TriggerPersonImageDownloadAsync(string personId, CancellationToken ct = default)
     {
+        var config = await GetApiConfigAsync();
+        await TriggerPersonImageDownloadAsync(personId, config, ct);
+    }
+
+    public async Task<JellyfinApiConfig> GetApiConfigAsync()
+    {
         var baseUrl = await _config.GetSettingAsync("jellyfin-base-url") ?? "http://127.0.0.1:8096";
-        var apiKey = await _config.GetSecretAsync("jellyfin-api-key");
+        var apiKey = await _config.GetSecretAsync("jellyfin-api-key")
+            ?? throw new InvalidOperationException("Jellyfin API key not configured");
         var userId = await _config.GetSettingAsync("jellyfin-user-id");
-        if (apiKey is null || userId is null) return;
+        return new JellyfinApiConfig(baseUrl, apiKey, userId);
+    }
+
+    public async Task TriggerPersonImageDownloadAsync(string personId, JellyfinApiConfig apiConfig, CancellationToken ct = default)
+    {
+        if (apiConfig.UserId is null) return;
 
         var client = _httpFactory.CreateClient();
-        var url = $"{baseUrl}/Users/{userId}/Items/{personId}?api_key={apiKey}";
-        await client.GetAsync(url, ct);
+        var url = $"{apiConfig.BaseUrl}/Users/{apiConfig.UserId}/Items/{personId}?api_key={apiConfig.ApiKey}";
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+        await client.GetAsync(url, timeoutCts.Token);
     }
 }

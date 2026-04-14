@@ -4,6 +4,7 @@
 @using ControlMenu.Services
 @using ControlMenu.Modules.Jellyfin.Services
 @using Microsoft.Extensions.DependencyInjection
+@using Microsoft.Extensions.Logging
 @implements IDisposable
 
 <PageTitle>Jellyfin — Cast & Crew Update</PageTitle>
@@ -96,16 +97,54 @@ else
     </table>
 }
 
+@if (_recentLogs.Count > 0)
+{
+    <h2>Recent Logs</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Summary</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var log in _recentLogs)
+            {
+                <tr>
+                    <td>@log.Timestamp.ToLocalTime().ToString("g")</td>
+                    <td>
+                        @if (log.Status == OperationLogStatus.InProgress)
+                        {
+                            <span class="status-badge status-running">Running</span>
+                        }
+                        else if (log.Status == OperationLogStatus.Success)
+                        {
+                            <span class="status-badge status-ok">Success</span>
+                        }
+                        else
+                        {
+                            <span class="status-badge status-error">Failed</span>
+                        }
+                    </td>
+                    <td style="font-size:0.85rem;color:var(--text-secondary);">@log.Summary</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
 @code {
     [Inject] private IBackgroundJobService JobService { get; set; } = default!;
     [Inject] private IServiceScopeFactory ScopeFactory { get; set; } = default!;
+    [Inject] private ILogger<CastCrewUpdate> Logger { get; set; } = default!;
 
     private Job? _activeJob;
     private List<Job> _recentJobs = [];
+    private List<OperationLogEntry> _recentLogs = [];
     private bool _starting;
     private bool _disposed;
     private Timer? _pollTimer;
-    private CancellationTokenSource? _workerCts;
 
     protected override async Task OnInitializedAsync()
     {
@@ -139,6 +178,10 @@ else
             .Where(j => j.Status == JobStatus.Completed || j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled)
             .Take(10)
             .ToList();
+
+        _recentLogs = OperationLogger.GetRecentLogs(10)
+            .Where(l => l.Operation == "cast-crew-update")
+            .ToList();
     }
 
     private async Task StartJob()
@@ -146,22 +189,33 @@ else
         _starting = true;
         var job = await JobService.CreateJobAsync("jellyfin", "cast-crew-update");
         _activeJob = job;
-
-        _workerCts?.Dispose();
-        _workerCts = new CancellationTokenSource();
-        var ct = _workerCts.Token;
         var jobId = job.Id;
 
-        // Launch worker with its own DI scope so services survive circuit disposal
+        // Launch worker with its own DI scope — no component-level CancellationToken.
+        // The worker checks CancellationRequested in the DB each batch, so it survives
+        // circuit disconnects and page navigations.
         _ = Task.Run(async () =>
         {
-            using var scope = ScopeFactory.CreateScope();
-            var jellyfinService = scope.ServiceProvider.GetRequiredService<IJellyfinService>();
-            var jobService = scope.ServiceProvider.GetRequiredService<IBackgroundJobService>();
+            try
+            {
+                Logger.LogInformation("Cast & Crew worker starting for job {JobId}", jobId);
+                using var scope = ScopeFactory.CreateScope();
+                var config = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
+                var tzSetting = await config.GetSettingAsync("app-timezone");
+                var utcOffset = OperationLogger.ParseTimezoneOffset(tzSetting);
+                using var opLog = OperationLogger.Create("cast-crew-update", utcOffset);
+                var jellyfinService = scope.ServiceProvider.GetRequiredService<IJellyfinService>();
+                var jobService = scope.ServiceProvider.GetRequiredService<IBackgroundJobService>();
 
-            await jobService.StartJobAsync(jobId, Environment.ProcessId);
-            var worker = new Workers.CastCrewUpdateWorker(jellyfinService, jobService);
-            await worker.ExecuteAsync(jobId, ct);
+                await jobService.StartJobAsync(jobId, Environment.ProcessId);
+                var worker = new Workers.CastCrewUpdateWorker(jellyfinService, jobService, opLog);
+                await worker.ExecuteAsync(jobId, CancellationToken.None);
+                Logger.LogInformation("Cast & Crew worker finished for job {JobId}", jobId);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Cast & Crew worker failed for job {JobId}", jobId);
+            }
         });
 
         _starting = false;
@@ -170,7 +224,6 @@ else
     private async Task CancelJob()
     {
         if (_activeJob is null) return;
-        _workerCts?.Cancel();
         await JobService.RequestCancellationAsync(_activeJob.Id);
     }
 
@@ -178,7 +231,5 @@ else
     {
         _disposed = true;
         _pollTimer?.Dispose();
-        _workerCts?.Cancel();
-        _workerCts?.Dispose();
     }
 }
