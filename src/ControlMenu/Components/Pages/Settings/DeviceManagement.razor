@@ -9,12 +9,6 @@
         <input type="number" class="form-control" style="max-width:200px;" min="30" max="3600"
                value="@_discoveryInterval" @onchange="OnDiscoveryIntervalChanged" />
         <div class="form-hint">How often to scan the network for device IP changes. Min 30s, max 3600s.</div>
-        @if (!string.IsNullOrEmpty(_discoveryMessage))
-        {
-            <div class="form-hint" style="color: @(_discoveryMessageIsError ? "var(--danger-color)" : "var(--success-color)");">
-                @_discoveryMessage
-            </div>
-        }
     </div>
 </div>
 
@@ -29,11 +23,6 @@
         <button class="btn btn-secondary" @onclick="ScanNetwork" disabled="@_scanning">
             <i class="bi bi-broadcast"></i> @(_scanning ? "Scanning..." : "Scan Network")
         </button>
-        <div class="toolbar-spacer"></div>
-        @if (!string.IsNullOrEmpty(_message))
-        {
-            <span class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin:0; padding:6px 12px;">@_message</span>
-        }
     </div>
 
     @if (_devices.Count == 0)
@@ -96,6 +85,13 @@
     </div>
 }
 
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
+        @_message
+    </div>
+}
+
 @code {
     private List<ControlMenu.Data.Entities.Device> _devices = [];
     private bool _showForm;
@@ -110,8 +106,6 @@
     private string? _message;
     private bool _messageIsError;
     private int _discoveryInterval = 300;
-    private string? _discoveryMessage;
-    private bool _discoveryMessageIsError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -127,20 +121,12 @@
         {
             _discoveryInterval = val;
             await Config.SetSettingAsync("discovery-interval", val.ToString());
-            _discoveryMessage = "Saved.";
-            _discoveryMessageIsError = false;
+            await ShowMessage("Saved.");
         }
         else
         {
-            _discoveryMessage = "Must be between 30 and 3600 seconds.";
-            _discoveryMessageIsError = true;
+            await ShowMessage("Must be between 30 and 3600 seconds.", true);
         }
-        StateHasChanged();
-        _ = Task.Delay(3000).ContinueWith(_ => InvokeAsync(() =>
-        {
-            _discoveryMessage = null;
-            StateHasChanged();
-        }));
     }
 
     private async Task LoadDevices()
