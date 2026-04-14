@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text.RegularExpressions;
 using ControlMenu.Modules.Cameras.Services;
 
@@ -7,8 +8,8 @@ namespace ControlMenu.Modules.Cameras;
 
 public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraProxyMiddleware> logger)
 {
-    private static readonly ConcurrentDictionary<int, CookieContainer> _cookieJars = new();
-    private static readonly ConcurrentDictionary<int, HttpClient> _httpClients = new();
+    // Track which cameras have been pre-authenticated this app lifetime
+    private static readonly ConcurrentDictionary<int, bool> _authenticated = new();
 
     private static readonly string[] _stripHeaders =
     [
@@ -19,6 +20,13 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
 
     [GeneratedRegex(@"^/cameras/(\d+)/proxy(?:/(.*))?$", RegexOptions.IgnoreCase)]
     private static partial Regex ProxyPathRegex();
+
+    // Content types that may contain absolute URL references needing rewriting
+    private static readonly string[] _rewritableContentTypes = ["text/html", "text/javascript", "application/javascript", "text/css"];
+
+    // Hikvision/LTS well-known root paths used in their web UI
+    [GeneratedRegex(@"(?<=[""'/=])/(doc|ISAPI|SDK|PSIA|images|css|js|custom|bvw)(?=[/""])", RegexOptions.Compiled)]
+    private static partial Regex AbsolutePathRegex();
 
     public async Task InvokeAsync(HttpContext context)
     {
@@ -32,7 +40,6 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         var cameraIndex = int.Parse(match.Groups[1].Value);
         var proxyPath = match.Groups[2].Success ? match.Groups[2].Value : "";
 
-        // Resolve scoped services
         var cameraService = context.RequestServices.GetRequiredService<ICameraService>();
 
         var camera = await cameraService.GetCameraAsync(cameraIndex);
@@ -52,96 +59,167 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         }
 
         var baseUri = new Uri($"http://{camera.IpAddress}:{camera.Port}");
-        var client = GetOrCreateClient(cameraIndex, baseUri, credentials.Value.Username, credentials.Value.Password);
+        var proxyPrefix = $"/cameras/{cameraIndex}/proxy";
 
-        // Try session login if no cookies cached (some firmware needs it in addition to digest auth)
-        if (!_cookieJars.TryGetValue(cameraIndex, out var jar) || jar.Count == 0)
+        // Create handler with digest auth but NO cookie container — cookies flow as headers
+        var handler = new HttpClientHandler
         {
-            await TrySessionLoginAsync(client, credentials.Value.Username, credentials.Value.Password, cameraIndex);
+            Credentials = new NetworkCredential(credentials.Value.Username, credentials.Value.Password),
+            UseCookies = false, // We manage cookies transparently via headers
+            AllowAutoRedirect = false,
+            PreAuthenticate = false
+        };
+        using var client = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(30) };
+
+        // Pre-authenticate: on first access, call ISAPI to get a session cookie for the browser
+        if (!_authenticated.ContainsKey(cameraIndex) || !BrowserHasSessionCookie(context.Request, cameraIndex))
+        {
+            var sessionCookie = await PreAuthenticateAsync(client, credentials.Value.Username, credentials.Value.Password, cameraIndex);
+            if (sessionCookie is not null)
+            {
+                // Set the camera's session cookie on the browser, scoped to the proxy path
+                context.Response.Cookies.Append($"cam{cameraIndex}_session", sessionCookie, new CookieOptions
+                {
+                    Path = proxyPrefix,
+                    HttpOnly = false, // Camera JS needs to read it
+                    SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax
+                });
+                _authenticated[cameraIndex] = true;
+            }
         }
 
         // Build target URI
         var targetUri = new Uri(baseUri, $"/{proxyPath}{context.Request.QueryString}");
 
-        // Forward the request
-        var response = await ForwardRequestAsync(client, context, targetUri);
+        // Forward the request, passing browser cookies to camera
+        var response = await ForwardRequestAsync(client, context, targetUri, cameraIndex);
 
-        // On 401, clear session, re-login, retry once
+        // On 401, try re-auth and retry
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             logger.LogWarning("Camera {Index} returned 401, re-authenticating", cameraIndex);
-            ClearSession(cameraIndex);
-            client = GetOrCreateClient(cameraIndex, baseUri, credentials.Value.Username, credentials.Value.Password);
-            await TrySessionLoginAsync(client, credentials.Value.Username, credentials.Value.Password, cameraIndex);
+            _authenticated.TryRemove(cameraIndex, out _);
 
-            response = await ForwardRequestAsync(client, context, targetUri);
+            var sessionCookie = await PreAuthenticateAsync(client, credentials.Value.Username, credentials.Value.Password, cameraIndex);
+            if (sessionCookie is not null)
+            {
+                context.Response.Cookies.Append($"cam{cameraIndex}_session", sessionCookie, new CookieOptions
+                {
+                    Path = proxyPrefix,
+                    HttpOnly = false,
+                    SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax
+                });
+                _authenticated[cameraIndex] = true;
+            }
+
+            response = await ForwardRequestAsync(client, context, targetUri, cameraIndex);
         }
 
         await WriteProxyResponseAsync(context, response, cameraIndex);
     }
 
-    private static HttpClient GetOrCreateClient(int cameraIndex, Uri baseUri, string? username = null, string? password = null)
+    private static bool BrowserHasSessionCookie(HttpRequest request, int cameraIndex)
     {
-        return _httpClients.GetOrAdd(cameraIndex, _ =>
-        {
-            var jar = _cookieJars.GetOrAdd(cameraIndex, _ => new CookieContainer());
-            var handler = new HttpClientHandler
-            {
-                CookieContainer = jar,
-                AllowAutoRedirect = false,
-                UseCookies = true
-            };
-
-            // Hikvision/LTS cameras use HTTP Digest Authentication for ISAPI
-            if (username is not null && password is not null)
-            {
-                handler.Credentials = new NetworkCredential(username, password);
-                handler.PreAuthenticate = false; // Let the 401 challenge flow naturally
-            }
-
-            return new HttpClient(handler)
-            {
-                BaseAddress = baseUri,
-                Timeout = TimeSpan.FromSeconds(15)
-            };
-        });
+        return request.Cookies.ContainsKey($"cam{cameraIndex}_session");
     }
 
     /// <summary>
-    /// Attempts session-based login (some Hikvision firmware uses this on top of digest auth).
-    /// Best-effort — if it fails, digest auth credentials on the HttpClient may still work.
+    /// Pre-authenticate with camera via digest auth to get a session cookie.
+    /// Returns the session cookie value, or null if it couldn't be obtained.
     /// </summary>
-    private async Task TrySessionLoginAsync(HttpClient client, string username, string password, int cameraIndex)
+    private async Task<string?> PreAuthenticateAsync(HttpClient client, string username, string password, int cameraIndex)
     {
-        var loginXml = $"<SessionLogin><userName>{username}</userName><password>{password}</password></SessionLogin>";
-
+        // Try ISAPI sessionLogin with digest auth
         try
         {
+            var loginXml = $"<SessionLogin><userName>{username}</userName><password>{password}</password></SessionLogin>";
             var content = new StringContent(loginXml, System.Text.Encoding.UTF8, "application/xml");
             var response = await client.PostAsync("/ISAPI/Security/sessionLogin", content);
+
             if (response.IsSuccessStatusCode)
             {
-                logger.LogInformation("Camera {Index} session login succeeded", cameraIndex);
-                return;
+                // Extract session cookie from response
+                var cookie = ExtractSessionCookie(response);
+                if (cookie is not null)
+                {
+                    logger.LogInformation("Camera {Index} pre-authenticated, got session cookie", cameraIndex);
+                    return cookie;
+                }
             }
-            logger.LogDebug("Camera {Index} sessionLogin returned {Status}, relying on digest auth", cameraIndex, response.StatusCode);
         }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "Camera {Index} sessionLogin not available, relying on digest auth", cameraIndex);
+            logger.LogDebug(ex, "Camera {Index} sessionLogin failed", cameraIndex);
         }
+
+        // Fallback: just GET the root page with digest auth — camera may set a cookie
+        try
+        {
+            var response = await client.GetAsync("/");
+            var cookie = ExtractSessionCookie(response);
+            if (cookie is not null)
+            {
+                logger.LogInformation("Camera {Index} got session cookie from root page", cameraIndex);
+                return cookie;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Camera {Index} root page auth failed", cameraIndex);
+        }
+
+        logger.LogWarning("Camera {Index} pre-authentication did not yield a session cookie", cameraIndex);
+        return null;
     }
 
-    private static async Task<HttpResponseMessage> ForwardRequestAsync(HttpClient client, HttpContext context, Uri targetUri)
+    private static string? ExtractSessionCookie(HttpResponseMessage response)
+    {
+        if (!response.Headers.TryGetValues("Set-Cookie", out var cookies))
+            return null;
+
+        // Hikvision typically uses WebSession or ISAPI_SESSION cookies
+        foreach (var cookie in cookies)
+        {
+            if (cookie.Contains("WebSession", StringComparison.OrdinalIgnoreCase) ||
+                cookie.Contains("session", StringComparison.OrdinalIgnoreCase))
+            {
+                // Extract just the cookie value (before first ;)
+                var parts = cookie.Split(';')[0].Split('=', 2);
+                if (parts.Length == 2)
+                    return $"{parts[0].Trim()}={parts[1].Trim()}";
+            }
+        }
+
+        // If no named session cookie, take the first Set-Cookie
+        var first = cookies.FirstOrDefault();
+        if (first is not null)
+        {
+            var parts = first.Split(';')[0];
+            return parts;
+        }
+
+        return null;
+    }
+
+    private static async Task<HttpResponseMessage> ForwardRequestAsync(HttpClient client, HttpContext context, Uri targetUri, int cameraIndex)
     {
         var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUri);
 
-        // Copy request headers (skip Host)
+        // Copy request headers (skip Host, Cookie is handled separately)
         foreach (var header in context.Request.Headers)
         {
             if (string.Equals(header.Key, "Host", StringComparison.OrdinalIgnoreCase))
                 continue;
+            if (string.Equals(header.Key, "Cookie", StringComparison.OrdinalIgnoreCase))
+                continue;
             request.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
+        }
+
+        // Forward the camera session cookie from browser to camera
+        // Browser stores it as cam{N}_session, camera expects the raw cookie
+        if (context.Request.Cookies.TryGetValue($"cam{cameraIndex}_session", out var sessionCookie) && !string.IsNullOrEmpty(sessionCookie))
+        {
+            request.Headers.TryAddWithoutValidation("Cookie", sessionCookie);
         }
 
         // Copy request body for POST/PUT
@@ -155,26 +233,23 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         return await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
     }
 
-    // Content types that may contain absolute URL references needing rewriting
-    private static readonly string[] _rewritableContentTypes = ["text/html", "text/javascript", "application/javascript", "text/css"];
-
-    // Hikvision/LTS well-known root paths used in their web UI
-    [GeneratedRegex(@"(?<=[""'/=])/(doc|ISAPI|SDK|PSIA|images|css|js|custom|bvw)(?=[/""])", RegexOptions.Compiled)]
-    private static partial Regex AbsolutePathRegex();
-
     private static async Task WriteProxyResponseAsync(HttpContext context, HttpResponseMessage response, int cameraIndex)
     {
         context.Response.StatusCode = (int)response.StatusCode;
 
-        // Copy response headers, stripping iframe-blocking and transfer-encoding
+        var proxyPrefix = $"/cameras/{cameraIndex}/proxy";
+
+        // Copy response headers
         foreach (var header in response.Headers.Concat(response.Content.Headers))
         {
             if (_stripHeaders.Any(h => string.Equals(h, header.Key, StringComparison.OrdinalIgnoreCase)))
                 continue;
             if (string.Equals(header.Key, "Transfer-Encoding", StringComparison.OrdinalIgnoreCase))
                 continue;
-            // Skip Content-Length — we may rewrite the body, changing its length
             if (string.Equals(header.Key, "Content-Length", StringComparison.OrdinalIgnoreCase))
+                continue;
+            // Don't forward Set-Cookie directly — we manage cookies via our own cookie names
+            if (string.Equals(header.Key, "Set-Cookie", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             // Rewrite Location headers for redirects
@@ -183,8 +258,8 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
                 var rewritten = header.Value.Select(v =>
                 {
                     if (Uri.TryCreate(v, UriKind.Absolute, out var uri))
-                        return $"/cameras/{cameraIndex}/proxy{uri.PathAndQuery}";
-                    return $"/cameras/{cameraIndex}/proxy/{v.TrimStart('/')}";
+                        return $"{proxyPrefix}{uri.PathAndQuery}";
+                    return $"{proxyPrefix}/{v.TrimStart('/')}";
                 });
                 context.Response.Headers.Append(header.Key, rewritten.ToArray());
                 continue;
@@ -198,8 +273,7 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         if (_rewritableContentTypes.Any(ct => contentType.Contains(ct, StringComparison.OrdinalIgnoreCase)))
         {
             var body = await response.Content.ReadAsStringAsync();
-            var prefix = $"/cameras/{cameraIndex}/proxy";
-            body = AbsolutePathRegex().Replace(body, $"{prefix}/$1");
+            body = AbsolutePathRegex().Replace(body, $"{proxyPrefix}/$1");
             await context.Response.WriteAsync(body);
         }
         else
@@ -209,12 +283,10 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
     }
 
     /// <summary>
-    /// Clears cached session cookies for a camera. Called by settings UI when credentials change.
+    /// Clears cached auth state for a camera. Called by settings UI when credentials change.
     /// </summary>
     public static void ClearSession(int cameraIndex)
     {
-        _cookieJars.TryRemove(cameraIndex, out _);
-        if (_httpClients.TryRemove(cameraIndex, out var client))
-            client.Dispose();
+        _authenticated.TryRemove(cameraIndex, out _);
     }
 }
