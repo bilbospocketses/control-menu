@@ -254,22 +254,24 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
             ",\"szRandom\":\"" + EscapeJs(session.Random) + "\"}";
         var pluginInfoB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(pluginInfo));
 
-        var script = "<script>(function(){" +
-            "if(!sessionStorage.getItem(\"authInfo\")){" +
-            "sessionStorage.setItem(\"authInfo\",\"" + authInfoB64 + "\");" +
-            "sessionStorage.setItem(\"localPluginAuthInfo\",\"" + pluginInfoB64 + "\");" +
-            "}" +
-            "})();</script>\n";
+        var script = "\n<script type=\"text/javascript\">\n" +
+            "sessionStorage.setItem(\"authInfo\",\"" + authInfoB64 + "\");\n" +
+            "sessionStorage.setItem(\"localPluginAuthInfo\",\"" + pluginInfoB64 + "\");\n" +
+            "</script>\n";
 
-        // Insert before the first <script> tag so it runs before camera JS
-        var idx = html.IndexOf("<script", StringComparison.OrdinalIgnoreCase);
+        // Insert right after <head> opening tag so it runs first
+        var idx = html.IndexOf("<head>", StringComparison.OrdinalIgnoreCase);
         if (idx >= 0)
-            return html.Insert(idx, script);
+            return html.Insert(idx + 6, script);
 
-        // Fallback: insert before </head>
-        idx = html.IndexOf("</head>", StringComparison.OrdinalIgnoreCase);
+        // Fallback: insert at start of body
+        idx = html.IndexOf("<body", StringComparison.OrdinalIgnoreCase);
         if (idx >= 0)
-            return html.Insert(idx, script);
+        {
+            var bodyEnd = html.IndexOf('>', idx);
+            if (bodyEnd >= 0)
+                return html.Insert(bodyEnd + 1, script);
+        }
 
         return html + script;
     }
