@@ -23,7 +23,9 @@ else
     <div class="unblocker-panel">
         <div class="form-group">
             <label class="form-label">Directory Path</label>
-            <input type="text" @bind="_directoryPath" class="form-input" placeholder="C:\Downloads\SomeFolder" />
+            <input type="text" class="form-control" style="max-width:500px;"
+                   placeholder="C:\Downloads\SomeFolder"
+                   @bind="_directoryPath" />
         </div>
 
         @if (!string.IsNullOrEmpty(_error))
