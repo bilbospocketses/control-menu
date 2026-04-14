@@ -192,11 +192,10 @@
         var results = await DepManager.CheckAllAsync();
         var updates = results.Count(r => r.Status == DependencyStatus.UpdateAvailable);
 
-        _message = updates > 0
-            ? $"{updates} update(s) available"
-            : "All dependencies up to date";
-        _messageIsError = false;
         _checkingAll = false;
+        ShowSaveMessage(updates > 0
+            ? $"{updates} update(s) available"
+            : "All dependencies up to date");
 
         await LoadDependencies();
     }
@@ -240,10 +239,13 @@
         var result = await DepManager.DownloadAndInstallAsync(_updateTargetId, _resolvedAsset!);
 
         _updatingId = null;
-        _message = result.Success
-            ? $"Updated to version {result.NewVersion}"
-            : $"Update failed: {result.ErrorMessage}";
-        _messageIsError = !result.Success;
+        if (result.Success)
+            ShowSaveMessage($"Updated to version {result.NewVersion}");
+        else
+        {
+            _message = $"Update failed: {result.ErrorMessage}";
+            _messageIsError = true;
+        }
 
         await LoadDependencies();
     }
@@ -288,12 +290,15 @@
         }
 
         _updatingAll = false;
-        _message = failed == 0
-            ? $"Updated {succeeded} dependenc{(succeeded == 1 ? "y" : "ies")} successfully"
-            : $"Updated {succeeded}, failed {failed}";
-        _messageIsError = failed > 0;
-
         await LoadDependencies();
+
+        if (failed == 0)
+            ShowSaveMessage($"Updated {succeeded} dependenc{(succeeded == 1 ? "y" : "ies")} successfully");
+        else
+        {
+            _message = $"Updated {succeeded}, failed {failed}";
+            _messageIsError = true;
+        }
     }
 
     private async Task OnPathChanged(string name, string moduleId, ChangeEventArgs e)
