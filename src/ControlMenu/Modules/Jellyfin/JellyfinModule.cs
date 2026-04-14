@@ -66,8 +66,8 @@ public class JellyfinModule : IToolModule
 
     public IEnumerable<NavEntry> GetNavEntries() =>
     [
-        new NavEntry("DB Date Update", "/jellyfin/db-update", "bi-calendar-date", 0),
-        new NavEntry("Cast & Crew", "/jellyfin/cast-crew", "bi-people", 1),
+        new NavEntry("DB Date Update", "/jellyfin/db-update", "🗃️", 0),
+        new NavEntry("Cast & Crew", "/jellyfin/cast-crew", "🎭", 1),
         // Jellyfin settings are under main Settings > Jellyfin tab
     ];
 

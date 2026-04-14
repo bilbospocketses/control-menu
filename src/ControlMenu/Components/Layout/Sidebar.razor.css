@@ -107,6 +107,14 @@
     color: var(--text-muted);
 }
 
+::deep .sidebar-link .nav-emoji {
+    font-size: 1.1rem;
+    line-height: 1;
+    flex-shrink: 0;
+    width: 1.2em;
+    text-align: center;
+}
+
 ::deep .sidebar-link:hover {
     background-color: var(--hover-bg);
     color: var(--text-primary);

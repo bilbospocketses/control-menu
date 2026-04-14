@@ -44,7 +44,14 @@
                                 <NavLink class="sidebar-link" href="@entry.Href" Match="NavLinkMatch.All">
                                     @if (entry.Icon is not null)
                                     {
-                                        <i class="bi @entry.Icon"></i>
+                                        @if (entry.Icon.StartsWith("bi-"))
+                                        {
+                                            <i class="bi @entry.Icon"></i>
+                                        }
+                                        else
+                                        {
+                                            <span class="nav-emoji">@entry.Icon</span>
+                                        }
                                     }
                                     <span>@entry.Title</span>
                                 </NavLink>
@@ -58,7 +65,7 @@
 
     <div class="sidebar-footer">
         <NavLink class="sidebar-link" href="/settings" Match="NavLinkMatch.Prefix">
-            <i class="bi bi-gear"></i>
+            <span class="nav-emoji">⚙️</span>
             @if (!Collapsed)
             {
                 <span>Settings</span>

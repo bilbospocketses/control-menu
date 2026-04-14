@@ -83,9 +83,9 @@ public class AndroidDevicesModule : IToolModule
 
     public IEnumerable<NavEntry> GetNavEntries() =>
     [
-        new NavEntry("Device List", "/android/devices", "bi-list-ul", 0),
-        new NavEntry("Google TV", "/android/googletv", "bi-tv", 1),
-        new NavEntry("Pixel", "/android/pixel", "bi-phone", 2)
+        new NavEntry("Device List", "/android/devices", "📋", 0),
+        new NavEntry("Google TV", "/android/googletv", "📺", 1),
+        new NavEntry("Pixel", "/android/pixel", "📱", 2)
     ];
 
     public IEnumerable<BackgroundJobDefinition> GetBackgroundJobs() => [];
