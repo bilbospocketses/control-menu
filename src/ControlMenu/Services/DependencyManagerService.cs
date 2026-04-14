@@ -584,9 +584,27 @@ public class DependencyManagerService : IDependencyManagerService
             latestVersion = match.Groups[1].Value;
 
         entity.LatestKnownVersion = latestVersion;
-        entity.Status = CompareVersions(entity.InstalledVersion, latestVersion) < 0
-            ? DependencyStatus.UpdateAvailable
-            : DependencyStatus.UpToDate;
+
+        if (CompareVersions(entity.InstalledVersion, latestVersion) < 0)
+        {
+            // If this is a "-latest-" URL and we already downloaded it (installed version
+            // was set by a prior install), the CDN may be serving an older binary than the
+            // version check page advertises. Don't loop — mark as UpToDate.
+            var downloadUrl = entity.DownloadUrl ?? moduleDep.DownloadUrl ?? "";
+            if (downloadUrl.Contains("-latest-") && entity.InstalledVersion is not null)
+            {
+                entity.Status = DependencyStatus.UpToDate;
+                entity.LatestKnownVersion = entity.InstalledVersion;
+            }
+            else
+            {
+                entity.Status = DependencyStatus.UpdateAvailable;
+            }
+        }
+        else
+        {
+            entity.Status = DependencyStatus.UpToDate;
+        }
 
         // Update download URL if the current one contains an old version-encoded filename
         if (entity.Status == DependencyStatus.UpdateAvailable && moduleDep.DownloadUrl is not null)

@@ -119,7 +119,7 @@ a {
 }
 
 /* ── Settings Page ── */
-.settings-layout { display: flex; gap: 24px; max-width: 1100px; }
+.settings-layout { display: flex; gap: 24px; max-width: 100%; }
 .settings-nav { display: flex; flex-direction: column; gap: 2px; min-width: 200px; padding-top: 4px; }
 .settings-nav-item { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 6px; cursor: pointer; color: var(--text-primary); font-size: 0.9rem; background: none; border: none; text-align: left; width: 100%; }
 .settings-nav-item:hover { background-color: var(--hover-bg); }
@@ -151,9 +151,10 @@ select.form-control { appearance: auto; }
 /* ── Tables ── */
 .data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .data-table th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
-.data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
+.data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-color); vertical-align: middle; white-space: nowrap; }
+.data-table td.wrap { white-space: normal; }
 .data-table tr:hover td { background-color: var(--hover-bg); }
-.data-table .actions { display: flex; gap: 6px; justify-content: flex-end; }
+.data-table .actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
 
 /* ── Status indicators ── */
 .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }

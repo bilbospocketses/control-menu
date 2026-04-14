@@ -37,26 +37,40 @@
             <thead>
                 <tr>
                     <th>Name</th>
-                    <th>Module</th>
                     <th>Installed</th>
                     <th>Latest</th>
                     <th>Status</th>
-                    <th>Source</th>
-                    <th>Last Checked</th>
+                    <th>Install Path</th>
                     <th style="text-align:right;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach (var dep in _dependencies)
                 {
+                    var isConfigurable = DepManager.IsConfigurable(dep.Name, dep.ModuleId);
                     <tr>
                         <td><strong>@dep.Name</strong></td>
-                        <td>@dep.ModuleId</td>
                         <td><code>@(dep.InstalledVersion ?? "—")</code></td>
                         <td><code>@(dep.LatestKnownVersion ?? "—")</code></td>
                         <td><span class="status-badge @GetStatusClass(dep.Status)">@FormatStatus(dep.Status)</span></td>
-                        <td>@dep.SourceType</td>
-                        <td>@(dep.LastChecked?.ToLocalTime().ToString("g") ?? "Never")</td>
+                        <td>
+                            @if (isConfigurable)
+                            {
+                                <div style="display:flex; gap:0.4rem; align-items:center;">
+                                    <input class="form-control" style="min-width:200px; font-size:0.85rem;"
+                                           value="@(_installPaths.GetValueOrDefault(dep.Name, ""))"
+                                           @onchange="e => OnPathChanged(dep.Name, dep.ModuleId, e)" />
+                                    <button class="btn btn-secondary btn-sm" title="Reset to default"
+                                            @onclick="() => ResetPath(dep.Name, dep.ModuleId)">
+                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                    </button>
+                                </div>
+                            }
+                            else
+                            {
+                                <span style="color:var(--text-muted); font-size:0.85rem;">External</span>
+                            }
+                        </td>
                         <td class="actions">
                             @if (dep.Status == DependencyStatus.UpdateAvailable && _hasInstallPath.Contains(dep.Name))
                             {
@@ -80,7 +94,7 @@
                             {
                                 <a class="btn btn-secondary btn-sm" href="@dep.ProjectHomeUrl"
                                    target="_blank" rel="noopener">
-                                    <i class="bi bi-box-arrow-up-right"></i> Project
+                                    <i class="bi bi-box-arrow-up-right"></i>
                                 </a>
                             }
                         </td>
@@ -122,6 +136,7 @@
 @code {
     private List<Dependency> _dependencies = [];
     private HashSet<string> _hasInstallPath = [];
+    private Dictionary<string, string> _installPaths = new();
     private bool _checkingAll;
     private Guid? _checkingId;
     private Guid? _updatingId;
@@ -151,6 +166,14 @@
             .ToHashSet();
         _updatableCount = _dependencies.Count(d =>
             d.Status == DependencyStatus.UpdateAvailable && _hasInstallPath.Contains(d.Name));
+
+        // Load install paths for configurable deps
+        _installPaths.Clear();
+        foreach (var dep in _dependencies.Where(d => DepManager.IsConfigurable(d.Name, d.ModuleId)))
+        {
+            var path = await DepManager.GetInstallPathAsync(dep.Name, dep.ModuleId);
+            _installPaths[dep.Name] = path ?? "";
+        }
     }
 
     private async Task CheckAll()
@@ -264,6 +287,21 @@
         _messageIsError = failed > 0;
 
         await LoadDependencies();
+    }
+
+    private async Task OnPathChanged(string name, string moduleId, ChangeEventArgs e)
+    {
+        var newPath = e.Value?.ToString()?.Trim() ?? "";
+        _installPaths[name] = newPath;
+        if (!string.IsNullOrEmpty(newPath))
+            await DepManager.SetInstallPathAsync(name, newPath);
+    }
+
+    private async Task ResetPath(string name, string moduleId)
+    {
+        await DepManager.SetInstallPathAsync(name, "");
+        var defaultPath = DepManager.GetInstallPath(name, moduleId) ?? "";
+        _installPaths[name] = defaultPath;
     }
 
     private static string GetStatusClass(DependencyStatus status) => status switch
