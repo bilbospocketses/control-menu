@@ -449,7 +449,7 @@ go2rtc runs as a managed child process alongside the app. `Go2RtcService` genera
 ### CameraConfig
 
 ```csharp
-public record CameraConfig(int Index, string Name, string IpAddress, int Port);
+public record CameraConfig(int Index, string Name, string IpAddress, int Port = 554);
 ```
 
 A lightweight record representing a single camera's non-secret configuration. The `Index` is the camera's position (1-based) within the user's configured camera count.
@@ -464,7 +464,7 @@ Settings per camera:
 | `camera-count` | int | Plain setting (default: 8) |
 | `camera-{index}-name` | string | Plain setting |
 | `camera-{index}-ip` | string | Plain setting |
-| `camera-{index}-port` | int | Plain setting |
+| `camera-{index}-port` | int | Plain setting (default: 554) |
 | `camera-{index}-username` | string | Secret (encrypted) |
 | `camera-{index}-password` | string | Secret (encrypted) |
 

@@ -29,5 +29,11 @@ public class CamerasModuleTests
     }
 
     [Fact]
-    public void Dependencies_IsEmpty() => Assert.Empty(_sut.Dependencies);
+    public void Dependencies_ContainsGo2Rtc()
+    {
+        var deps = _sut.Dependencies.ToList();
+        Assert.Single(deps);
+        Assert.Equal("go2rtc", deps[0].Name);
+        Assert.Equal("go2rtc.exe", deps[0].ExecutableName);
+    }
 }

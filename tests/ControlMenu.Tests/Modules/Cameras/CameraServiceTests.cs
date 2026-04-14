@@ -26,23 +26,23 @@ public class CameraServiceTests
     {
         _config.Setup(c => c.GetSettingAsync("camera-1-name", "cameras")).ReturnsAsync("Front Door");
         _config.Setup(c => c.GetSettingAsync("camera-1-ip", "cameras")).ReturnsAsync("192.168.86.101");
-        _config.Setup(c => c.GetSettingAsync("camera-1-port", "cameras")).ReturnsAsync("80");
+        _config.Setup(c => c.GetSettingAsync("camera-1-port", "cameras")).ReturnsAsync("554");
         var result = await _sut.GetCameraAsync(1);
         Assert.NotNull(result);
         Assert.Equal("Front Door", result.Name);
         Assert.Equal("192.168.86.101", result.IpAddress);
-        Assert.Equal(80, result.Port);
+        Assert.Equal(554, result.Port);
     }
 
     [Fact]
-    public async Task GetCameraAsync_DefaultsPort80_WhenNotSet()
+    public async Task GetCameraAsync_DefaultsPort554_WhenNotSet()
     {
         _config.Setup(c => c.GetSettingAsync("camera-3-name", "cameras")).ReturnsAsync("Garage");
         _config.Setup(c => c.GetSettingAsync("camera-3-ip", "cameras")).ReturnsAsync("192.168.86.103");
         _config.Setup(c => c.GetSettingAsync("camera-3-port", "cameras")).ReturnsAsync((string?)null);
         var result = await _sut.GetCameraAsync(3);
         Assert.NotNull(result);
-        Assert.Equal(80, result.Port);
+        Assert.Equal(554, result.Port);
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public class CameraServiceTests
     {
         _config.Setup(c => c.GetSettingAsync("camera-1-name", "cameras")).ReturnsAsync("Front Door");
         _config.Setup(c => c.GetSettingAsync("camera-1-ip", "cameras")).ReturnsAsync("192.168.86.101");
-        _config.Setup(c => c.GetSettingAsync("camera-1-port", "cameras")).ReturnsAsync("80");
+        _config.Setup(c => c.GetSettingAsync("camera-1-port", "cameras")).ReturnsAsync("554");
         var result = await _sut.GetConfiguredCamerasAsync();
         Assert.Single(result);
         Assert.Equal("Front Door", result[0].Name);

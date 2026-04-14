@@ -34,10 +34,10 @@
                    placeholder="e.g. 192.168.86.101" />
         </div>
         <div class="form-row">
-            <label>Port</label>
-            <input class="form-control" type="number" value="@GetIntValue(_ports, index, 80)"
-                   @onchange="e => _ports[index] = int.TryParse(e.Value?.ToString(), out var p) ? p : 80"
-                   placeholder="80" />
+            <label>RTSP Port</label>
+            <input class="form-control" type="number" value="@GetIntValue(_ports, index, 554)"
+                   @onchange="e => _ports[index] = int.TryParse(e.Value?.ToString(), out var p) ? p : 554"
+                   placeholder="554" />
         </div>
         <div class="form-row">
             <label>Username</label>
@@ -87,7 +87,7 @@
         var cam = await CameraService.GetCameraAsync(i);
         _names[i] = cam?.Name ?? "";
         _ips[i] = cam?.IpAddress ?? "";
-        _ports[i] = cam?.Port ?? 80;
+        _ports[i] = cam?.Port ?? 554;
 
         var creds = await CameraService.GetCredentialsAsync(i);
         _usernames[i] = creds?.Username ?? "";
@@ -120,7 +120,7 @@
 
         if (!string.IsNullOrWhiteSpace(GetValue(_names, index)) && !string.IsNullOrWhiteSpace(GetValue(_ips, index)))
         {
-            await CameraService.SaveCameraAsync(index, _names[index].Trim(), _ips[index].Trim(), GetIntValue(_ports, index, 80));
+            await CameraService.SaveCameraAsync(index, _names[index].Trim(), _ips[index].Trim(), GetIntValue(_ports, index, 554));
         }
         if (!string.IsNullOrWhiteSpace(GetValue(_usernames, index)) && !string.IsNullOrWhiteSpace(GetValue(_passwords, index)))
         {

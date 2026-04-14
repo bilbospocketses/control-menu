@@ -26,7 +26,7 @@
                     <input class="form-control" @bind="_ips[index]" placeholder="e.g. 192.168.86.101" />
                 </div>
                 <div class="form-group">
-                    <label>Port</label>
+                    <label>RTSP Port</label>
                     <input class="form-control" type="number" @bind="_ports[index]" />
                 </div>
                 <div class="form-group">
@@ -58,7 +58,7 @@
             var cam = await CameraService.GetCameraAsync(i);
             _names[i] = cam?.Name ?? "";
             _ips[i] = cam?.IpAddress ?? "";
-            _ports[i] = cam?.Port ?? 80;
+            _ports[i] = cam?.Port ?? 554;
 
             var creds = await CameraService.GetCredentialsAsync(i);
             _usernames[i] = creds?.Username ?? "";
@@ -76,7 +76,7 @@
             if (_names.TryGetValue(i, out var name) && _ips.TryGetValue(i, out var ip)
                 && !string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(ip))
             {
-                await CameraService.SaveCameraAsync(i, name.Trim(), ip.Trim(), _ports.GetValueOrDefault(i, 80));
+                await CameraService.SaveCameraAsync(i, name.Trim(), ip.Trim(), _ports.GetValueOrDefault(i, 554));
             }
             if (_usernames.TryGetValue(i, out var user) && _passwords.TryGetValue(i, out var pass)
                 && !string.IsNullOrWhiteSpace(user) && !string.IsNullOrWhiteSpace(pass))

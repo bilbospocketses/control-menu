@@ -128,7 +128,7 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
             if (creds is null) continue;
 
             var (username, password) = creds.Value;
-            sb.AppendLine($"  camera-{camera.Index}: rtsp://{username}:{password}@{camera.IpAddress}:554");
+            sb.AppendLine($"  camera-{camera.Index}: rtsp://{username}:{password}@{camera.IpAddress}:{camera.Port}");
         }
 
         sb.AppendLine("api:");

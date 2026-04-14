@@ -24,7 +24,7 @@ public class CameraService(IConfigurationService config) : ICameraService
         if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(ip))
             return null;
         var portStr = await config.GetSettingAsync($"camera-{index}-port", Module);
-        var port = int.TryParse(portStr, out var p) ? p : 80;
+        var port = int.TryParse(portStr, out var p) ? p : 554;
         return new CameraConfig(index, name, ip, port);
     }
 
