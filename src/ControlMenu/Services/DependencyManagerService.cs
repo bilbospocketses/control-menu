@@ -14,6 +14,7 @@ public class DependencyManagerService : IDependencyManagerService
     private readonly IReadOnlyList<IToolModule> _modules;
     private readonly ICommandExecutor _executor;
     private readonly IHttpClientFactory _httpFactory;
+    private readonly IConfigurationService _config;
     private readonly ILogger<DependencyManagerService> _logger;
 
     public DependencyManagerService(
@@ -21,12 +22,14 @@ public class DependencyManagerService : IDependencyManagerService
         IReadOnlyList<IToolModule> modules,
         ICommandExecutor executor,
         IHttpClientFactory httpFactory,
+        IConfigurationService config,
         ILogger<DependencyManagerService> logger)
     {
         _dbFactory = dbFactory;
         _modules = modules;
         _executor = executor;
         _httpFactory = httpFactory;
+        _config = config;
         _logger = logger;
     }
 
@@ -73,8 +76,8 @@ public class DependencyManagerService : IDependencyManagerService
             entity.ProjectHomeUrl = dep.ProjectHomeUrl;
             entity.DownloadUrl = entity.DownloadUrl ?? dep.DownloadUrl;
 
-            // Refresh installed version
-            entity.InstalledVersion = await GetInstalledVersionAsync(dep);
+            // Refresh installed version — check local install path first, then system PATH
+            entity.InstalledVersion = await GetInstalledVersionAsync(dep, module.Id);
         }
 
         await db.SaveChangesAsync();
@@ -112,8 +115,8 @@ public class DependencyManagerService : IDependencyManagerService
 
         try
         {
-            // Refresh installed version
-            entity.InstalledVersion = await GetInstalledVersionAsync(moduleDep);
+            // Refresh installed version — check local install path first, then system PATH
+            entity.InstalledVersion = await GetInstalledVersionAsync(moduleDep, entity.ModuleId);
 
             switch (entity.SourceType)
             {
@@ -206,6 +209,9 @@ public class DependencyManagerService : IDependencyManagerService
         if (moduleDep?.InstallPath is null)
             return new UpdateResult(false, null, "No install path configured", null);
 
+        // Use user-configured path if set, otherwise module default
+        var installPath = await GetInstallPathAsync(entity.Name, entity.ModuleId) ?? moduleDep.InstallPath;
+
         StaleUrlAction? urlAction = null;
         var tempDir = Path.Combine(Path.GetTempPath(), "ControlMenu", Guid.NewGuid().ToString());
         Directory.CreateDirectory(tempDir);
@@ -269,12 +275,12 @@ public class DependencyManagerService : IDependencyManagerService
             var newVersion = ExtractVersion(verifyResult.StandardOutput, moduleDep.VersionPattern);
 
             // 4. Swap — backup old, move in new
-            Directory.CreateDirectory(moduleDep.InstallPath);
+            Directory.CreateDirectory(installPath);
 
             // Backup old files if upgrading
             foreach (var file in GetManagedFiles(moduleDep))
             {
-                var fullPath = Path.Combine(moduleDep.InstallPath, file);
+                var fullPath = Path.Combine(installPath, file);
                 if (File.Exists(fullPath))
                     File.Move(fullPath, fullPath + ".bak", overwrite: true);
             }
@@ -285,7 +291,7 @@ public class DependencyManagerService : IDependencyManagerService
             {
                 foreach (var file in Directory.GetFiles(sourceDir))
                 {
-                    File.Copy(file, Path.Combine(moduleDep.InstallPath, Path.GetFileName(file)),
+                    File.Copy(file, Path.Combine(installPath, Path.GetFileName(file)),
                         overwrite: true);
                 }
             }
@@ -483,16 +489,49 @@ public class DependencyManagerService : IDependencyManagerService
         }
     }
 
-    private async Task<string?> GetInstalledVersionAsync(ModuleDependency dep)
+    private async Task<string?> GetInstalledVersionAsync(ModuleDependency dep, string? moduleId = null)
     {
         var parts = dep.VersionCommand.Split(' ', 2);
-        var command = parts[0];
         var args = parts.Length > 1 ? parts[1] : null;
 
-        var result = await _executor.ExecuteAsync(command, args);
-        if (result.ExitCode != 0) return null;
+        // Try the configured install path first (local dependency store)
+        if (moduleId is not null && dep.InstallPath is not null)
+        {
+            var customPath = await _config.GetSettingAsync($"dep-path-{dep.Name}");
+            var installDir = !string.IsNullOrEmpty(customPath) ? customPath : dep.InstallPath;
 
-        return ExtractVersion(result.StandardOutput, dep.VersionPattern);
+            var exeName = dep.ExecutableName;
+            if (OperatingSystem.IsWindows() && !exeName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                exeName += ".exe";
+
+            var localExe = Path.Combine(installDir, exeName);
+            if (File.Exists(localExe))
+            {
+                try
+                {
+                    var localResult = await _executor.ExecuteAsync(localExe, args);
+                    if (localResult.ExitCode == 0)
+                    {
+                        var v = ExtractVersion(localResult.StandardOutput, dep.VersionPattern);
+                        if (v is not null) return v;
+                    }
+                }
+                catch { /* fall through to PATH */ }
+            }
+        }
+
+        // Fall back to system PATH
+        var command = parts[0];
+        try
+        {
+            var result = await _executor.ExecuteAsync(command, args);
+            if (result.ExitCode != 0) return null;
+            return ExtractVersion(result.StandardOutput, dep.VersionPattern);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static string? ExtractVersion(string output, string pattern)
@@ -624,7 +663,29 @@ public class DependencyManagerService : IDependencyManagerService
 
     public string? GetInstallPath(string name, string moduleId)
     {
+        // Check for user-configured override first (sync read — cached by ConfigurationService)
         return FindModuleDependency(moduleId, name)?.InstallPath;
+    }
+
+    public async Task<string?> GetInstallPathAsync(string name, string moduleId)
+    {
+        var custom = await _config.GetSettingAsync($"dep-path-{name}");
+        if (!string.IsNullOrWhiteSpace(custom)) return custom;
+        return FindModuleDependency(moduleId, name)?.InstallPath;
+    }
+
+    public async Task SetInstallPathAsync(string name, string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            await _config.DeleteSettingAsync($"dep-path-{name}");
+        else
+            await _config.SetSettingAsync($"dep-path-{name}", path);
+    }
+
+    public bool IsConfigurable(string name, string moduleId)
+    {
+        var dep = FindModuleDependency(moduleId, name);
+        return dep?.InstallPath is not null;
     }
 
     private static int CompareVersions(string? installed, string? latest)

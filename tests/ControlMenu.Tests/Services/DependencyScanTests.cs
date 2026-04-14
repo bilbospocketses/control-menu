@@ -14,6 +14,7 @@ public class DependencyScanTests : IDisposable
     private readonly InMemoryDbContextFactory _dbFactory;
     private readonly Mock<ICommandExecutor> _mockExecutor = new();
     private readonly Mock<IHttpClientFactory> _mockHttpFactory = new();
+    private readonly Mock<IConfigurationService> _mockConfig = new();
 
     public DependencyScanTests()
     {
@@ -26,7 +27,7 @@ public class DependencyScanTests : IDisposable
     {
         return new DependencyManagerService(
             _dbFactory, modules, _mockExecutor.Object, _mockHttpFactory.Object,
-            NullLogger<DependencyManagerService>.Instance);
+            _mockConfig.Object, NullLogger<DependencyManagerService>.Instance);
     }
 
     [Fact]

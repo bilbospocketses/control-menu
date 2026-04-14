@@ -2,14 +2,14 @@
 
 <div class="settings-section">
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
-        <h2>Locate Dependencies</h2>
+        <h2>Dependencies</h2>
         <div class="toolbar">
             <button class="btn btn-secondary btn-sm" @onclick="RescanAsync" disabled="@_scanning">
                 <i class="bi bi-arrow-clockwise"></i> Re-scan
             </button>
         </div>
     </div>
-    <p>Required tools are auto-installed to the app's <code>dependencies/</code> folder. We also check your system PATH.</p>
+    <p>Required tools are checked on your system PATH and in the app's <code>dependencies/</code> folder.</p>
 
     @if (_scanning)
     {
@@ -17,97 +17,109 @@
     }
     else if (_results.Count > 0)
     {
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Tool</th>
-                    <th>Status</th>
-                    <th>Version</th>
-                    <th>Location</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var result in _results)
-                {
-                    <tr>
-                        <td>@result.Name</td>
-                        <td>
-                            @if (result.Found)
-                            {
-                                <span class="status-badge status-ok">Found</span>
-                            }
-                            else
-                            {
-                                <span class="status-badge status-error">Not Found</span>
-                            }
-                        </td>
-                        <td>@(result.Version ?? "—")</td>
-                        <td style="font-size:0.85rem;">
-                            @if (result.Found)
-                            {
-                                @(result.Path ?? result.Source)
-                            }
-                            else
-                            {
-                                var installPath = DepManager.GetInstallPath(result.Name, result.ModuleId);
-                                @if (installPath is not null)
+        @* --- External dependencies (not configurable path) --- *@
+        var external = _results.Where(r => !DepManager.IsConfigurable(r.Name, r.ModuleId)).ToList();
+        @if (external.Count > 0)
+        {
+            <h3 style="margin-top:1rem; font-size:0.95rem; color:var(--text-secondary);">External (installed separately)</h3>
+            <table class="data-table">
+                <thead>
+                    <tr><th>Tool</th><th>Status</th><th>Version</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var result in external)
+                    {
+                        <tr>
+                            <td>@result.Name</td>
+                            <td>
+                                @if (result.Found)
                                 {
-                                    <span style="color:var(--text-muted);">@installPath</span>
+                                    <span class="status-badge status-ok">Found</span>
                                 }
                                 else
                                 {
-                                    <span style="color:var(--text-muted);">Manual install required</span>
+                                    <span class="status-badge status-error">Not Found</span>
                                 }
-                            }
-                        </td>
-                        <td>
-                            @if (result.Found)
-                            {
-                                @if (_accepted.Contains(result.Name))
+                            </td>
+                            <td>@(result.Version ?? "—")</td>
+                            <td>
+                                @if (result.Found)
                                 {
-                                    <span style="color: var(--success-color);">
-                                        <i class="bi bi-check-circle-fill"></i> OK
-                                    </span>
+                                    <span style="color: var(--success-color);"><i class="bi bi-check-circle-fill"></i> OK</span>
                                 }
                                 else
                                 {
-                                    <button class="btn btn-primary btn-sm" @onclick="() => Accept(result.Name)">Accept</button>
+                                    <span style="color:var(--text-muted); font-size:0.85rem;">Install manually</span>
                                 }
-                            }
-                            else if (_installing.Contains(result.Name))
-                            {
-                                <span style="color:var(--text-muted);"><i class="bi bi-hourglass-split"></i> Installing...</span>
-                            }
-                            else if (DepManager.CanAutoInstall(result.Name, result.ModuleId))
-                            {
-                                <button class="btn btn-primary btn-sm" @onclick="() => InstallAsync(result)">
-                                    <i class="bi bi-download"></i> Install
-                                </button>
-                            }
-                            else
-                            {
-                                @if (_editing.Contains(result.Name))
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @* --- Managed dependencies (configurable install path) --- *@
+        var managed = _results.Where(r => DepManager.IsConfigurable(r.Name, r.ModuleId)).ToList();
+        @if (managed.Count > 0)
+        {
+            <h3 style="margin-top:1.5rem; font-size:0.95rem; color:var(--text-secondary);">Managed (auto-installable)</h3>
+            <table class="data-table">
+                <thead>
+                    <tr><th>Tool</th><th>Status</th><th>Version</th><th>Install Path</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var result in managed)
+                    {
+                        var depPath = _installPaths.GetValueOrDefault(result.Name, "");
+                        <tr>
+                            <td>@result.Name</td>
+                            <td>
+                                @if (result.Found)
                                 {
-                                    <div style="display: flex; gap: 0.4rem; align-items: center;">
-                                        <input class="form-control"
-                                               style="max-width: 260px;"
-                                               placeholder="Path to executable..."
-                                               @bind="_manualPaths[result.Name]" />
-                                        <button class="btn btn-primary btn-sm" @onclick="() => OkManualPath(result.Name)">OK</button>
-                                        <button class="btn btn-secondary btn-sm" @onclick="() => CancelManualPath(result.Name)">Cancel</button>
-                                    </div>
+                                    <span class="status-badge status-ok">Found</span>
                                 }
                                 else
                                 {
-                                    <button class="btn btn-secondary btn-sm" @onclick="() => StartEditing(result.Name)">Enter Path...</button>
+                                    <span class="status-badge status-error">Not Found</span>
                                 }
-                            }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+                            </td>
+                            <td>@(result.Version ?? "—")</td>
+                            <td>
+                                <div style="display:flex; gap:0.4rem; align-items:center;">
+                                    <input class="form-control" style="min-width:240px; font-size:0.85rem;"
+                                           value="@depPath"
+                                           @onchange="e => OnPathChanged(result.Name, e)" />
+                                    <button class="btn btn-secondary btn-sm" title="Reset to default"
+                                            @onclick="() => ResetPath(result.Name, result.ModuleId)">
+                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                    </button>
+                                </div>
+                            </td>
+                            <td>
+                                @if (result.Found)
+                                {
+                                    <span style="color: var(--success-color);"><i class="bi bi-check-circle-fill"></i> OK</span>
+                                }
+                                else if (_installing.Contains(result.Name))
+                                {
+                                    <span style="color:var(--text-muted);"><i class="bi bi-hourglass-split"></i> Installing...</span>
+                                }
+                                else if (DepManager.CanAutoInstall(result.Name, result.ModuleId))
+                                {
+                                    <button class="btn btn-primary btn-sm" @onclick="() => InstallAsync(result)">
+                                        <i class="bi bi-download"></i> Install
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span style="color:var(--text-muted); font-size:0.85rem;">Manual</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
     }
 
     @if (!string.IsNullOrEmpty(_message))
@@ -122,10 +134,8 @@
     [Parameter] public SetupWizard.WizardState State { get; set; } = default!;
 
     private List<DependencyScanResult> _results = [];
-    private readonly HashSet<string> _accepted = new();
-    private readonly HashSet<string> _editing = new();
     private readonly HashSet<string> _installing = new();
-    private readonly Dictionary<string, string> _manualPaths = new();
+    private Dictionary<string, string> _installPaths = new();
     private bool _scanning = true;
     private string? _message;
     private bool _messageIsError;
@@ -138,9 +148,6 @@
     private async Task RescanAsync()
     {
         _scanning = true;
-        _accepted.Clear();
-        _editing.Clear();
-        _manualPaths.Clear();
         _message = null;
         await RunScanAsync();
     }
@@ -150,60 +157,41 @@
         _scanning = true;
         _results = (await DepManager.ScanForDependenciesAsync()).ToList();
 
-        foreach (var r in _results.Where(r => r.Found))
-            _accepted.Add(r.Name);
+        // Load install paths for configurable dependencies
+        _installPaths.Clear();
+        foreach (var r in _results.Where(r => DepManager.IsConfigurable(r.Name, r.ModuleId)))
+        {
+            var path = await DepManager.GetInstallPathAsync(r.Name, r.ModuleId);
+            _installPaths[r.Name] = path ?? "";
+        }
 
         _scanning = false;
         UpdateState();
     }
 
-    private void Accept(string name)
+    private async Task OnPathChanged(string name, ChangeEventArgs e)
     {
-        _accepted.Add(name);
-        UpdateState();
+        var newPath = e.Value?.ToString()?.Trim() ?? "";
+        _installPaths[name] = newPath;
+        if (!string.IsNullOrEmpty(newPath))
+            await DepManager.SetInstallPathAsync(name, newPath);
     }
 
-    private void StartEditing(string name)
+    private async Task ResetPath(string name, string moduleId)
     {
-        _editing.Add(name);
-        var installPath = _results.FirstOrDefault(r => r.Name == name) is { } res
-            ? DepManager.GetInstallPath(res.Name, res.ModuleId) ?? ""
-            : "";
-        _manualPaths.TryAdd(name, installPath);
-    }
-
-    private async Task OkManualPath(string name)
-    {
-        _editing.Remove(name);
-        if (!_manualPaths.TryGetValue(name, out var path) || string.IsNullOrWhiteSpace(path))
-            return;
-
-        var dep = _results.FirstOrDefault(r => r.Name == name);
-        if (dep is null) return;
-
-        var validated = await DepManager.ValidateManualPathAsync(name, dep.ModuleId, path.Trim());
-        if (validated is not null)
-        {
-            _results = _results.Select(r => r.Name == name ? validated : r).ToList();
-            _accepted.Add(name);
-            _message = $"{name} found at {path.Trim()}";
-            _messageIsError = false;
-            UpdateState();
-        }
-        else
-        {
-            _message = $"Could not validate {name} at {path.Trim()} — check the path and try again.";
-            _messageIsError = true;
-        }
-    }
-
-    private void CancelManualPath(string name)
-    {
-        _editing.Remove(name);
+        // Clear custom override so it falls back to module default
+        await DepManager.SetInstallPathAsync(name, "");
+        var defaultPath = DepManager.GetInstallPath(name, moduleId) ?? "";
+        _installPaths[name] = defaultPath;
     }
 
     private async Task InstallAsync(DependencyScanResult dep)
     {
+        // Save the current path before installing
+        var path = _installPaths.GetValueOrDefault(dep.Name, "");
+        if (!string.IsNullOrEmpty(path))
+            await DepManager.SetInstallPathAsync(dep.Name, path);
+
         _installing.Add(dep.Name);
         _message = $"Installing {dep.Name}...";
         _messageIsError = false;
@@ -211,7 +199,6 @@
 
         try
         {
-            // Find DB entity for this dependency
             var allDeps = await DepManager.GetAllDependenciesAsync();
             var entity = allDeps.FirstOrDefault(d => d.Name == dep.Name && d.ModuleId == dep.ModuleId);
             if (entity is null)
@@ -221,7 +208,6 @@
                 return;
             }
 
-            // Resolve download asset
             var asset = await DepManager.ResolveDownloadAssetAsync(entity.Id);
             if (asset is null)
             {
@@ -230,14 +216,11 @@
                 return;
             }
 
-            // Download and install
             var result = await DepManager.DownloadAndInstallAsync(entity.Id, asset);
             if (result.Success)
             {
-                _message = $"{dep.Name} v{result.NewVersion} installed successfully.";
+                _message = $"{dep.Name} v{result.NewVersion} installed to {_installPaths.GetValueOrDefault(dep.Name, "")}";
                 _messageIsError = false;
-
-                // Refresh scan results to reflect the install
                 await RunScanAsync();
             }
             else

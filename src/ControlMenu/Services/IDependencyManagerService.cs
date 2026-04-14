@@ -12,5 +12,8 @@ public interface IDependencyManagerService
     Task<IReadOnlyList<DependencyScanResult>> ScanForDependenciesAsync();
     Task<DependencyScanResult?> ValidateManualPathAsync(string name, string moduleId, string executablePath);
     bool CanAutoInstall(string name, string moduleId);
+    bool IsConfigurable(string name, string moduleId);
     string? GetInstallPath(string name, string moduleId);
+    Task<string?> GetInstallPathAsync(string name, string moduleId);
+    Task SetInstallPathAsync(string name, string path);
 }
