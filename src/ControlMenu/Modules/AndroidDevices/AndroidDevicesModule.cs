@@ -25,7 +25,7 @@ public class AndroidDevicesModule : IToolModule
                 ? "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
                 : "https://dl.google.com/android/repository/platform-tools-latest-linux.zip",
             VersionCheckUrl = "https://dl.google.com/android/repository/repository2-3.xml",
-            VersionCheckPattern = @"<major>(\d+)</major>\s*<minor>(\d+)</minor>\s*<micro>(\d+)</micro>",
+            VersionCheckPattern = @"path=""platform-tools"".*?<major>(\d+)</major>\s*<minor>(\d+)</minor>\s*<micro>(\d+)</micro>",
             InstallPath = Path.Combine(DepsRoot, "platform-tools")
         },
         new ModuleDependency
