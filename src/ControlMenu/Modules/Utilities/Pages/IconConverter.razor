@@ -7,7 +7,7 @@
 <PageTitle>Icon Converter</PageTitle>
 
 <h1><i class="bi bi-file-earmark-image"></i> Icon Converter</h1>
-<p class="page-subtitle">Convert a PNG, JPG, or other image to an ICO file with multiple sizes.</p>
+<p class="page-subtitle">Convert an image to an ICO file with multiple sizes. Supported formats: PNG, JPG, JPEG, BMP, GIF, WEBP, TIFF.</p>
 
 <div class="converter-panel">
     <div class="form-group">
@@ -124,7 +124,7 @@
         _savedPath = null;
         _error = null;
 
-        var result = await JS.InvokeAsync<FilePickerResult?>("filePickerOpen", ".png,.jpg,.jpeg,.bmp,.gif");
+        var result = await JS.InvokeAsync<FilePickerResult?>("filePickerOpen", ".png,.jpg,.jpeg,.bmp,.gif,.webp,.tiff,.tif");
         if (result is null) return;
 
         _fileName = result.Name;
