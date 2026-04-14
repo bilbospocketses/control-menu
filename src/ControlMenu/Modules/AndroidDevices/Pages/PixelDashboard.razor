@@ -95,7 +95,7 @@ else
         }
     }
 
-    private string Ip => _device?.LastKnownIp ?? throw new InvalidOperationException("Device IP not available");
+    private string Ip => _device?.LastKnownIp ?? "";
     private int Port => _device?.AdbPort ?? 5555;
 
     private async Task ResetAdbPort()
