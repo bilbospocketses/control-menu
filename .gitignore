@@ -49,6 +49,16 @@ ws-scrcpy-web/
 # Android platform-tools notices (bundled binary licenses)
 NOTICE.txt
 
+# Managed dependency binaries (downloaded at runtime, not tracked in git)
+src/ControlMenu/dependencies/platform-tools/*
+src/ControlMenu/dependencies/scrcpy/*
+src/ControlMenu/dependencies/node/*
+src/ControlMenu/dependencies/sqlite3/*
+!src/ControlMenu/dependencies/*/.gitkeep
+
+# Temp files from icon conversion
+src/ControlMenu/wwwroot/temp/
+
 # Keep these directories
 !src/
 !tests/
