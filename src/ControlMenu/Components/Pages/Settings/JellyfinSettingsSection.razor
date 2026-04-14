@@ -42,12 +42,43 @@
 </div>
 
 <div class="settings-section" style="margin-top:2rem;">
-    <h2>Backup Retention</h2>
+    <h2>Jellyfin API</h2>
+    <div class="form-group">
+        <label>Base URL</label>
+        <input class="form-control" style="max-width:300px;" value="@_baseUrl"
+               placeholder="http://127.0.0.1:8096" @onchange="e => SaveSetting('jellyfin-base-url', e)" />
+    </div>
+    <div class="form-group">
+        <label>API Key</label>
+        <input type="password" class="form-control" style="max-width:300px;" value="@_apiKey"
+               @onchange="e => SaveSecret('jellyfin-api-key', e)" />
+    </div>
+    <div class="form-group">
+        <label>User ID</label>
+        <input class="form-control" style="max-width:300px;" value="@_userId"
+               @onchange="e => SaveSetting('jellyfin-user-id', e)" />
+        <div class="form-hint">Jellyfin user ID for API calls (used by Cast & Crew updates).</div>
+    </div>
+</div>
+
+<div class="settings-section" style="margin-top:2rem;">
+    <h2>Backup &amp; Retention</h2>
     <div style="display:flex;gap:8px;align-items:center;">
         <label>Keep backups for</label>
         <input type="number" class="form-control" @bind="_retentionDays" min="1" max="365" style="width:80px;" />
         <span>days</span>
         <button class="btn btn-secondary" @onclick="SaveRetention" style="margin-left:8px;">Save</button>
+    </div>
+</div>
+
+<div class="settings-section" style="margin-top:2rem;">
+    <h2>Cast &amp; Crew Notifications</h2>
+    <div class="form-group">
+        <label>Notification Email</label>
+        <input type="email" class="form-control" style="max-width:300px;" value="@_castCrewEmail"
+               placeholder="Uses default from General if blank"
+               @onchange="e => SaveSetting('jellyfin-castcrew-notify-email', e)" />
+        <div class="form-hint">Receives completion alerts for Cast & Crew updates. Leave blank to use the default notification email from General settings.</div>
     </div>
 </div>
 
@@ -67,14 +98,6 @@
     </table>
 </div>
 
-<div class="settings-section" style="margin-top:2rem;">
-    <h2>Email Notifications</h2>
-    <p>SMTP settings are configured in Module Settings. Use this to verify they work.</p>
-    <button class="btn btn-secondary" @onclick="SendTestEmail" disabled="@_sendingTest">
-        <i class="bi bi-envelope"></i> @(_sendingTest ? "Sending..." : "Send Test Email")
-    </button>
-</div>
-
 @if (!string.IsNullOrEmpty(_message))
 {
     <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
@@ -85,12 +108,14 @@
 @code {
     [Inject] private IConfigurationService Config { get; set; } = default!;
     [Inject] private IJellyfinService JellyfinService { get; set; } = default!;
-    [Inject] private IEmailService EmailService { get; set; } = default!;
 
     private string _composePath = "";
+    private string _baseUrl = "";
+    private string _apiKey = "";
+    private string _userId = "";
+    private string _castCrewEmail = "";
     private int _retentionDays = 5;
     private bool _parsing;
-    private bool _sendingTest;
     private ComposeParseResult? _parseResult;
     private string? _message;
     private bool _messageIsError;
@@ -101,6 +126,10 @@
     protected override async Task OnInitializedAsync()
     {
         _composePath = await Config.GetSettingAsync("jellyfin-compose-path") ?? "";
+        _baseUrl = await Config.GetSettingAsync("jellyfin-base-url") ?? "http://127.0.0.1:8096";
+        _apiKey = await Config.GetSecretAsync("jellyfin-api-key") ?? "";
+        _userId = await Config.GetSettingAsync("jellyfin-user-id") ?? "";
+        _castCrewEmail = await Config.GetSettingAsync("jellyfin-castcrew-notify-email") ?? "";
         var retStr = await Config.GetSettingAsync("jellyfin-backup-retention-days");
         _retentionDays = int.TryParse(retStr, out var d) ? d : 5;
 
@@ -121,25 +150,33 @@
         await Config.SetSettingAsync("jellyfin-compose-path", _composePath);
         _parseResult = await JellyfinService.ParseComposeFileAsync();
 
-        if (_parseResult.ErrorMessage is null)
-        {
-            _message = "Compose file parsed. Container name and database path configured.";
-            _messageIsError = false;
-        }
-        else
-        {
-            _message = _parseResult.ErrorMessage;
-            _messageIsError = true;
-        }
-
+        _message = _parseResult.ErrorMessage is null
+            ? "Compose file parsed. Container name and database path configured."
+            : _parseResult.ErrorMessage;
+        _messageIsError = _parseResult.ErrorMessage is not null;
         _parsing = false;
+    }
+
+    private async Task SaveSetting(string key, ChangeEventArgs e)
+    {
+        await Config.SetSettingAsync(key, e.Value?.ToString() ?? "");
+        ShowMessage("Saved.", false);
+    }
+
+    private async Task SaveSecret(string key, ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? "";
+        if (!string.IsNullOrEmpty(val))
+        {
+            await Config.SetSecretAsync(key, val);
+            ShowMessage("Saved.", false);
+        }
     }
 
     private async Task SaveRetention()
     {
         await Config.SetSettingAsync("jellyfin-backup-retention-days", _retentionDays.ToString());
-        _message = $"Backup retention set to {_retentionDays} days.";
-        _messageIsError = false;
+        ShowMessage($"Backup retention set to {_retentionDays} days.", false);
     }
 
     private void RefreshDirectoryStats()
@@ -159,16 +196,15 @@
         }
     }
 
-    private async Task SendTestEmail()
+    private void ShowMessage(string msg, bool isError)
     {
-        _sendingTest = true;
-        _message = null;
-        StateHasChanged();
-
-        var (success, error) = await EmailService.SendTestAsync();
-        _message = success ? "Test email sent successfully!" : $"Failed: {error}";
-        _messageIsError = !success;
-        _sendingTest = false;
+        _message = msg;
+        _messageIsError = isError;
+        _ = Task.Delay(3000).ContinueWith(_ => InvokeAsync(() =>
+        {
+            _message = null;
+            StateHasChanged();
+        }));
     }
 
     private static string FormatSize(long bytes)

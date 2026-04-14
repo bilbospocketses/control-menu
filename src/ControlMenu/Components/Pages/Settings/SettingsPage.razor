@@ -13,13 +13,6 @@
                 @onclick='() => Navigate("devices")'>
             <i class="bi bi-phone"></i> Devices
         </button>
-        @if (ModuleDiscovery.Modules.Count > 0)
-        {
-            <button class="settings-nav-item @(ActiveSection == "modules" ? "active" : "")"
-                    @onclick='() => Navigate("modules")'>
-                <i class="bi bi-puzzle"></i> Module Settings
-            </button>
-        }
         <button class="settings-nav-item @(ActiveSection == "jellyfin" ? "active" : "")"
                 @onclick='() => Navigate("jellyfin")'>
             <i class="bi bi-film"></i> Jellyfin
@@ -39,9 +32,6 @@
             case "devices":
                 <DeviceManagement />
                 break;
-            case "modules":
-                <ModuleSettings />
-                break;
             case "jellyfin":
                 <JellyfinSettingsSection />
                 break;
@@ -58,9 +48,6 @@
 
     [Inject]
     private NavigationManager Nav { get; set; } = default!;
-
-    [Inject]
-    private ModuleDiscoveryService ModuleDiscovery { get; set; } = default!;
 
     private string ActiveSection => Section?.ToLowerInvariant() ?? "general";
 
