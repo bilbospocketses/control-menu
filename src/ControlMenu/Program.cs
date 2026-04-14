@@ -2,6 +2,8 @@ using System.Reflection;
 using ControlMenu.Data;
 using ControlMenu.Modules;
 using ControlMenu.Modules.AndroidDevices.Services;
+using ControlMenu.Modules.Cameras;
+using ControlMenu.Modules.Cameras.Services;
 using ControlMenu.Modules.Jellyfin.Services;
 using ControlMenu.Modules.Utilities.Services;
 using ControlMenu.Services;
@@ -64,6 +66,9 @@ builder.Services.AddScoped<IBackgroundJobService, BackgroundJobService>();
 builder.Services.AddSingleton<IIconConversionService, IconConversionService>();
 builder.Services.AddSingleton<IFileUnblockService, FileUnblockService>();
 
+// Cameras module services
+builder.Services.AddScoped<ICameraService, CameraService>();
+
 // Dependency management
 builder.Services.AddHttpClient("github-api");
 builder.Services.AddHttpClient("dependency-updates");
@@ -93,6 +98,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseStaticFiles();
 app.UseAntiforgery();
+app.UseMiddleware<CameraProxyMiddleware>();
 
 app.MapRazorComponents<ControlMenu.Components.App>()
     .AddInteractiveServerRenderMode();
