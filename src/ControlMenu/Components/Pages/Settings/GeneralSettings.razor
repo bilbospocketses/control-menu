@@ -33,27 +33,27 @@
     <div class="form-group">
         <label>SMTP Server</label>
         <input class="form-control" style="max-width:300px;" value="@_smtpServer"
-               placeholder="mail.smtp2go.com" @onchange="e => SaveSetting('smtp-server', e)" />
+               placeholder="mail.smtp2go.com" @onchange="e => SaveSetting("smtp-server", e)" />
     </div>
     <div class="form-group">
         <label>SMTP Port</label>
         <input type="number" class="form-control" style="max-width:100px;" value="@_smtpPort"
-               @onchange="e => SaveSetting('smtp-port', e)" />
+               @onchange="e => SaveSetting("smtp-port", e)" />
     </div>
     <div class="form-group">
         <label>Username</label>
         <input class="form-control" style="max-width:300px;" value="@_smtpUsername"
-               @onchange="e => SaveSetting('smtp-username', e)" />
+               @onchange="e => SaveSetting("smtp-username", e)" />
     </div>
     <div class="form-group">
         <label>Password</label>
         <input type="password" class="form-control" style="max-width:300px;" value="@_smtpPassword"
-               @onchange="e => SaveSecret('smtp-password', e)" />
+               @onchange="e => SaveSecret("smtp-password", e)" />
     </div>
     <div class="form-group">
         <label>Default Notification Email</label>
         <input type="email" class="form-control" style="max-width:300px;" value="@_notificationEmail"
-               placeholder="you@example.com" @onchange="e => SaveSetting('notification-email', e)" />
+               placeholder="you@example.com" @onchange="e => SaveSetting("notification-email", e)" />
         <div class="form-hint">Default recipient for all notification emails.</div>
     </div>
     <div class="form-group">

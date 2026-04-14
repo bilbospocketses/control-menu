@@ -46,17 +46,17 @@
     <div class="form-group">
         <label>Base URL</label>
         <input class="form-control" style="max-width:300px;" value="@_baseUrl"
-               placeholder="http://127.0.0.1:8096" @onchange="e => SaveSetting('jellyfin-base-url', e)" />
+               placeholder="http://127.0.0.1:8096" @onchange="e => SaveSetting("jellyfin-base-url", e)" />
     </div>
     <div class="form-group">
         <label>API Key</label>
         <input type="password" class="form-control" style="max-width:300px;" value="@_apiKey"
-               @onchange="e => SaveSecret('jellyfin-api-key', e)" />
+               @onchange="e => SaveSecret("jellyfin-api-key", e)" />
     </div>
     <div class="form-group">
         <label>User ID</label>
         <input class="form-control" style="max-width:300px;" value="@_userId"
-               @onchange="e => SaveSetting('jellyfin-user-id', e)" />
+               @onchange="e => SaveSetting("jellyfin-user-id", e)" />
         <div class="form-hint">Jellyfin user ID for API calls (used by Cast & Crew updates).</div>
     </div>
 </div>
@@ -77,7 +77,7 @@
         <label>Notification Email</label>
         <input type="email" class="form-control" style="max-width:300px;" value="@_castCrewEmail"
                placeholder="Uses default from General if blank"
-               @onchange="e => SaveSetting('jellyfin-castcrew-notify-email', e)" />
+               @onchange="e => SaveSetting("jellyfin-castcrew-notify-email", e)" />
         <div class="form-hint">Receives completion alerts for Cast & Crew updates. Leave blank to use the default notification email from General settings.</div>
     </div>
 </div>
