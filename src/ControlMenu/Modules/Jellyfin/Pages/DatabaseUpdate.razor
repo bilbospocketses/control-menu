@@ -203,6 +203,7 @@ else
             _steps[5].Status = StepStatus.Completed;
             logger.Done("All steps completed successfully");
             _completed = true;
+            StateHasChanged();
         }
         catch (Exception ex)
         {
