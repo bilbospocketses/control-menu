@@ -16,7 +16,7 @@
 .sidebar-header {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: space-between;
     gap: 8px;
     padding: 16px 12px;
     border-bottom: 1px solid var(--border-color);
@@ -25,20 +25,27 @@
 .sidebar-title-link {
     display: inline-flex;
     align-items: center;
-    padding: 0.3rem 0.85rem;
+    gap: 0.5rem;
+    padding: 0.45rem 1rem;
     border-radius: 8px;
     font-weight: 600;
     font-size: 1.1rem;
     color: var(--text-primary);
     white-space: nowrap;
     text-decoration: none;
-    background: transparent;
+    background: var(--content-bg, transparent);
     border: 1px solid var(--text-secondary, #6c757d);
     transition: background 0.15s;
 }
 
+.sidebar-app-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 5px;
+}
+
 .sidebar-title-link:hover {
-    background: var(--hover-bg, rgba(255, 255, 255, 0.06));
+    background: var(--card-bg, #fff);
     color: var(--text-primary);
     text-decoration: none;
 }

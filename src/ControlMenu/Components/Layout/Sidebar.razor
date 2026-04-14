@@ -5,7 +5,9 @@
     <div class="sidebar-header">
         @if (!Collapsed)
         {
-            <a href="/" class="sidebar-title-link">Control Menu</a>
+            <a href="/" class="sidebar-title-link">
+                <img src="/icon-192.png" alt="" class="sidebar-app-icon" />Control Menu
+            </a>
         }
         <button class="sidebar-toggle" @onclick="ToggleCollapsed" title="@(Collapsed ? "Expand sidebar" : "Collapse sidebar")">
             <i class="bi @(Collapsed ? "bi-chevron-right" : "bi-chevron-left")"></i>

@@ -186,7 +186,7 @@ public record ConfigRequirement(
 
 ### Sidebar Integration
 
-The `Sidebar.razor` component injects `ModuleDiscoveryService` and iterates over discovered modules. Each module becomes a collapsible group in the sidebar, with its `GetNavEntries()` rendered as sub-links. The sidebar is fully data-driven -- adding a new module automatically creates its navigation group.
+The `Sidebar.razor` component injects `ModuleDiscoveryService` and iterates over discovered modules. Each module becomes a collapsible group in the sidebar, with its `GetNavEntries()` rendered as sub-links. The sidebar is fully data-driven -- adding a new module automatically creates its navigation group. The sidebar header features a branded pill button with the app icon (30x30, `icon-192.png`) linking to the home page, with the collapse chevron pushed right via `justify-content: space-between`.
 
 ---
 
