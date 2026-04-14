@@ -72,6 +72,26 @@
     font-size: 0.85rem;
 }
 
+.sidebar-expand-toggle {
+    padding: 4px 16px;
+}
+
+.sidebar-expand-toggle button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    color: var(--text-muted, #adb5bd);
+    font-size: 0.75rem;
+    cursor: pointer;
+    padding: 4px 0;
+}
+
+.sidebar-expand-toggle button:hover {
+    color: var(--text-secondary);
+}
+
 .sidebar-group {
     margin-bottom: 4px;
 }

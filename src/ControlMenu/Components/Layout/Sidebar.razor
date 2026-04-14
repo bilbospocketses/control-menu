@@ -1,4 +1,5 @@
 @inject ModuleDiscoveryService ModuleDiscovery
+@inject IJSRuntime JS
 
 <nav class="sidebar @(Collapsed ? "collapsed" : "")">
     <div class="sidebar-header">
@@ -24,6 +25,16 @@
         }
         else
         {
+            @if (!Collapsed)
+            {
+                <div class="sidebar-expand-toggle">
+                    <button @onclick="ToggleAll" title="@(_allExpanded ? "Collapse all" : "Expand all")">
+                        <i class="bi @(_allExpanded ? "bi-chevron-bar-up" : "bi-chevron-bar-down")"></i>
+                        <span>@(_allExpanded ? "Collapse all" : "Expand all")</span>
+                    </button>
+                </div>
+            }
+
             @foreach (var module in ModuleDiscovery.Modules)
             {
                 <div class="sidebar-group">
@@ -84,6 +95,7 @@
 @code {
     private bool Collapsed { get; set; }
     private readonly HashSet<string> _expandedGroups = new();
+    private bool _allExpanded;
 
     private static readonly Dictionary<string, string> ModuleImageMap = new()
     {
@@ -91,12 +103,69 @@
         ["jellyfin"] = "/images/jellyfin-logo.svg"
     };
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var hasVisited = await JS.InvokeAsync<string?>("localStorage.getItem", "sidebar-initialized");
+            var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "sidebar-expanded-groups");
+            if (hasVisited is not null)
+            {
+                // Restore saved state (may be empty = all collapsed)
+                _expandedGroups.Clear();
+                if (!string.IsNullOrEmpty(saved))
+                {
+                    foreach (var id in saved.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                        _expandedGroups.Add(id);
+                }
+            }
+            else
+            {
+                // First visit: all expanded, mark as initialized
+                foreach (var m in ModuleDiscovery.Modules)
+                    _expandedGroups.Add(m.Id);
+                await JS.InvokeVoidAsync("localStorage.setItem", "sidebar-initialized", "1");
+                await PersistState();
+            }
+            UpdateAllExpandedFlag();
+            StateHasChanged();
+        }
+    }
+
     private void ToggleCollapsed() => Collapsed = !Collapsed;
 
-    private void ToggleGroup(string moduleId)
+    private async Task ToggleGroup(string moduleId)
     {
         if (!_expandedGroups.Remove(moduleId))
             _expandedGroups.Add(moduleId);
+        UpdateAllExpandedFlag();
+        await PersistState();
+    }
+
+    private async Task ToggleAll()
+    {
+        if (_allExpanded)
+        {
+            _expandedGroups.Clear();
+        }
+        else
+        {
+            foreach (var m in ModuleDiscovery.Modules)
+                _expandedGroups.Add(m.Id);
+        }
+        _allExpanded = !_allExpanded;
+        await PersistState();
+    }
+
+    private void UpdateAllExpandedFlag()
+    {
+        _allExpanded = ModuleDiscovery.Modules.All(m => _expandedGroups.Contains(m.Id));
+    }
+
+    private async Task PersistState()
+    {
+        await JS.InvokeVoidAsync("localStorage.setItem", "sidebar-expanded-groups",
+            string.Join(",", _expandedGroups));
     }
 
     private bool IsGroupExpanded(string moduleId) => _expandedGroups.Contains(moduleId);
