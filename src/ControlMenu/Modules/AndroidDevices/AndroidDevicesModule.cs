@@ -18,7 +18,7 @@ public class AndroidDevicesModule : IToolModule
             Name = "adb",
             ExecutableName = "adb",
             VersionCommand = "adb --version",
-            VersionPattern = @"Android Debug Bridge version ([\d.]+)",
+            VersionPattern = @"Version ([\d.]+)",
             SourceType = UpdateSourceType.DirectUrl,
             ProjectHomeUrl = "https://developer.android.com/tools/releases/platform-tools",
             DownloadUrl = OperatingSystem.IsWindows()
