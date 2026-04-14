@@ -144,21 +144,20 @@
    aspect-ratio is computed server-side from actual phone dimensions (adb wm size)
    plus the ws-scrcpy toolbar width. Set inline via style attribute. */
 .mirror-panel {
+    position: relative;
     border-radius: 0.5rem;
     overflow: hidden;
-    width: 100%;
     flex: 1;
     min-height: 0;
-    line-height: 0;
-    font-size: 0;
-    /* aspect-ratio set via inline style */
+    /* aspect-ratio set via inline style — width derived from flex height */
 }
 
 .mirror-panel ::deep .scrcpy-mirror {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
-    line-height: 0;
-    font-size: 0;
 }
 
 .mirror-panel ::deep .scrcpy-iframe {
