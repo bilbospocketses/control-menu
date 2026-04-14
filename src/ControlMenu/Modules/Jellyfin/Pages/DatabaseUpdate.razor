@@ -141,7 +141,7 @@ else
             // Step 5: Cleanup
             _steps[4].Status = StepStatus.Running;
             StateHasChanged();
-            await JellyfinService.CleanupOldBackupsAsync(5);
+            await JellyfinService.CleanupOldBackupsAsync();
             _steps[4].Status = StepStatus.Completed;
             _steps[4].Detail = "Backups older than 5 days removed.";
             StateHasChanged();
