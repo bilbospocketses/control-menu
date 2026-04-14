@@ -63,6 +63,7 @@
 
 @code {
     [Inject] private ICameraService CameraService { get; set; } = default!;
+    [Inject] private IGo2RtcService Go2Rtc { get; set; } = default!;
 
     private int _cameraCount;
     private bool _countSaved;
@@ -124,8 +125,9 @@
         if (!string.IsNullOrWhiteSpace(GetValue(_usernames, index)) && !string.IsNullOrWhiteSpace(GetValue(_passwords, index)))
         {
             await CameraService.SaveCredentialsAsync(index, _usernames[index], _passwords[index]);
-            CameraProxyMiddleware.ClearSession(index);
         }
+
+        await Go2Rtc.RegenerateConfigAsync();
 
         _savedIndex = index;
         _saving = false;

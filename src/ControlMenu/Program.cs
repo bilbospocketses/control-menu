@@ -69,6 +69,10 @@ builder.Services.AddSingleton<IFileUnblockService, FileUnblockService>();
 // Cameras module services
 builder.Services.AddScoped<ICameraService, CameraService>();
 
+// go2rtc streaming service
+builder.Services.AddSingleton<IGo2RtcService, Go2RtcService>();
+builder.Services.AddHostedService(sp => (Go2RtcService)sp.GetRequiredService<IGo2RtcService>());
+
 // Dependency management
 builder.Services.AddHttpClient("github-api");
 builder.Services.AddHttpClient("dependency-updates");
@@ -98,8 +102,6 @@ if (!app.Environment.IsDevelopment())
 
 app.UseStaticFiles();
 app.UseAntiforgery();
-app.UseMiddleware<CameraProxyMiddleware>();
-
 app.MapRazorComponents<ControlMenu.Components.App>()
     .AddInteractiveServerRenderMode();
 
