@@ -37,6 +37,7 @@
             <thead>
                 <tr>
                     <th>Name</th>
+                    <th>Module</th>
                     <th>Installed</th>
                     <th>Latest</th>
                     <th>Status</th>
@@ -50,6 +51,7 @@
                     var isConfigurable = DepManager.IsConfigurable(dep.Name, dep.ModuleId);
                     <tr>
                         <td><strong>@dep.Name</strong></td>
+                        <td>@dep.ModuleId</td>
                         <td><code>@(dep.InstalledVersion ?? "—")</code></td>
                         <td><code>@(dep.LatestKnownVersion ?? "—")</code></td>
                         <td><span class="status-badge @GetStatusClass(dep.Status)">@FormatStatus(dep.Status)</span></td>
