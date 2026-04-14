@@ -33,9 +33,35 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
     [GeneratedRegex(@"(?<=[""'/=])/(doc|ISAPI|SDK|PSIA|images|css|js|custom|bvw)(?=[/""])", RegexOptions.Compiled)]
     private static partial Regex AbsolutePathRegex();
 
+    // Camera root paths that the JS constructs as absolute URLs (bypass the /cameras/X/proxy/ prefix)
+    [GeneratedRegex(@"^/(ISAPI|SDK|PSIA|doc)(/|$)", RegexOptions.IgnoreCase)]
+    private static partial Regex CameraRootPathRegex();
+
+    // Extract camera index from Referer header
+    [GeneratedRegex(@"/cameras/(\d+)/proxy/")]
+    private static partial Regex RefererCameraRegex();
+
     public async Task InvokeAsync(HttpContext context)
     {
-        var match = ProxyPathRegex().Match(context.Request.Path.Value ?? "");
+        var path = context.Request.Path.Value ?? "";
+
+        // Primary match: explicit proxy path /cameras/{index}/proxy/**
+        var match = ProxyPathRegex().Match(path);
+
+        // Secondary match: bare /ISAPI/**, /SDK/** etc. with a camera Referer header
+        if (!match.Success && CameraRootPathRegex().IsMatch(path))
+        {
+            var referer = context.Request.Headers.Referer.ToString();
+            var refMatch = RefererCameraRegex().Match(referer);
+            if (refMatch.Success)
+            {
+                // Redirect to the proxy path so all logic flows through one path
+                var camIdx = refMatch.Groups[1].Value;
+                context.Response.Redirect($"/cameras/{camIdx}/proxy{path}{context.Request.QueryString}", false);
+                return;
+            }
+        }
+
         if (!match.Success) { await next(context); return; }
 
         var cameraIndex = int.Parse(match.Groups[1].Value);
