@@ -52,18 +52,12 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         }
 
         var baseUri = new Uri($"http://{camera.IpAddress}:{camera.Port}");
-        var client = GetOrCreateClient(cameraIndex, baseUri);
+        var client = GetOrCreateClient(cameraIndex, baseUri, credentials.Value.Username, credentials.Value.Password);
 
-        // Ensure session exists
+        // Try session login if no cookies cached (some firmware needs it in addition to digest auth)
         if (!_cookieJars.TryGetValue(cameraIndex, out var jar) || jar.Count == 0)
         {
-            var loggedIn = await TryLoginAsync(client, baseUri, credentials.Value.Username, credentials.Value.Password, cameraIndex);
-            if (!loggedIn)
-            {
-                context.Response.StatusCode = 502;
-                await context.Response.WriteAsync($"Failed to authenticate with camera {cameraIndex}");
-                return;
-            }
+            await TrySessionLoginAsync(client, credentials.Value.Username, credentials.Value.Password, cameraIndex);
         }
 
         // Build target URI
@@ -77,15 +71,8 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         {
             logger.LogWarning("Camera {Index} returned 401, re-authenticating", cameraIndex);
             ClearSession(cameraIndex);
-            client = GetOrCreateClient(cameraIndex, baseUri);
-
-            var loggedIn = await TryLoginAsync(client, baseUri, credentials.Value.Username, credentials.Value.Password, cameraIndex);
-            if (!loggedIn)
-            {
-                context.Response.StatusCode = 502;
-                await context.Response.WriteAsync($"Failed to re-authenticate with camera {cameraIndex}");
-                return;
-            }
+            client = GetOrCreateClient(cameraIndex, baseUri, credentials.Value.Username, credentials.Value.Password);
+            await TrySessionLoginAsync(client, credentials.Value.Username, credentials.Value.Password, cameraIndex);
 
             response = await ForwardRequestAsync(client, context, targetUri);
         }
@@ -93,7 +80,7 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         await WriteProxyResponseAsync(context, response, cameraIndex);
     }
 
-    private static HttpClient GetOrCreateClient(int cameraIndex, Uri baseUri)
+    private static HttpClient GetOrCreateClient(int cameraIndex, Uri baseUri, string? username = null, string? password = null)
     {
         return _httpClients.GetOrAdd(cameraIndex, _ =>
         {
@@ -104,6 +91,14 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
                 AllowAutoRedirect = false,
                 UseCookies = true
             };
+
+            // Hikvision/LTS cameras use HTTP Digest Authentication for ISAPI
+            if (username is not null && password is not null)
+            {
+                handler.Credentials = new NetworkCredential(username, password);
+                handler.PreAuthenticate = false; // Let the 401 challenge flow naturally
+            }
+
             return new HttpClient(handler)
             {
                 BaseAddress = baseUri,
@@ -112,43 +107,29 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         });
     }
 
-    private async Task<bool> TryLoginAsync(HttpClient client, Uri baseUri, string username, string password, int cameraIndex)
+    /// <summary>
+    /// Attempts session-based login (some Hikvision firmware uses this on top of digest auth).
+    /// Best-effort — if it fails, digest auth credentials on the HttpClient may still work.
+    /// </summary>
+    private async Task TrySessionLoginAsync(HttpClient client, string username, string password, int cameraIndex)
     {
         var loginXml = $"<SessionLogin><userName>{username}</userName><password>{password}</password></SessionLogin>";
 
-        // Try ISAPI sessionLogin first
         try
         {
             var content = new StringContent(loginXml, System.Text.Encoding.UTF8, "application/xml");
             var response = await client.PostAsync("/ISAPI/Security/sessionLogin", content);
             if (response.IsSuccessStatusCode)
             {
-                logger.LogInformation("Camera {Index} authenticated via sessionLogin", cameraIndex);
-                return true;
+                logger.LogInformation("Camera {Index} session login succeeded", cameraIndex);
+                return;
             }
+            logger.LogDebug("Camera {Index} sessionLogin returned {Status}, relying on digest auth", cameraIndex, response.StatusCode);
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Camera {Index} sessionLogin failed, trying userCheck", cameraIndex);
+            logger.LogDebug(ex, "Camera {Index} sessionLogin not available, relying on digest auth", cameraIndex);
         }
-
-        // Fallback to userCheck
-        try
-        {
-            var content = new StringContent(loginXml, System.Text.Encoding.UTF8, "application/xml");
-            var response = await client.PostAsync("/ISAPI/Security/userCheck", content);
-            if (response.IsSuccessStatusCode)
-            {
-                logger.LogInformation("Camera {Index} authenticated via userCheck", cameraIndex);
-                return true;
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Camera {Index} userCheck also failed", cameraIndex);
-        }
-
-        return false;
     }
 
     private static async Task<HttpResponseMessage> ForwardRequestAsync(HttpClient client, HttpContext context, Uri targetUri)
