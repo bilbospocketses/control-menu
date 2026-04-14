@@ -54,6 +54,7 @@ public class AndroidDevicesModule : IToolModule
             VersionPattern = @"scrcpy ([\d.]+)",
             SourceType = UpdateSourceType.GitHub,
             GitHubRepo = "Genymobile/scrcpy",
+            ProjectHomeUrl = "https://github.com/Genymobile/scrcpy",
             AssetPattern = @"scrcpy-win64-v[\d.]+\.zip",
             InstallPath = Path.Combine(DepsRoot, "scrcpy")
         },
