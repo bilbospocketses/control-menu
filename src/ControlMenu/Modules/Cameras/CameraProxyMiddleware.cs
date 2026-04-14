@@ -209,9 +209,20 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
     {
         context.Response.StatusCode = (int)response.StatusCode;
 
-        // Determine if this is text content we should rewrite
+        // Determine if this is text content we should rewrite.
+        // Check both Content-Type AND file extension — cameras serve .wasm as text/html
         var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
-        var isTextContent = _rewritableContentTypes.Any(ct =>
+        var requestPath = context.Request.Path.Value ?? "";
+        var isBinaryExtension = requestPath.EndsWith(".wasm", StringComparison.OrdinalIgnoreCase)
+            || requestPath.EndsWith(".mem", StringComparison.OrdinalIgnoreCase)
+            || requestPath.EndsWith(".dat", StringComparison.OrdinalIgnoreCase)
+            || requestPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+            || requestPath.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
+            || requestPath.EndsWith(".gif", StringComparison.OrdinalIgnoreCase)
+            || requestPath.EndsWith(".ico", StringComparison.OrdinalIgnoreCase)
+            || requestPath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
+            || requestPath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+        var isTextContent = !isBinaryExtension && _rewritableContentTypes.Any(ct =>
             contentType.Contains(ct, StringComparison.OrdinalIgnoreCase));
 
         foreach (var header in response.Headers.Concat(response.Content.Headers))
