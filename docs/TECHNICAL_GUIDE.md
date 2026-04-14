@@ -45,8 +45,8 @@ Control Menu is a .NET 9 Blazor Server web application that manages Android devi
 +-----------------------------------------------------------+
 |  Layer 3: Core Services                                   |
 |  - CommandExecutor, ConfigurationService, SecretStore      |
-|  - DependencyManager, BackgroundJobs, Email, WsScrcpy     |
-|  - NetworkDiscovery, DeviceService                        |
+|  - DependencyManager, BackgroundJobs, Email                |
+|  - WsScrcpy, Go2Rtc, NetworkDiscovery, DeviceService      |
 +-----------------------------------------------------------+
 |  Layer 4: Persistence (SQLite via EF Core 9)              |
 |  - IDbContextFactory pattern for Blazor Server            |
@@ -65,7 +65,7 @@ Control Menu is a .NET 9 Blazor Server web application that manages Android devi
 | SQLite | Single-file database, no external server required |
 | SkiaSharp for images | Cross-platform replacement for System.Drawing.Common |
 | ws-scrcpy-web via iframe | Screen mirroring without native scrcpy binary dependency |
-| Self-contained dependencies | 4 auto-managed tools in `dependencies/`; 2 external (Docker, ws-scrcpy-web) |
+| Self-contained dependencies | 5 auto-managed tools in `dependencies/`; 2 external (Docker, ws-scrcpy-web) |
 
 ### Project Layout
 
@@ -88,7 +88,7 @@ src/ControlMenu/
     ModuleDiscoveryService.cs
     NavEntry.cs, BackgroundJobDefinition.cs, ModuleDependency.cs, ConfigRequirement.cs
     AndroidDevices/          # Module class, Pages/, Services/
-    Cameras/                 # Module class, Pages/, Services/, CameraProxyMiddleware
+    Cameras/                 # Module class, Pages/, Services/ (Go2RtcService)
     Jellyfin/                # Module class, Pages/, Services/, Workers/
     Utilities/               # Module class, Pages/, Services/
   Services/                  # Core services (see section 7)
@@ -436,7 +436,15 @@ The PowerShell command counts blocked files before unblocking because `Unblock-F
 
 ## 7. Cameras Module
 
-The Cameras module provides CCTV camera viewing for LTS/Hikvision cameras via iframe embedding. A reverse proxy middleware handles auto-login and strips iframe-blocking headers so camera web interfaces can be displayed inside the Control Menu UI.
+The Cameras module provides CCTV camera viewing for LTS/Hikvision cameras via [go2rtc](https://github.com/AlexxIT/go2rtc). go2rtc converts RTSP streams into browser-playable formats (MP4/WebRTC), eliminating the need for camera-specific web UI proxying or native plugins.
+
+### Architecture
+
+```
+Camera (RTSP :554) --> go2rtc (localhost:1984) --> Browser (iframe MP4 stream)
+```
+
+go2rtc runs as a managed child process alongside the app. `Go2RtcService` generates a `go2rtc.yaml` config file from the camera settings, spawns the process, and monitors its health. Each camera view page embeds an iframe pointing at `http://localhost:1984/api/stream.mp4?src=camera-{N}`.
 
 ### CameraConfig
 
@@ -470,21 +478,42 @@ Key methods:
 | `SaveCameraConfigAsync(config)` | Write name, IP, port for one camera |
 | `GetCredentialsAsync(index)` | Read username/password secrets |
 | `SaveCredentialsAsync(index, user, pass)` | Write username/password secrets |
+| `GetConfiguredCamerasAsync()` | Returns cameras with both name and IP set |
 
-### CameraProxyMiddleware
+### Go2RtcService
 
-ASP.NET middleware registered in the pipeline that intercepts requests matching the pattern `/cameras/{index}/proxy/**` and forwards them to the corresponding camera's IP address.
+Hosted service (`IHostedService`) that manages the go2rtc child process. Registered as a singleton implementing `IGo2RtcService`.
 
-Architecture:
-- **Path matching**: Regex `^/cameras/(\d+)/proxy/(.*)$` extracts camera index and downstream path
-- **Session caching**: `ConcurrentDictionary<int, string>` stores session cookies per camera index
-- **Auto-login**: On first request or after a 401 response, authenticates via Hikvision ISAPI:
-  1. `POST /ISAPI/Security/sessionLogin` with XML payload containing username and encrypted password challenge
-  2. `GET /ISAPI/Security/userCheck` to validate the session
-  3. Caches the session cookie for subsequent requests
-- **Header stripping**: Removes `X-Frame-Options` and `Content-Security-Policy` headers from proxied responses to allow iframe embedding
-- **Retry on 401**: If a proxied request returns 401, clears the cached session, re-authenticates, and retries the original request once
-- **HttpClient**: One `HttpClientHandler` per camera with `CookieContainer` for automatic cookie management
+**Lifecycle:**
+1. On startup, generates `go2rtc.yaml` from camera settings (RTSP URLs with credentials)
+2. Kills any orphan process on port 1984
+3. Spawns go2rtc with the generated config
+4. Polls `http://localhost:1984` until ready (up to 15 seconds)
+
+**Config generation** (`GenerateConfigAsync`):
+```yaml
+streams:
+  camera-1: rtsp://admin:password@192.168.86.x:554
+  camera-2: rtsp://admin:password@192.168.86.y:554
+api:
+  listen: ":1984"
+```
+
+**Crash recovery**: If go2rtc exits unexpectedly, the service restarts it up to 2 times within a 30-second window before giving up.
+
+**Binary resolution** (`FindExecutable`): Checks the local dependency install path first (`dep-path-go2rtc` setting or default `dependencies/go2rtc/`), then falls back to system PATH.
+
+**Interface:**
+```csharp
+public interface IGo2RtcService
+{
+    bool IsRunning { get; }
+    string BaseUrl { get; }          // "http://localhost:1984"
+    Task RegenerateConfigAsync();    // Regenerate config and restart
+    Task StopAsync();                // Stop process (used by dependency updater)
+    void Restart();                  // Restart after binary update
+}
+```
 
 ### CamerasModule
 
@@ -492,26 +521,27 @@ Implements `IToolModule` with:
 - `Id`: `"cameras"`
 - `SortOrder`: `4`
 - `Icon`: `"bi-camera-video"`
-- `Dependencies`: none
-- `GetNavEntries()`: Dynamically generates one `NavEntry` per configured camera (reads `camera-count` and individual camera names). Each entry links to `/cameras/{index}`.
+- `Dependencies`: go2rtc (GitHub source: `AlexxIT/go2rtc`, asset: `go2rtc_win64.zip`)
+- `GetNavEntries()`: Dynamically generates one `NavEntry` per configured camera. Each entry links to `/cameras/{index}`.
+
+Uses `FindDepsRoot()` to resolve the absolute path to the `dependencies/` folder, consistent with other modules.
 
 ### Pages
 
-- **CameraView** (`/cameras/{Index:int}`) -- Full-page iframe pointing at `/cameras/{Index}/proxy/` which loads the camera's web interface through the proxy middleware. The iframe fills the available viewport.
+- **CameraView** (`/cameras/{Index:int}`) -- Embeds an iframe to `http://localhost:1984/api/stream.mp4?src=camera-{Index}`. Shows status messages when the camera is not configured or go2rtc is not running.
 
 ### Settings UI
 
-- **CameraSettings** (Settings > Cameras tab) -- Configurable camera count with per-camera name, IP, port, username, and password fields. Changing the camera count dynamically adjusts the number of camera configuration slots.
+- **CameraSettings** (Settings > Cameras tab) -- Configurable camera count with per-camera name, IP, port, username, and password fields. Saving triggers `RegenerateConfigAsync()` to update go2rtc with new camera URLs.
 
-### Setup Wizard
+### Dependency Updates
 
-- **WizardCameras** (Step 3) -- Collapsible camera slots for configuring cameras during first-run setup. Appears after Android Devices and before Jellyfin.
+go2rtc is auto-installable via the dependency manager. During updates, `DependencyManagerService` calls `IGo2RtcService.StopAsync()` before swapping the binary and `Restart()` after, preventing file lock conflicts. This mirrors the existing pattern for ADB/ws-scrcpy-web updates.
 
 ### Tests
 
 - `CameraServiceTests` (8 tests) -- CRUD operations, credential storage, camera count management
 - `CamerasModuleTests` (5 tests) -- Module metadata, dynamic nav entry generation
-- `CameraProxyMiddlewareTests` (2 tests) -- Request forwarding, header stripping
 
 ---
 
@@ -603,7 +633,7 @@ Manages the lifecycle of external tool dependencies: version checking, downloadi
 1. Download the asset to a temp directory
 2. Extract (ZIP via `System.IO.Compression`, tar.gz via `tar` command)
 3. Verify the extracted binary by running the version command
-4. Stop dependent services if needed (ws-scrcpy-web and ADB server when updating `adb`)
+4. Stop dependent services if needed (ws-scrcpy-web and ADB server when updating `adb`; go2rtc when updating `go2rtc`)
 5. Backup existing files (`.bak` suffix)
 6. Copy new files into the install path
 7. Update the database entity

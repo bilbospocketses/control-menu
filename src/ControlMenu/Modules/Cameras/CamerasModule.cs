@@ -5,6 +5,24 @@ namespace ControlMenu.Modules.Cameras;
 
 public class CamerasModule : IToolModule
 {
+    private static readonly string DepsRoot = FindDepsRoot();
+
+    private static string FindDepsRoot()
+    {
+        var dir = AppContext.BaseDirectory;
+        for (var i = 0; i < 5; i++)
+        {
+            var candidate = Path.Combine(dir, "dependencies");
+            if (Directory.Exists(candidate)) return candidate;
+            var parent = Directory.GetParent(dir)?.FullName;
+            if (parent is null) break;
+            dir = parent;
+        }
+        var fallback = Path.Combine(AppContext.BaseDirectory, "dependencies");
+        Directory.CreateDirectory(fallback);
+        return fallback;
+    }
+
     public string Id => "cameras";
     public string DisplayName => "Cameras";
     public string Icon => "bi-camera-video";
@@ -23,11 +41,11 @@ public class CamerasModule : IToolModule
             Name = "go2rtc",
             ExecutableName = "go2rtc.exe",
             VersionCommand = "go2rtc --version",
-            VersionPattern = @"go2rtc\s+([\d.]+)",
+            VersionPattern = @"go2rtc\s+version\s+([\d.]+)",
             SourceType = UpdateSourceType.GitHub,
             GitHubRepo = "AlexxIT/go2rtc",
             AssetPattern = @"go2rtc_win64\.zip",
-            InstallPath = "dependencies/go2rtc",
+            InstallPath = Path.Combine(DepsRoot, "go2rtc"),
             ProjectHomeUrl = "https://github.com/AlexxIT/go2rtc"
         }
     ];

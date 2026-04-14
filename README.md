@@ -21,10 +21,10 @@
 Control Menu replaces a collection of PowerShell scripts with a cross-platform web UI. It manages:
 
 - **Android Devices** &mdash; Connect, reboot, toggle power/screensaver, manage ADB settings, and screen mirror Google TVs and Android phones via [ws-scrcpy-web](https://github.com/ANG-DEVELOPERS/ws-scrcpy-web)
-- **Cameras** &mdash; View LTS/Hikvision CCTV cameras via iframe embedding with a reverse proxy that handles auto-login (ISAPI sessionLogin) and strips iframe-blocking headers. Configurable camera count with encrypted credential storage.
+- **Cameras** &mdash; View LTS/Hikvision CCTV cameras via [go2rtc](https://github.com/AlexxIT/go2rtc) RTSP-to-browser streaming. Configurable camera count with encrypted credential storage. go2rtc is auto-installed and updated via the dependency manager.
 - **Jellyfin Media Server** &mdash; Database date updates, cast & crew image refresh (background worker with resume support), Docker container management, automated backups with configurable retention
 - **Utilities** &mdash; Image-to-ICO icon conversion (PNG, JPG, BMP, GIF, WEBP, TIFF via SkiaSharp) with native file picker, Windows Zone.Identifier file unblocker
-- **Dependency Management** &mdash; Auto-installs and updates ADB, scrcpy, Node.js, and sqlite3 to a self-contained `dependencies/` folder. Configurable install paths per tool. Version checks via GitHub API and direct URL scraping.
+- **Dependency Management** &mdash; Auto-installs and updates ADB, scrcpy, Node.js, sqlite3, and go2rtc to a self-contained `dependencies/` folder. Configurable install paths per tool. Version checks via GitHub API and direct URL scraping. Services are automatically stopped before binary updates and restarted after.
 
 ## Features
 
@@ -34,7 +34,7 @@ Control Menu replaces a collection of PowerShell scripts with a cross-platform w
 - **Cross-platform** &mdash; `CommandExecutor` strategy pattern abstracts Windows vs Linux commands
 - **Encrypted secrets** &mdash; ASP.NET Data Protection API for API keys and passwords
 - **Background jobs** &mdash; Long-running tasks with progress tracking, cancellation, and resume
-- **Self-contained dependencies** &mdash; Bundled tools folder with PATH injection at startup; install/update buttons in UI
+- **Self-contained dependencies** &mdash; Bundled tools folder with PATH injection at startup; install/update buttons in UI; services auto-stop/restart during updates
 - **Email notifications** &mdash; Configurable SMTP with dedicated From address for provider authorization
 - **File System Access API** &mdash; Native OS file picker for icon conversion in Chrome/Edge
 
@@ -62,7 +62,7 @@ Open http://localhost:5159 in your browser. The first-run wizard will guide you 
 dotnet test
 ```
 
-143 tests covering services, modules, and integrations.
+143+ tests covering services, modules, and integrations.
 
 ## Architecture
 
@@ -75,7 +75,7 @@ src/ControlMenu/
   Data/                 # EF Core entities, enums, migrations
   Modules/              # Pluggable tool modules
     AndroidDevices/     #   ADB service, Google TV & Android Phone dashboards
-    Cameras/            #   CCTV camera proxy, iframe embedding, auto-login
+    Cameras/            #   CCTV camera streaming via go2rtc
     Jellyfin/           #   Docker ops, DB updates, Cast/Crew worker
     Utilities/          #   Icon converter, File unblocker
   Services/             # Core services (config, secrets, jobs, dependencies, email)
@@ -94,7 +94,7 @@ tests/ControlMenu.Tests/
 | SkiaSharp for images | Cross-platform replacement for System.Drawing.Common |
 | ws-scrcpy-web via iframe | Screen mirroring without native scrcpy binary dependency |
 | File System Access API | Native OS file dialogs for icon converter (Chrome/Edge) |
-| Self-contained dependencies | 4 auto-managed tools in `dependencies/`; 2 external (Docker, ws-scrcpy-web) |
+| Self-contained dependencies | 5 auto-managed tools in `dependencies/`; 2 external (Docker, ws-scrcpy-web) |
 
 ## Dependencies
 
@@ -107,6 +107,7 @@ Control Menu manages two types of dependencies:
 | scrcpy | GitHub (Genymobile/scrcpy) | Screen mirroring server binary |
 | Node.js | nodejs.org (DirectUrl) | ws-scrcpy-web runtime |
 | sqlite3 | sqlite.org (DirectUrl) | Jellyfin database operations |
+| go2rtc | GitHub (AlexxIT/go2rtc) | RTSP-to-browser camera streaming |
 
 **External** (installed separately):
 | Tool | Purpose |

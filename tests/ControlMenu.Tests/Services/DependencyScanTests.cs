@@ -2,6 +2,7 @@ using ControlMenu.Data;
 using ControlMenu.Data.Entities;
 using ControlMenu.Data.Enums;
 using ControlMenu.Modules;
+using ControlMenu.Modules.Cameras.Services;
 using ControlMenu.Services;
 using ControlMenu.Tests.Data;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,6 +20,7 @@ public class DependencyScanTests : IDisposable
     private readonly WsScrcpyService _wsScrcpy = new(
         new Mock<IServiceScopeFactory>().Object,
         NullLogger<WsScrcpyService>.Instance);
+    private readonly Mock<IGo2RtcService> _mockGo2Rtc = new();
 
     public DependencyScanTests()
     {
@@ -31,7 +33,7 @@ public class DependencyScanTests : IDisposable
     {
         return new DependencyManagerService(
             _dbFactory, modules, _mockExecutor.Object, _mockHttpFactory.Object,
-            _mockConfig.Object, _wsScrcpy, NullLogger<DependencyManagerService>.Instance);
+            _mockConfig.Object, _wsScrcpy, _mockGo2Rtc.Object, NullLogger<DependencyManagerService>.Instance);
     }
 
     [Fact]

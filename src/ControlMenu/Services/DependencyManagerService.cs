@@ -3,6 +3,7 @@ using ControlMenu.Data;
 using ControlMenu.Data.Entities;
 using ControlMenu.Data.Enums;
 using ControlMenu.Modules;
+using ControlMenu.Modules.Cameras.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -16,6 +17,7 @@ public class DependencyManagerService : IDependencyManagerService
     private readonly IHttpClientFactory _httpFactory;
     private readonly IConfigurationService _config;
     private readonly WsScrcpyService _wsScrcpy;
+    private readonly IGo2RtcService _go2Rtc;
     private readonly ILogger<DependencyManagerService> _logger;
 
     public DependencyManagerService(
@@ -25,6 +27,7 @@ public class DependencyManagerService : IDependencyManagerService
         IHttpClientFactory httpFactory,
         IConfigurationService config,
         WsScrcpyService wsScrcpy,
+        IGo2RtcService go2Rtc,
         ILogger<DependencyManagerService> logger)
     {
         _dbFactory = dbFactory;
@@ -33,6 +36,7 @@ public class DependencyManagerService : IDependencyManagerService
         _httpFactory = httpFactory;
         _config = config;
         _wsScrcpy = wsScrcpy;
+        _go2Rtc = go2Rtc;
         _logger = logger;
     }
 
@@ -217,7 +221,9 @@ public class DependencyManagerService : IDependencyManagerService
 
         StaleUrlAction? urlAction = null;
         var needsAdbKill = entity.Name == "adb";
+        var needsGo2RtcStop = entity.Name == "go2rtc";
         var stoppedScrcpy = false;
+        var stoppedGo2Rtc = false;
         var tempDir = Path.Combine(Path.GetTempPath(), "ControlMenu", Guid.NewGuid().ToString());
         Directory.CreateDirectory(tempDir);
 
@@ -286,7 +292,14 @@ public class DependencyManagerService : IDependencyManagerService
                 await _wsScrcpy.StopAsync(CancellationToken.None);
                 await _executor.ExecuteAsync("adb", "kill-server");
                 stoppedScrcpy = true;
-                // Give the OS a moment to release file handles
+                await Task.Delay(500);
+            }
+
+            if (needsGo2RtcStop && _go2Rtc.IsRunning)
+            {
+                _logger.LogInformation("Stopping go2rtc before updating");
+                await _go2Rtc.StopAsync();
+                stoppedGo2Rtc = true;
                 await Task.Delay(500);
             }
 
@@ -331,6 +344,11 @@ public class DependencyManagerService : IDependencyManagerService
             {
                 _logger.LogInformation("Restarting ws-scrcpy-web after ADB update");
                 _wsScrcpy.Restart();
+            }
+            if (stoppedGo2Rtc)
+            {
+                _logger.LogInformation("Restarting go2rtc after update");
+                _go2Rtc.Restart();
             }
             try { Directory.Delete(tempDir, recursive: true); } catch { /* best-effort cleanup */ }
         }

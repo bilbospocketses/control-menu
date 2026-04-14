@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
+using ControlMenu.Services;
 
 namespace ControlMenu.Modules.Cameras.Services;
 
@@ -10,6 +11,8 @@ public interface IGo2RtcService
     bool IsRunning { get; }
     string BaseUrl { get; }
     Task RegenerateConfigAsync();
+    Task StopAsync();
+    void Restart();
 }
 
 public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
@@ -61,6 +64,30 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         _serviceReady = false;
         lock (_lock) { KillProcess(); }
         return Task.CompletedTask;
+    }
+
+    public Task StopAsync()
+    {
+        return StopAsync(CancellationToken.None);
+    }
+
+    public void Restart()
+    {
+        _disposed = false;
+        _crashCount = 0;
+        _serviceReady = false;
+        var exePath = FindExecutable();
+        if (exePath is null)
+        {
+            _logger.LogWarning("go2rtc not found — cannot restart");
+            return;
+        }
+        lock (_lock)
+        {
+            KillProcess();
+            SpawnProcess(exePath);
+        }
+        _ = WaitForReadyAsync();
     }
 
     public async Task RegenerateConfigAsync()
@@ -115,6 +142,17 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
     private string? FindExecutable()
     {
         var name = OperatingSystem.IsWindows() ? "go2rtc.exe" : "go2rtc";
+
+        // Check local dependency install path first (dep-path-go2rtc setting or default)
+        var localPath = GetLocalInstallPathAsync().GetAwaiter().GetResult();
+        if (localPath is not null)
+        {
+            var localExe = Path.Combine(localPath, name);
+            if (File.Exists(localExe))
+                return localExe;
+        }
+
+        // Fall back to system PATH
         var pathDirs = (Environment.GetEnvironmentVariable("PATH") ?? "")
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
 
@@ -126,6 +164,28 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         }
 
         return null;
+    }
+
+    private async Task<string?> GetLocalInstallPathAsync()
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var config = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
+        var customPath = await config.GetSettingAsync("dep-path-go2rtc");
+        if (!string.IsNullOrWhiteSpace(customPath))
+            return customPath;
+
+        // Walk up from base directory to find dependencies folder (matches CamerasModule.FindDepsRoot)
+        var dir = AppContext.BaseDirectory;
+        for (var i = 0; i < 5; i++)
+        {
+            var candidate = Path.Combine(dir, "dependencies", "go2rtc");
+            if (Directory.Exists(candidate)) return candidate;
+            var parent = Directory.GetParent(dir)?.FullName;
+            if (parent is null) break;
+            dir = parent;
+        }
+
+        return Path.Combine(_contentRoot, "dependencies", "go2rtc");
     }
 
     private void SpawnProcess(string exePath)
