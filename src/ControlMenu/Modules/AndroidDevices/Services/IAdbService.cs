@@ -25,5 +25,7 @@ public interface IAdbService
     Task RestoreProjectivyBackupAsync(string ip, int port, string filename, CancellationToken ct = default);
     Task ResetTcpPortAsync(int port, CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetConnectedDevicesAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<string>> GetUsbDevicesAsync(CancellationToken ct = default);
+    Task UnlockWithPinAsync(string ip, int port, string pin, CancellationToken ct = default);
     Task DisconnectAllAsync(CancellationToken ct = default);
 }

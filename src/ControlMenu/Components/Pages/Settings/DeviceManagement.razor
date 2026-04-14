@@ -68,7 +68,19 @@
 
 @if (_showForm)
 {
-    <DeviceForm Model="_formDevice" IsEdit="_isEditing" OnSave="SaveDevice" OnCancel="CloseForm" />
+    <DeviceForm Model="_formDevice" IsEdit="_isEditing" @bind-Pin="_formPin" OnSave="SaveDevice" OnCancel="CloseForm" />
+}
+
+@if (_showUsbWizard && _wizardDevice is not null)
+{
+    <div class="dialog-overlay" @onclick="CloseUsbWizard">
+        <div class="dialog" @onclick:stopPropagation="true">
+            <UsbSetupWizard Port="_wizardDevice.AdbPort"
+                            Ip="@_wizardDevice.LastKnownIp"
+                            MacAddress="@_wizardDevice.MacAddress"
+                            OnComplete="OnUsbSetupComplete" />
+        </div>
+    </div>
 }
 
 @if (_showDeleteConfirm)
@@ -100,9 +112,12 @@
     {
         Name = "", MacAddress = "", ModuleId = "android-devices"
     };
+    private string _formPin = "";
     private bool _showDeleteConfirm;
     private ControlMenu.Data.Entities.Device? _deleteTarget;
     private bool _scanning;
+    private bool _showUsbWizard;
+    private ControlMenu.Data.Entities.Device? _wizardDevice;
     private string? _message;
     private bool _messageIsError;
     private int _discoveryInterval = 300;
@@ -140,11 +155,12 @@
         {
             Name = "", MacAddress = "", ModuleId = "android-devices"
         };
+        _formPin = "";
         _isEditing = false;
         _showForm = true;
     }
 
-    private void ShowEditForm(ControlMenu.Data.Entities.Device device)
+    private async Task ShowEditForm(ControlMenu.Data.Entities.Device device)
     {
         _formDevice = new ControlMenu.Data.Entities.Device
         {
@@ -157,6 +173,7 @@
             LastKnownIp = device.LastKnownIp,
             LastSeen = device.LastSeen
         };
+        _formPin = await Config.GetSettingAsync($"device-pin-{device.Id}") ?? "";
         _isEditing = true;
         _showForm = true;
     }
@@ -172,6 +189,7 @@
         {
             _formDevice.MacAddress = NetworkDiscoveryService.NormalizeMac(_formDevice.MacAddress);
             var isEdit = _isEditing;
+            var isPhone = _formDevice.Type == ControlMenu.Data.Enums.DeviceType.AndroidPhone;
             _showForm = false;
 
             if (isEdit)
@@ -180,7 +198,22 @@
                 await DeviceService.AddDeviceAsync(_formDevice);
 
             await LoadDevices();
+
+            // Save or clear the PIN as an encrypted secret
+            var savedDevice = isEdit ? _formDevice : _devices.FirstOrDefault(d => d.MacAddress == _formDevice.MacAddress);
+            if (savedDevice is not null && !string.IsNullOrEmpty(_formPin))
+                await Config.SetSecretAsync($"device-pin-{savedDevice.Id}", _formPin);
+            else if (savedDevice is not null && string.IsNullOrEmpty(_formPin))
+                await Config.SetSettingAsync($"device-pin-{savedDevice.Id}", "");
+
             await ShowMessage($"Device {(isEdit ? "updated" : "added")} successfully.");
+
+            // Prompt USB setup wizard for newly added phones
+            if (!isEdit && isPhone)
+            {
+                _wizardDevice = _devices.FirstOrDefault(d => d.MacAddress == _formDevice.MacAddress);
+                _showUsbWizard = _wizardDevice is not null;
+            }
         }
         catch (Exception ex)
         {
@@ -212,6 +245,23 @@
             await LoadDevices();
             await ShowMessage("Device deleted.");
         }
+    }
+
+    private void CloseUsbWizard()
+    {
+        _showUsbWizard = false;
+        _wizardDevice = null;
+    }
+
+    private async Task OnUsbSetupComplete(bool success)
+    {
+        _showUsbWizard = false;
+        if (success && _wizardDevice is not null)
+        {
+            await LoadDevices();
+            await ShowMessage($"Wireless ADB enabled for {_wizardDevice.Name}.");
+        }
+        _wizardDevice = null;
     }
 
     private async Task ScanNetwork()

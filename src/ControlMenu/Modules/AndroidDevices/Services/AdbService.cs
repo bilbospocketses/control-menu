@@ -136,6 +136,27 @@ public class AdbService : IAdbService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<string>> GetUsbDevicesAsync(CancellationToken ct = default)
+    {
+        var devices = await GetConnectedDevicesAsync(ct);
+        // USB serials don't contain ':' (network devices look like 192.168.1.100:5555)
+        return devices.Where(d => !d.Contains(':')).ToList();
+    }
+
+    public async Task UnlockWithPinAsync(string ip, int port, string pin, CancellationToken ct = default)
+    {
+        var dev = DeviceArg(ip, port);
+        // Wake screen
+        await _executor.ExecuteAsync("adb", $"{dev} shell input keyevent 26", null, ct);
+        await Task.Delay(500, ct);
+        // Dismiss lock screen to show PIN prompt
+        await _executor.ExecuteAsync("adb", $"{dev} shell input keyevent 82", null, ct);
+        await Task.Delay(500, ct);
+        // Type PIN and press Enter
+        await _executor.ExecuteAsync("adb", $"{dev} shell input text {pin}", null, ct);
+        await _executor.ExecuteAsync("adb", $"{dev} shell input keyevent 66", null, ct);
+    }
+
     public async Task DisconnectAllAsync(CancellationToken ct = default)
     {
         var devices = await GetConnectedDevicesAsync(ct);

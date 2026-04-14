@@ -38,6 +38,15 @@
             <input class="form-control" @bind="Model.SerialNumber" placeholder="47121FDAQ000WC" />
         </div>
 
+        @if (Model.Type == DeviceType.AndroidPhone)
+        {
+            <div class="form-group">
+                <label>Screen Lock PIN (optional)</label>
+                <input type="password" class="form-control" @bind="Pin" placeholder="PIN" />
+                <div class="form-hint">Stored encrypted. Used to unlock the phone remotely via ADB.</div>
+            </div>
+        }
+
         <div class="dialog-actions">
             <button class="btn btn-secondary" @onclick="OnCancel">Cancel</button>
             <button class="btn btn-primary" @onclick="OnSave" disabled="@(!IsValid)">
@@ -56,6 +65,12 @@
 
     [Parameter]
     public EventCallback OnSave { get; set; }
+
+    [Parameter]
+    public string Pin { get; set; } = "";
+
+    [Parameter]
+    public EventCallback<string> PinChanged { get; set; }
 
     [Parameter]
     public EventCallback OnCancel { get; set; }

@@ -103,6 +103,16 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
 
+    // Normalize any MAC addresses stored with colons or mixed case
+    var devicesWithBadMac = db.Devices
+        .AsEnumerable()
+        .Where(d => d.MacAddress != NetworkDiscoveryService.NormalizeMac(d.MacAddress))
+        .ToList();
+    foreach (var device in devicesWithBadMac)
+        device.MacAddress = NetworkDiscoveryService.NormalizeMac(device.MacAddress);
+    if (devicesWithBadMac.Count > 0)
+        db.SaveChanges();
+
     var depManager = scope.ServiceProvider.GetRequiredService<IDependencyManagerService>();
     await depManager.SyncDependenciesAsync();
 }

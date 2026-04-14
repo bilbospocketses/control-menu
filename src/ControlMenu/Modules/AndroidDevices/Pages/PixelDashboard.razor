@@ -31,36 +31,56 @@ else
         </div>
     }
 
-    <div class="dashboard-layout">
-        <div class="controls-panel">
-            <h3 class="panel-heading">Quick Actions</h3>
+    <div class="controls-panel">
+        <h3 class="panel-heading">Quick Actions</h3>
 
-            <!-- Reset ADB Port -->
-            <div class="action-row">
-                <div class="action-label">
-                    <i class="bi bi-usb-plug"></i> Reset ADB Port
-                </div>
-                <span class="action-status">Requires USB</span>
-                <div class="action-buttons">
-                    <button class="btn btn-sm btn-warning" @onclick="ResetAdbPort" disabled="@_busy">Reset</button>
-                </div>
+        <!-- Enable Wireless ADB -->
+        <div class="action-row">
+            <div class="action-label">
+                <i class="bi bi-usb-plug"></i> Enable Wireless ADB
             </div>
-
-            <!-- ADB Connect -->
-            <div class="action-row">
-                <div class="action-label">
-                    <i class="bi bi-plug"></i> ADB Connect
-                </div>
-                <span class="action-status">WiFi connection</span>
-                <div class="action-buttons">
-                    <button class="btn btn-sm btn-primary" @onclick="ConnectDevice" disabled="@_busy">Connect</button>
-                </div>
+            <span class="action-status">Requires USB cable</span>
+            <div class="action-buttons">
+                <button class="btn btn-sm btn-warning" @onclick="ToggleUsbWizard" disabled="@_busy">
+                    @(_showUsbWizard ? "Close" : "Setup")
+                </button>
             </div>
         </div>
 
-        <div class="mirror-panel">
-            <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" />
+        @if (_showUsbWizard)
+        {
+            <UsbSetupWizard Port="Port" Ip="@Ip" MacAddress="@_device.MacAddress"
+                            OnComplete="OnUsbSetupComplete" />
+        }
+
+        <!-- ADB Connect -->
+        <div class="action-row">
+            <div class="action-label">
+                <i class="bi bi-plug"></i> ADB Connect
+            </div>
+            <span class="action-status">WiFi connection</span>
+            <div class="action-buttons">
+                <button class="btn btn-sm btn-primary" @onclick="ConnectDevice" disabled="@_busy">Connect</button>
+            </div>
         </div>
+
+        <!-- Unlock Phone -->
+        @if (_hasPin)
+        {
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-unlock"></i> Unlock Phone
+                </div>
+                <span class="action-status">Send PIN to unlock screen</span>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-success" @onclick="UnlockPhone" disabled="@(_busy || !_connected)">Unlock</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="mirror-panel">
+        <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" />
     </div>
 }
 
@@ -69,10 +89,14 @@ else
     [Inject] private IDeviceService DeviceService { get; set; } = default!;
     [Inject] private IAdbService AdbService { get; set; } = default!;
     [Inject] private INetworkDiscoveryService NetworkDiscovery { get; set; } = default!;
+    [Inject] private IConfigurationService Config { get; set; } = default!;
 
     private Device? _device;
     private bool _connected;
     private bool _busy;
+    private bool _showUsbWizard;
+    private bool _hasPin;
+    private string? _pin;
     private string _statusMessage = "";
     private string _statusClass = "";
     private string _statusIcon = "";
@@ -89,6 +113,12 @@ else
             _device = devices.FirstOrDefault(d => d.Type == DeviceType.AndroidPhone && d.ModuleId == "android-devices");
         }
 
+        if (_device is not null)
+        {
+            _pin = await Config.GetSettingAsync($"device-pin-{_device.Id}");
+            _hasPin = !string.IsNullOrEmpty(_pin);
+        }
+
         if (_device?.LastKnownIp is not null)
         {
             _connected = await AdbService.ConnectAsync(_device.LastKnownIp, _device.AdbPort);
@@ -98,14 +128,40 @@ else
     private string Ip => _device?.LastKnownIp ?? "";
     private int Port => _device?.AdbPort ?? 5555;
 
-    private async Task ResetAdbPort()
+    private void ToggleUsbWizard()
     {
+        _showUsbWizard = !_showUsbWizard;
+    }
+
+    private async Task UnlockPhone()
+    {
+        if (_device is null || string.IsNullOrEmpty(Ip) || string.IsNullOrEmpty(_pin)) return;
         _busy = true;
-        var port = _device?.AdbPort ?? 5555;
-        SetStatus($"Connect device via USB, then this will reset TCP port to {port}...", "status-warning", "bi-usb-plug");
-        await AdbService.ResetTcpPortAsync(port);
-        SetStatus($"ADB port reset to {port}. You can disconnect USB now.", "status-success", "bi-check-circle");
+        SetStatus("Sending unlock PIN...", "status-info", "bi-unlock");
+        await AdbService.UnlockWithPinAsync(Ip, Port, _pin);
+        SetStatus("Unlock command sent.", "status-success", "bi-check-circle");
         _busy = false;
+    }
+
+    private async Task OnUsbSetupComplete(bool success)
+    {
+        _showUsbWizard = false;
+        if (success && _device is not null)
+        {
+            _connected = true;
+
+            // The wizard connected — find which IP it used from the connected devices list
+            var connected = await AdbService.GetConnectedDevicesAsync();
+            var match = connected.FirstOrDefault(d => d.EndsWith($":{Port}"));
+            if (match is not null)
+            {
+                var ip = match.Split(':')[0];
+                _device.LastKnownIp = ip;
+                await DeviceService.UpdateLastSeenAsync(_device.Id, ip);
+            }
+
+            SetStatus("Wireless ADB enabled and connected.", "status-success", "bi-check-circle");
+        }
     }
 
     private async Task ConnectDevice()

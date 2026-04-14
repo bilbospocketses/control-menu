@@ -95,7 +95,7 @@
             Name = _name.Trim(),
             Type = _type,
             AdbPort = _adbPort,
-            MacAddress = _macAddress.Trim(),
+            MacAddress = NetworkDiscoveryService.NormalizeMac(_macAddress.Trim()),
             ModuleId = "android-devices"
         };
 
