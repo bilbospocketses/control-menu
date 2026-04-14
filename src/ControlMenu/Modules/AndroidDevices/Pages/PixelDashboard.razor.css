@@ -146,6 +146,7 @@
 .mirror-panel {
     border-radius: 0.5rem;
     overflow: hidden;
+    width: 100%;
     flex: 1;
     min-height: 0;
     line-height: 0;
