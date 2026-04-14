@@ -9,6 +9,8 @@ public class JellyfinModule : IToolModule
     public string Icon => "bi-film";
     public int SortOrder => 2;
 
+    private static string DepsRoot => Path.Combine(AppContext.BaseDirectory, "dependencies");
+
     public IEnumerable<ModuleDependency> Dependencies =>
     [
         new ModuleDependency
@@ -27,18 +29,18 @@ public class JellyfinModule : IToolModule
             VersionCommand = "sqlite3 --version",
             VersionPattern = @"([\d.]+)",
             SourceType = UpdateSourceType.Manual,
-            ProjectHomeUrl = "https://www.sqlite.org/download.html"
+            ProjectHomeUrl = "https://www.sqlite.org/download.html",
+            InstallPath = Path.Combine(DepsRoot, "sqlite3")
         }
     ];
 
     public IEnumerable<ConfigRequirement> ConfigRequirements =>
     [
+        new ConfigRequirement("jellyfin-compose-path", "Docker Compose Path", "Path to Jellyfin docker-compose.yml"),
         new ConfigRequirement("jellyfin-api-key", "Jellyfin API Key", "API key for Jellyfin REST API", IsSecret: true),
-        new ConfigRequirement("jellyfin-db-path", "Database Path", "Path to jellyfin.db", DefaultValue: "D:/DockerData/jellyfin/config/data/jellyfin.db"),
-        new ConfigRequirement("jellyfin-container-name", "Container Name", "Docker container name", DefaultValue: "jellyfin"),
-        new ConfigRequirement("jellyfin-backup-dir", "Backup Directory", "Path for database backups", DefaultValue: "C:/scripts/tools-menu/jellyfin-db-bkup-and-logs"),
         new ConfigRequirement("jellyfin-base-url", "Jellyfin URL", "Base URL for Jellyfin API", DefaultValue: "http://127.0.0.1:8096"),
         new ConfigRequirement("jellyfin-user-id", "User ID", "Jellyfin user ID for API calls"),
+        new ConfigRequirement("jellyfin-backup-retention-days", "Backup Retention (days)", "Days to keep database backups", DefaultValue: "5"),
         new ConfigRequirement("smtp-server", "SMTP Server", "SMTP server for notifications", DefaultValue: "mail.smtp2go.com"),
         new ConfigRequirement("smtp-port", "SMTP Port", "SMTP server port", DefaultValue: "587"),
         new ConfigRequirement("smtp-username", "SMTP Username", "SMTP login username"),
@@ -49,7 +51,8 @@ public class JellyfinModule : IToolModule
     public IEnumerable<NavEntry> GetNavEntries() =>
     [
         new NavEntry("DB Date Update", "/jellyfin/db-update", "bi-calendar-date", 0),
-        new NavEntry("Cast & Crew", "/jellyfin/cast-crew", "bi-people", 1)
+        new NavEntry("Cast & Crew", "/jellyfin/cast-crew", "bi-people", 1),
+        new NavEntry("Settings", "/jellyfin/settings", "bi-gear", 2)
     ];
 
     public IEnumerable<BackgroundJobDefinition> GetBackgroundJobs() =>
