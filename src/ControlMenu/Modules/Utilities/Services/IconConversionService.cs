@@ -57,6 +57,55 @@ public class IconConversionService : IIconConversionService
         });
     }
 
+    public Task<byte[]> ConvertToIcoBytesAsync(byte[] sourceImageBytes, int[]? sizes = null)
+    {
+        sizes ??= DefaultSizes;
+
+        return Task.Run(() =>
+        {
+            using var sourceImage = SKBitmap.Decode(sourceImageBytes);
+            if (sourceImage is null)
+                throw new InvalidOperationException("Could not decode image from bytes.");
+
+            var pngEntries = new List<byte[]>();
+            foreach (var size in sizes)
+            {
+                using var resized = ResizeImage(sourceImage, size, size);
+                using var image = SKImage.FromBitmap(resized);
+                using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
+                pngEntries.Add(encoded.ToArray());
+            }
+
+            using var output = new MemoryStream();
+            using var writer = new BinaryWriter(output);
+
+            writer.Write((ushort)0);
+            writer.Write((ushort)1);
+            writer.Write((ushort)pngEntries.Count);
+
+            var dataOffset = 6 + 16 * pngEntries.Count;
+            for (var i = 0; i < pngEntries.Count; i++)
+            {
+                var size = sizes[i];
+                var data = pngEntries[i];
+                writer.Write((byte)(size >= 256 ? 0 : size));
+                writer.Write((byte)(size >= 256 ? 0 : size));
+                writer.Write((byte)0);
+                writer.Write((byte)0);
+                writer.Write((ushort)1);
+                writer.Write((ushort)32);
+                writer.Write((uint)data.Length);
+                writer.Write((uint)dataOffset);
+                dataOffset += data.Length;
+            }
+
+            foreach (var data in pngEntries)
+                writer.Write(data);
+
+            return output.ToArray();
+        });
+    }
+
     private static SKBitmap ResizeImage(SKBitmap source, int width, int height)
     {
         var destBitmap = new SKBitmap(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);

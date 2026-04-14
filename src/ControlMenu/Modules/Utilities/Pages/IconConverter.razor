@@ -1,6 +1,5 @@
 @page "/utilities/icon-converter"
 @using ControlMenu.Modules.Utilities.Services
-@using Microsoft.AspNetCore.Components.Forms
 @inject IIconConversionService IconService
 @inject IWebHostEnvironment Env
 @inject IJSRuntime JS
@@ -8,22 +7,30 @@
 <PageTitle>Icon Converter</PageTitle>
 
 <h1><i class="bi bi-file-earmark-image"></i> Icon Converter</h1>
-<p class="page-subtitle">Convert a PNG, JPG, or other image to an ICO file with multiple sizes. The ICO is saved alongside the original image.</p>
+<p class="page-subtitle">Convert a PNG, JPG, or other image to an ICO file with multiple sizes.</p>
 
 <div class="converter-panel">
     <div class="form-group">
-        <label class="form-label">Image Path</label>
-        <div style="display:flex; gap:0.4rem; align-items:center;">
+        <label class="form-label">Source Image</label>
+        @if (_hasFileSystemAccess)
+        {
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+                <button class="btn btn-secondary" @onclick="PickFile">
+                    <i class="bi bi-file-earmark-image"></i> Select Image
+                </button>
+                @if (!string.IsNullOrEmpty(_fileName))
+                {
+                    <span class="file-info">@_fileName (@ControlMenu.Services.FormatHelper.FormatSize(_fileBytes?.Length ?? 0))</span>
+                }
+            </div>
+        }
+        else
+        {
             <input type="text" class="form-control" style="max-width:500px;"
                    placeholder="C:\path\to\image.png"
                    @bind="_sourcePath" />
-            <label class="btn btn-secondary btn-sm" style="cursor:pointer; margin:0;" title="Select image file">
-                <i class="bi bi-file-earmark-image"></i>
-                <InputFile OnChange="OnFileSelected" accept=".png,.jpg,.jpeg,.bmp,.gif"
-                           style="display:none;" />
-            </label>
-        </div>
-        <div class="form-hint">Type a path or click the file button to select an image. The ICO will be saved in the same folder.</div>
+            <div class="form-hint">File System Access API not available in this browser. Type the full path instead.</div>
+        }
     </div>
 
     <div class="form-group">
@@ -54,23 +61,26 @@
     }
 
     <button class="btn btn-primary btn-lg" @onclick="Convert"
-            disabled="@(string.IsNullOrWhiteSpace(_sourcePath) || _converting || _selectedSizes.Count == 0)">
+            disabled="@(!_canConvert || _converting || _selectedSizes.Count == 0)">
         <i class="bi bi-arrow-right-circle"></i> Convert to ICO
     </button>
 
-    @if (_savedPath is not null)
+    @if (_resultMessage is not null)
     {
         <div class="download-panel">
             <i class="bi bi-check-circle-fill" style="color:var(--success-color); font-size:1.2rem;"></i>
             <div>
-                <strong>Icon created successfully.</strong>
-                <div style="margin-top:0.25rem; font-size:0.85rem; color:var(--text-secondary);">
-                    Saved to: <code>@_savedPath</code>
-                </div>
+                <strong>@_resultMessage</strong>
+                @if (_savedPath is not null)
+                {
+                    <div style="margin-top:0.25rem; font-size:0.85rem; color:var(--text-secondary);">
+                        Saved to: <code>@_savedPath</code>
+                    </div>
+                }
             </div>
             @if (_downloadUrl is not null)
             {
-                <a href="@_downloadUrl" download="@Path.GetFileName(_savedPath)" class="btn-pill btn-pill-success">
+                <a href="@_downloadUrl" download="@_icoFileName" class="btn-pill btn-pill-success">
                     <i class="bi bi-download"></i> Download Copy
                 </a>
             }
@@ -79,36 +89,47 @@
 </div>
 
 @code {
-    private string _sourcePath = "";
     private readonly int[] _availableSizes = [16, 32, 48, 64, 128, 256];
     private HashSet<int> _selectedSizes = [64, 128, 256];
     private bool _converting;
+    private string? _error;
+    private string? _resultMessage;
     private string? _savedPath;
     private string? _downloadUrl;
-    private string? _error;
-    private string? _uploadedTempPath;
+    private string? _icoFileName;
 
-    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    // File System Access API mode
+    private bool _hasFileSystemAccess;
+    private string? _fileName;
+    private byte[]? _fileBytes;
+
+    // Fallback path mode
+    private string _sourcePath = "";
+
+    private bool _canConvert => _fileBytes is not null || !string.IsNullOrWhiteSpace(_sourcePath);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        _savedPath = null;
+        if (firstRender)
+        {
+            _hasFileSystemAccess = await JS.InvokeAsync<bool>("hasFileSystemAccess");
+            StateHasChanged();
+        }
+    }
+
+    private async Task PickFile()
+    {
+        _resultMessage = null;
         _downloadUrl = null;
+        _savedPath = null;
         _error = null;
 
-        // Save the uploaded file to a temp location and set the path
-        var tempDir = Path.Combine(Env.WebRootPath, "temp");
-        Directory.CreateDirectory(tempDir);
+        var result = await JS.InvokeAsync<FilePickerResult?>("filePickerOpen", ".png,.jpg,.jpeg,.bmp,.gif");
+        if (result is null) return;
 
-        var originalName = e.File.Name;
-        var tempPath = Path.Combine(tempDir, $"{Guid.NewGuid():N}{Path.GetExtension(originalName)}");
-
-        await using (var stream = e.File.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024))
-        await using (var fileStream = new FileStream(tempPath, FileMode.Create))
-        {
-            await stream.CopyToAsync(fileStream);
-        }
-
-        _uploadedTempPath = tempPath;
-        _sourcePath = tempPath;
+        _fileName = result.Name;
+        _fileBytes = result.Bytes;
+        _icoFileName = Path.GetFileNameWithoutExtension(result.Name) + ".ico";
     }
 
     private void ToggleSize(int size, bool selected)
@@ -119,48 +140,77 @@
 
     private async Task Convert()
     {
-        if (string.IsNullOrWhiteSpace(_sourcePath) || _selectedSizes.Count == 0) return;
+        if (_selectedSizes.Count == 0) return;
 
         _converting = true;
+        _resultMessage = null;
         _savedPath = null;
         _downloadUrl = null;
         _error = null;
 
         try
         {
-            var source = _sourcePath.Trim();
-            if (!File.Exists(source))
-            {
-                _error = $"File not found: {source}";
-                return;
-            }
-
-            var sourceDir = Path.GetDirectoryName(source)!;
-            var baseName = Path.GetFileNameWithoutExtension(source);
-            var targetPath = Path.Combine(sourceDir, $"{baseName}.ico");
-
             var sizes = _selectedSizes.OrderBy(s => s).ToArray();
-            await IconService.ConvertToIcoAsync(source, targetPath, sizes);
-            _savedPath = targetPath;
 
-            // Create a web-downloadable copy
-            var tempDir = Path.Combine(Env.WebRootPath, "temp");
-            Directory.CreateDirectory(tempDir);
-            var webCopy = Path.Combine(tempDir, $"{Guid.NewGuid():N}.ico");
-            File.Copy(targetPath, webCopy);
-            _downloadUrl = $"/temp/{Path.GetFileName(webCopy)}";
-
-            // Clean up uploaded temp file if we used the file picker
-            if (_uploadedTempPath is not null && File.Exists(_uploadedTempPath))
+            if (_fileBytes is not null)
             {
-                File.Delete(_uploadedTempPath);
-                _uploadedTempPath = null;
+                // File System Access API mode — convert in memory, save via browser
+                var icoBytes = await IconService.ConvertToIcoBytesAsync(_fileBytes, sizes);
+                var base64 = System.Convert.ToBase64String(icoBytes);
+                var savedName = await JS.InvokeAsync<string?>("filePickerSave", _icoFileName, base64);
+
+                if (savedName is not null)
+                {
+                    _resultMessage = "Icon created successfully.";
+                    _savedPath = savedName;
+
+                    // Also provide a web download copy
+                    var tempDir = Path.Combine(Env.WebRootPath, "temp");
+                    Directory.CreateDirectory(tempDir);
+                    var webCopy = Path.Combine(tempDir, $"{Guid.NewGuid():N}.ico");
+                    await File.WriteAllBytesAsync(webCopy, icoBytes);
+                    _downloadUrl = $"/temp/{Path.GetFileName(webCopy)}";
+
+                    _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+                    {
+                        try { if (File.Exists(webCopy)) File.Delete(webCopy); } catch { }
+                    });
+                }
+                else
+                {
+                    _error = "Save cancelled.";
+                }
             }
-
-            _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+            else if (!string.IsNullOrWhiteSpace(_sourcePath))
             {
-                try { if (File.Exists(webCopy)) File.Delete(webCopy); } catch { }
-            });
+                // Fallback path mode — convert on disk
+                var source = _sourcePath.Trim();
+                if (!File.Exists(source))
+                {
+                    _error = $"File not found: {source}";
+                    return;
+                }
+
+                var sourceDir = Path.GetDirectoryName(source)!;
+                var baseName = Path.GetFileNameWithoutExtension(source);
+                _icoFileName = $"{baseName}.ico";
+                var targetPath = Path.Combine(sourceDir, _icoFileName);
+
+                await IconService.ConvertToIcoAsync(source, targetPath, sizes);
+                _resultMessage = "Icon created successfully.";
+                _savedPath = targetPath;
+
+                var tempDir = Path.Combine(Env.WebRootPath, "temp");
+                Directory.CreateDirectory(tempDir);
+                var webCopy = Path.Combine(tempDir, $"{Guid.NewGuid():N}.ico");
+                File.Copy(targetPath, webCopy);
+                _downloadUrl = $"/temp/{Path.GetFileName(webCopy)}";
+
+                _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+                {
+                    try { if (File.Exists(webCopy)) File.Delete(webCopy); } catch { }
+                });
+            }
         }
         catch (Exception ex)
         {
@@ -171,4 +221,6 @@
             _converting = false;
         }
     }
+
+    private record FilePickerResult(string Name, byte[] Bytes);
 }
