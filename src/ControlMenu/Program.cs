@@ -46,6 +46,7 @@ builder.Services.AddSingleton<ICommandExecutor, CommandExecutor>();
 builder.Services.AddScoped<ISecretStore, SecretStore>();
 builder.Services.AddScoped<IConfigurationService, ConfigurationService>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
 
 // Android Devices module services

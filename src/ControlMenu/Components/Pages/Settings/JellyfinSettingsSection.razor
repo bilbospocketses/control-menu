@@ -67,6 +67,14 @@
     </table>
 </div>
 
+<div class="settings-section" style="margin-top:2rem;">
+    <h2>Email Notifications</h2>
+    <p>SMTP settings are configured in Module Settings. Use this to verify they work.</p>
+    <button class="btn btn-secondary" @onclick="SendTestEmail" disabled="@_sendingTest">
+        <i class="bi bi-envelope"></i> @(_sendingTest ? "Sending..." : "Send Test Email")
+    </button>
+</div>
+
 @if (!string.IsNullOrEmpty(_message))
 {
     <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
@@ -77,10 +85,12 @@
 @code {
     [Inject] private IConfigurationService Config { get; set; } = default!;
     [Inject] private IJellyfinService JellyfinService { get; set; } = default!;
+    [Inject] private IEmailService EmailService { get; set; } = default!;
 
     private string _composePath = "";
     private int _retentionDays = 5;
     private bool _parsing;
+    private bool _sendingTest;
     private ComposeParseResult? _parseResult;
     private string? _message;
     private bool _messageIsError;
@@ -147,6 +157,18 @@
         {
             _logCount = Directory.GetFiles(logDir, "*.log").Length;
         }
+    }
+
+    private async Task SendTestEmail()
+    {
+        _sendingTest = true;
+        _message = null;
+        StateHasChanged();
+
+        var (success, error) = await EmailService.SendTestAsync();
+        _message = success ? "Test email sent successfully!" : $"Failed: {error}";
+        _messageIsError = !success;
+        _sendingTest = false;
     }
 
     private static string FormatSize(long bytes)
