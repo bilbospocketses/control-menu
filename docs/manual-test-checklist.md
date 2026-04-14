@@ -109,31 +109,47 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Job history table shows completed/failed jobs
 - [ ] If a previous job got stuck in "Running" state — it should now be clearable (fail on cancellation)
 
-## 12. Utilities > Icon Converter
+## 12. Dependency Version Management (ADB Update Fix)
+
+- [ ] Settings > Dependencies: Check ADB — version appears (not "Not found" if installed locally)
+- [ ] ADB shows correct local version, not a stale system PATH version
+- [ ] If ADB update available: "Update" button resolves to a versioned URL (not `-latest-`)
+- [ ] Node.js version check resolves (shows installed version)
+- [ ] Node.js update URL resolves to versioned dist URL (not generic download page)
+- [ ] After updating a dependency: no infinite update loop (status stays "Up to date")
+
+## 13. Cast & Crew Email Notifications
+
+- [ ] Set a notification email in Settings > General
+- [ ] Run a Cast & Crew update — on completion, email is sent with summary
+- [ ] Cancel a running Cast & Crew job — email is sent with cancellation notice
+- [ ] If no notification email is set — no error, notification is silently skipped
+
+## 14. Utilities > Icon Converter
 
 - [ ] Upload a PNG image
 - [ ] Select sizes, click Convert
 - [ ] Download link appears — file downloads successfully
 - [ ] UI is responsive during conversion (not frozen — async via Task.Run)
 
-## 13. Utilities > File Unblocker (Windows only)
+## 15. Utilities > File Unblocker (Windows only)
 
 - [ ] Enter a valid directory path — files are unblocked, count shown
 - [ ] Enter a non-existent path — "Directory not found" error message
 - [ ] Path with spaces works correctly
 
-## 14. TopBar
+## 16. TopBar
 
 - [ ] Update badge (bell icon) hover has visible background change
 - [ ] If dependency updates available: badge count shows
 
-## 15. Navigation Edge Cases
+## 17. Navigation Edge Cases
 
 - [ ] Navigate to `/settings/nonexistent` — shows "Unknown settings section" message with link
 - [ ] Navigate to `/android/googletv` without a device — first Google TV device is selected (no crash)
 - [ ] Navigate to `/android/pixel` without a device — first Pixel device is selected (no crash)
 
-## 16. ws-scrcpy-web Integration
+## 18. ws-scrcpy-web Integration
 
 - [ ] If ws-scrcpy-web is configured and running: "Screen mirroring unavailable" does NOT show
 - [ ] If ws-scrcpy-web crashes: mirror shows unavailable (not stale "running" state)
@@ -151,3 +167,5 @@ If you're short on time, just hit these:
 4. [ ] Settings > Dependencies: badges are styled, disabled buttons are dimmed
 5. [ ] Jellyfin > DB Date Update: start a run, verify Step 4 detects "Startup complete"
 6. [ ] Edit a device, cancel — verify original values unchanged
+7. [ ] Settings > Dependencies: ADB check shows local version, no update loop
+8. [ ] Cast & Crew update sends email on completion (if notification email set)
