@@ -1,0 +1,97 @@
+@using ControlMenu.Modules.Cameras
+@using ControlMenu.Modules.Cameras.Services
+
+<h2>Cameras</h2>
+<p>Configure up to 8 CCTV cameras. Each camera needs a name, IP address, and login credentials.</p>
+
+@for (var i = 1; i <= ICameraService.MaxCameras; i++)
+{
+    var index = i;
+    <div class="camera-settings-card">
+        <h3>Camera @index</h3>
+        <div class="form-row">
+            <label>Name</label>
+            <input class="form-control" value="@_names[index]"
+                   @onchange="e => _names[index] = e.Value?.ToString() ?? string.Empty"
+                   placeholder="e.g. Front Door" />
+        </div>
+        <div class="form-row">
+            <label>IP Address</label>
+            <input class="form-control" value="@_ips[index]"
+                   @onchange="e => _ips[index] = e.Value?.ToString() ?? string.Empty"
+                   placeholder="e.g. 192.168.86.101" />
+        </div>
+        <div class="form-row">
+            <label>Port</label>
+            <input class="form-control" type="number" value="@_ports[index]"
+                   @onchange="e => _ports[index] = int.TryParse(e.Value?.ToString(), out var p) ? p : 80"
+                   placeholder="80" />
+        </div>
+        <div class="form-row">
+            <label>Username</label>
+            <input class="form-control" value="@_usernames[index]"
+                   @onchange="e => _usernames[index] = e.Value?.ToString() ?? string.Empty"
+                   placeholder="admin" />
+        </div>
+        <div class="form-row">
+            <label>Password</label>
+            <input class="form-control" type="password" value="@_passwords[index]"
+                   @onchange="e => _passwords[index] = e.Value?.ToString() ?? string.Empty"
+                   placeholder="password" />
+        </div>
+        <button class="btn btn-secondary" @onclick="() => SaveCamera(index)" disabled="@_saving">
+            <i class="bi bi-check-lg"></i> Save Camera @index
+        </button>
+        @if (_savedIndex == index)
+        {
+            <span class="save-confirm">Saved</span>
+        }
+    </div>
+}
+
+@code {
+    [Inject] private ICameraService CameraService { get; set; } = default!;
+
+    private readonly Dictionary<int, string> _names = new();
+    private readonly Dictionary<int, string> _ips = new();
+    private readonly Dictionary<int, int> _ports = new();
+    private readonly Dictionary<int, string> _usernames = new();
+    private readonly Dictionary<int, string> _passwords = new();
+    private bool _saving;
+    private int? _savedIndex;
+
+    protected override async Task OnInitializedAsync()
+    {
+        for (var i = 1; i <= ICameraService.MaxCameras; i++)
+        {
+            var cam = await CameraService.GetCameraAsync(i);
+            _names[i] = cam?.Name ?? "";
+            _ips[i] = cam?.IpAddress ?? "";
+            _ports[i] = cam?.Port ?? 80;
+
+            var creds = await CameraService.GetCredentialsAsync(i);
+            _usernames[i] = creds?.Username ?? "";
+            _passwords[i] = creds?.Password ?? "";
+        }
+    }
+
+    private async Task SaveCamera(int index)
+    {
+        _saving = true;
+        _savedIndex = null;
+        StateHasChanged();
+
+        if (!string.IsNullOrWhiteSpace(_names[index]) && !string.IsNullOrWhiteSpace(_ips[index]))
+        {
+            await CameraService.SaveCameraAsync(index, _names[index].Trim(), _ips[index].Trim(), _ports[index]);
+        }
+        if (!string.IsNullOrWhiteSpace(_usernames[index]) && !string.IsNullOrWhiteSpace(_passwords[index]))
+        {
+            await CameraService.SaveCredentialsAsync(index, _usernames[index], _passwords[index]);
+            CameraProxyMiddleware.ClearSession(index);
+        }
+
+        _savedIndex = index;
+        _saving = false;
+    }
+}

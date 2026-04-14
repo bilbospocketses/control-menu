@@ -1,0 +1,33 @@
+.camera-container {
+    height: calc(100vh - 60px);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.camera-iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: none;
+    margin: 0;
+    padding: 0;
+}
+
+.camera-not-configured {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 60vh;
+    color: var(--text-secondary, #6c757d);
+    text-align: center;
+}
+
+.camera-not-configured i {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+
+.camera-not-configured a {
+    color: var(--accent-color, #10b981);
+}

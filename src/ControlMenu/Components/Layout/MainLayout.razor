@@ -39,6 +39,7 @@
             "settings/devices" => "Settings — Devices",
             "settings/jellyfin" => "Settings — Jellyfin",
             "settings/dependencies" => "Settings — Dependencies",
+            "settings/cameras" => "Settings — Cameras",
             "setup" => "Setup Wizard",
             _ when path.StartsWith("android/googletv") => "Google TV Dashboard",
             _ when path.StartsWith("android/phone") || path.StartsWith("android/pixel") => "Android Phone",
@@ -47,6 +48,7 @@
             _ when path.StartsWith("jellyfin/cast-crew") => "Cast & Crew Update",
             _ when path.StartsWith("utilities/icon") => "Icon Converter",
             _ when path.StartsWith("utilities/unblock") => "File Unblocker",
+            _ when path.StartsWith("cameras/") => "Camera",
             _ => path.Split('/').Last().Replace("-", " ")
         };
     }

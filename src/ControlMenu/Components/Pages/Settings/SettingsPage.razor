@@ -21,6 +21,10 @@
                 @onclick='() => Navigate("dependencies")'>
             <i class="bi bi-box-seam"></i> Dependencies
         </button>
+        <button class="settings-nav-item @(ActiveSection == "cameras" ? "active" : "")"
+                @onclick='() => Navigate("cameras")'>
+            <i class="bi bi-camera-video"></i> Cameras
+        </button>
     </nav>
 
     <div class="settings-content">
@@ -37,6 +41,9 @@
                 break;
             case "dependencies":
                 <DependencyManagement />
+                break;
+            case "cameras":
+                <CameraSettings />
                 break;
             default:
                 <p>Unknown settings section. <a href="/settings/general">Go to General Settings</a></p>
