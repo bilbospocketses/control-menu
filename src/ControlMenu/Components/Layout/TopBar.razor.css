@@ -19,6 +19,7 @@
 .top-bar-breadcrumb a {
     color: var(--text-secondary);
     text-decoration: none;
+    outline: none;
 }
 
 .top-bar-breadcrumb a:hover {

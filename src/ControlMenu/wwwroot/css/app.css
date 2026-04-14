@@ -3,6 +3,10 @@
     box-sizing: border-box;
 }
 
+h1:focus, h2:focus, h3:focus, [tabindex]:focus {
+    outline: none;
+}
+
 html, body {
     margin: 0;
     padding: 0;
