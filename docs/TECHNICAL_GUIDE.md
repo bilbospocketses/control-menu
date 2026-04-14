@@ -12,13 +12,14 @@ This document is a comprehensive technical reference for developers working on t
 4. [ws-scrcpy-web Integration](#4-ws-scrcpy-web-integration)
 5. [Jellyfin Module](#5-jellyfin-module)
 6. [Utilities Module](#6-utilities-module)
-7. [Core Services](#7-core-services)
-8. [Database Schema](#8-database-schema)
-9. [Setup Wizard](#9-setup-wizard)
-10. [Settings Architecture](#10-settings-architecture)
-11. [Build and Deployment](#11-build-and-deployment)
-12. [Testing](#12-testing)
-13. [Known Issues and Fixes](#13-known-issues-and-fixes)
+7. [Cameras Module](#7-cameras-module)
+8. [Core Services](#8-core-services)
+9. [Database Schema](#9-database-schema)
+10. [Setup Wizard](#10-setup-wizard)
+11. [Settings Architecture](#11-settings-architecture)
+12. [Build and Deployment](#12-build-and-deployment)
+13. [Testing](#13-testing)
+14. [Known Issues and Fixes](#14-known-issues-and-fixes)
 
 ---
 
@@ -39,6 +40,7 @@ Control Menu is a .NET 9 Blazor Server web application that manages Android devi
 |  - AndroidDevices (sort 1)                                |
 |  - Jellyfin (sort 2)                                      |
 |  - Utilities (sort 3)                                     |
+|  - Cameras (sort 4)                                       |
 |  - Auto-discovered via reflection at startup              |
 +-----------------------------------------------------------+
 |  Layer 3: Core Services                                   |
@@ -73,8 +75,8 @@ src/ControlMenu/
   Components/
     Layout/                 # MainLayout, Sidebar, TopBar
     Pages/                  # Home, Settings, Setup Wizard
-      Settings/             # SettingsPage, tabs: General, Devices, Jellyfin, Dependencies
-      Setup/                # Wizard steps: Welcome, Devices, Jellyfin, Email, Dependencies, Done
+      Settings/             # SettingsPage, tabs: General, Devices, Cameras, Jellyfin, Dependencies
+      Setup/                # Wizard steps: Welcome, Android Devices, Cameras, Jellyfin, Email, Dependencies, Done
     Shared/                 # ScrcpyMirror, UsbSetupWizard
   Data/
     AppDbContext.cs          # EF Core DbContext
@@ -86,6 +88,7 @@ src/ControlMenu/
     ModuleDiscoveryService.cs
     NavEntry.cs, BackgroundJobDefinition.cs, ModuleDependency.cs, ConfigRequirement.cs
     AndroidDevices/          # Module class, Pages/, Services/
+    Cameras/                 # Module class, Pages/, Services/, CameraProxyMiddleware
     Jellyfin/                # Module class, Pages/, Services/, Workers/
     Utilities/               # Module class, Pages/, Services/
   Services/                  # Core services (see section 7)
@@ -179,6 +182,7 @@ public record ConfigRequirement(
 | Android Devices | `android-devices` | 1 | adb, scrcpy, node, ws-scrcpy-web | Device List, Google TV, Android Phone |
 | Jellyfin | `jellyfin` | 2 | docker, sqlite3 | DB Date Update, Cast & Crew |
 | Utilities | `utilities` | 3 | (none) | Icon Converter, File Unblocker |
+| Cameras | `cameras` | 4 | (none) | Dynamic: one entry per configured camera |
 
 ### Sidebar Integration
 
@@ -303,7 +307,7 @@ The `embed=true` parameter tells ws-scrcpy-web to hide its own toolbar and use a
 
 ### Critical Bug Fix
 
-The phone mirror panel required explicit sizing for iframe click handling to work correctly. Without `position: relative` on the container and `position: absolute` on the iframe, click events would not propagate through to the ws-scrcpy-web stream. This is documented further in [Known Issues and Fixes](#13-known-issues-and-fixes).
+The phone mirror panel required explicit sizing for iframe click handling to work correctly. Without `position: relative` on the container and `position: absolute` on the iframe, click events would not propagate through to the ws-scrcpy-web stream. This is documented further in [Known Issues and Fixes](#14-known-issues-and-fixes).
 
 ### Fallback Behavior
 
@@ -430,7 +434,88 @@ The PowerShell command counts blocked files before unblocking because `Unblock-F
 
 ---
 
-## 7. Core Services
+## 7. Cameras Module
+
+The Cameras module provides CCTV camera viewing for LTS/Hikvision cameras via iframe embedding. A reverse proxy middleware handles auto-login and strips iframe-blocking headers so camera web interfaces can be displayed inside the Control Menu UI.
+
+### CameraConfig
+
+```csharp
+public record CameraConfig(int Index, string Name, string IpAddress, int Port);
+```
+
+A lightweight record representing a single camera's non-secret configuration. The `Index` is the camera's position (1-based) within the user's configured camera count.
+
+### CameraService
+
+`CameraService` implements `ICameraService` and uses `IConfigurationService` for all persistence. Camera settings are scoped to `moduleId = "cameras"`.
+
+Settings per camera:
+| Key Pattern | Type | Storage |
+|-------------|------|---------|
+| `camera-count` | int | Plain setting (default: 8) |
+| `camera-{index}-name` | string | Plain setting |
+| `camera-{index}-ip` | string | Plain setting |
+| `camera-{index}-port` | int | Plain setting |
+| `camera-{index}-username` | string | Secret (encrypted) |
+| `camera-{index}-password` | string | Secret (encrypted) |
+
+Key methods:
+| Method | Purpose |
+|--------|---------|
+| `GetCameraCountAsync()` | Read `camera-count` setting, default 8 |
+| `SetCameraCountAsync(count)` | Write `camera-count` setting |
+| `GetCameraConfigAsync(index)` | Load name, IP, port for one camera |
+| `GetAllCameraConfigsAsync()` | Load configs for all configured cameras |
+| `SaveCameraConfigAsync(config)` | Write name, IP, port for one camera |
+| `GetCredentialsAsync(index)` | Read username/password secrets |
+| `SaveCredentialsAsync(index, user, pass)` | Write username/password secrets |
+
+### CameraProxyMiddleware
+
+ASP.NET middleware registered in the pipeline that intercepts requests matching the pattern `/cameras/{index}/proxy/**` and forwards them to the corresponding camera's IP address.
+
+Architecture:
+- **Path matching**: Regex `^/cameras/(\d+)/proxy/(.*)$` extracts camera index and downstream path
+- **Session caching**: `ConcurrentDictionary<int, string>` stores session cookies per camera index
+- **Auto-login**: On first request or after a 401 response, authenticates via Hikvision ISAPI:
+  1. `POST /ISAPI/Security/sessionLogin` with XML payload containing username and encrypted password challenge
+  2. `GET /ISAPI/Security/userCheck` to validate the session
+  3. Caches the session cookie for subsequent requests
+- **Header stripping**: Removes `X-Frame-Options` and `Content-Security-Policy` headers from proxied responses to allow iframe embedding
+- **Retry on 401**: If a proxied request returns 401, clears the cached session, re-authenticates, and retries the original request once
+- **HttpClient**: One `HttpClientHandler` per camera with `CookieContainer` for automatic cookie management
+
+### CamerasModule
+
+Implements `IToolModule` with:
+- `Id`: `"cameras"`
+- `SortOrder`: `4`
+- `Icon`: `"bi-camera-video"`
+- `Dependencies`: none
+- `GetNavEntries()`: Dynamically generates one `NavEntry` per configured camera (reads `camera-count` and individual camera names). Each entry links to `/cameras/{index}`.
+
+### Pages
+
+- **CameraView** (`/cameras/{Index:int}`) -- Full-page iframe pointing at `/cameras/{Index}/proxy/` which loads the camera's web interface through the proxy middleware. The iframe fills the available viewport.
+
+### Settings UI
+
+- **CameraSettings** (Settings > Cameras tab) -- Configurable camera count with per-camera name, IP, port, username, and password fields. Changing the camera count dynamically adjusts the number of camera configuration slots.
+
+### Setup Wizard
+
+- **WizardCameras** (Step 3) -- Collapsible camera slots for configuring cameras during first-run setup. Appears after Android Devices and before Jellyfin.
+
+### Tests
+
+- `CameraServiceTests` (8 tests) -- CRUD operations, credential storage, camera count management
+- `CamerasModuleTests` (5 tests) -- Module metadata, dynamic nav entry generation
+- `CameraProxyMiddlewareTests` (2 tests) -- Request forwarding, header stripping
+
+---
+
+## 8. Core Services
 
 ### CommandExecutor
 
@@ -575,7 +660,7 @@ Required settings:
 
 ---
 
-## 8. Database Schema
+## 9. Database Schema
 
 ### Connection
 
@@ -672,35 +757,39 @@ Enum columns are stored as strings (`HasConversion<string>()`), not integers, fo
 
 ---
 
-## 9. Setup Wizard
+## 10. Setup Wizard
 
-The setup wizard runs on first launch (when the `setup-completed` setting is absent). It has six steps, each a separate Razor component under `Components/Pages/Setup/`:
+The setup wizard runs on first launch (when the `setup-completed` setting is absent). It has seven steps, each a separate Razor component under `Components/Pages/Setup/`:
 
 | Step | Component | Purpose |
 |------|-----------|---------|
 | 1 | WizardWelcome | Introduction |
-| 2 | WizardDevices | Add devices, run network discovery for MAC-to-IP resolution |
-| 3 | WizardJellyfin | Configure Jellyfin docker-compose path, validate compose file |
-| 4 | WizardEmail | Configure SMTP settings, send test email |
-| 5 | WizardDependencies | Scan for installed tools, install missing ones |
-| 6 | WizardDone | Summary, sets `setup-completed` setting |
+| 2 | WizardDevices | Add Android devices, run network discovery for MAC-to-IP resolution |
+| 3 | WizardCameras | Configure CCTV cameras with collapsible per-camera slots |
+| 4 | WizardJellyfin | Configure Jellyfin docker-compose path, validate compose file |
+| 5 | WizardEmail | Configure SMTP settings, send test email |
+| 6 | WizardDependencies | Scan for installed tools, install missing ones |
+| 7 | WizardDone | Summary, sets `setup-completed` setting |
 
 The `WizardStepper.razor` component provides the step indicator and navigation.
 
-During the Devices step, `NetworkDiscoveryService.GetArpTableAsync()` is used to resolve device IPs from MAC addresses. This populates `Device.LastKnownIp` for ADB connections.
+During the Android Devices step, `NetworkDiscoveryService.GetArpTableAsync()` is used to resolve device IPs from MAC addresses. This populates `Device.LastKnownIp` for ADB connections.
+
+During the Cameras step, users configure camera count, names, IPs, ports, and credentials. Camera slots are collapsible to keep the UI manageable when many cameras are configured.
 
 ---
 
-## 10. Settings Architecture
+## 11. Settings Architecture
 
 ### Settings Page
 
-`SettingsPage.razor` uses a tabbed layout with four sections:
+`SettingsPage.razor` uses a tabbed layout with five sections:
 
 | Tab | Component | Key Settings |
 |-----|-----------|-------------|
 | General | GeneralSettings | `smtp-server`, `smtp-port`, `smtp-username`, `smtp-password` (secret), `smtp-from-email`, `notification-email`, `app-timezone` |
 | Devices | DeviceManagement | Device CRUD, `ws_scrcpy_web_path` (module: `android-devices`) |
+| Cameras | CameraSettings | `camera-count`, per-camera name/IP/port, per-camera username/password (secrets) (module: `cameras`) |
 | Jellyfin | JellyfinSettingsSection | `jellyfin-compose-path`, `jellyfin-api-key` (secret), `jellyfin-url`, `jellyfin-user-id` |
 | Dependencies | DependencyManagement | Per-dependency install paths (`dep-path-{name}`), version check, install/update buttons, check interval (`dep-check-interval`) |
 
@@ -719,7 +808,7 @@ The DPAPI keys in `%LOCALAPPDATA%/ControlMenu/keys/` must be preserved when migr
 
 ---
 
-## 11. Build and Deployment
+## 12. Build and Deployment
 
 ### Development
 
@@ -775,13 +864,13 @@ if (Directory.Exists(depsRoot))
 
 ---
 
-## 12. Testing
+## 13. Testing
 
 ### Framework
 
 - **xUnit** -- test runner
 - **Moq** -- mocking framework
-- 128 tests across services, modules, and data layer
+- 143 tests across services, modules, and data layer
 
 ### Test Database
 
@@ -812,6 +901,7 @@ tests/ControlMenu.Tests/
     SecretStoreTests.cs
   Modules/
     AndroidDevices/               # AdbService tests
+    Cameras/                      # CameraService, CamerasModule, CameraProxyMiddleware tests
     Jellyfin/                     # JellyfinService, ComposeParser, CastCrewUpdateWorker tests
     Utilities/                    # IconConversionService, FileUnblockService tests
     Fakes/                        # Test doubles
@@ -828,7 +918,7 @@ All tests run in-process with no external dependencies. ADB, Docker, and other e
 
 ---
 
-## 13. Known Issues and Fixes
+## 14. Known Issues and Fixes
 
 ### Phone Mirror Panel Click Handling
 

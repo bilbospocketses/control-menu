@@ -5,7 +5,7 @@
 <h1 align="center">Control Menu</h1>
 
 <p align="center">
-  A web-based tool for managing Android devices, Jellyfin media server, and system utilities from one place.
+  A web-based tool for managing Android devices, CCTV cameras, Jellyfin media server, and system utilities from one place.
 </p>
 
 <p align="center">
@@ -21,6 +21,7 @@
 Control Menu replaces a collection of PowerShell scripts with a cross-platform web UI. It manages:
 
 - **Android Devices** &mdash; Connect, reboot, toggle power/screensaver, manage ADB settings, and screen mirror Google TVs and Android phones via [ws-scrcpy-web](https://github.com/ANG-DEVELOPERS/ws-scrcpy-web)
+- **Cameras** &mdash; View LTS/Hikvision CCTV cameras via iframe embedding with a reverse proxy that handles auto-login (ISAPI sessionLogin) and strips iframe-blocking headers. Configurable camera count with encrypted credential storage.
 - **Jellyfin Media Server** &mdash; Database date updates, cast & crew image refresh (background worker with resume support), Docker container management, automated backups with configurable retention
 - **Utilities** &mdash; Image-to-ICO icon conversion (PNG, JPG, BMP, GIF, WEBP, TIFF via SkiaSharp) with native file picker, Windows Zone.Identifier file unblocker
 - **Dependency Management** &mdash; Auto-installs and updates ADB, scrcpy, Node.js, and sqlite3 to a self-contained `dependencies/` folder. Configurable install paths per tool. Version checks via GitHub API and direct URL scraping.
@@ -28,7 +29,7 @@ Control Menu replaces a collection of PowerShell scripts with a cross-platform w
 ## Features
 
 - **Modular architecture** &mdash; `IToolModule` interface with auto-discovery via reflection
-- **First-run wizard** &mdash; 6 steps: Welcome, Devices, Jellyfin, Email, Dependencies, Done
+- **First-run wizard** &mdash; 7 steps: Welcome, Android Devices, Cameras, Jellyfin, Email, Dependencies, Done
 - **Dark/light theme** &mdash; OAO grey palette with two-state toggle
 - **Cross-platform** &mdash; `CommandExecutor` strategy pattern abstracts Windows vs Linux commands
 - **Encrypted secrets** &mdash; ASP.NET Data Protection API for API keys and passwords
@@ -61,7 +62,7 @@ Open http://localhost:5159 in your browser. The first-run wizard will guide you 
 dotnet test
 ```
 
-128 tests covering services, modules, and integrations.
+143 tests covering services, modules, and integrations.
 
 ## Architecture
 
@@ -74,6 +75,7 @@ src/ControlMenu/
   Data/                 # EF Core entities, enums, migrations
   Modules/              # Pluggable tool modules
     AndroidDevices/     #   ADB service, Google TV & Android Phone dashboards
+    Cameras/            #   CCTV camera proxy, iframe embedding, auto-login
     Jellyfin/           #   Docker ops, DB updates, Cast/Crew worker
     Utilities/          #   Icon converter, File unblocker
   Services/             # Core services (config, secrets, jobs, dependencies, email)
