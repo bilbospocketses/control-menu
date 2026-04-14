@@ -16,8 +16,11 @@
             case WizardStep.Devices:
                 <WizardDevices State="_state" />
                 break;
-            case WizardStep.Services:
-                <WizardServices @ref="_servicesRef" State="_state" />
+            case WizardStep.Jellyfin:
+                <WizardJellyfin @ref="_jellyfinRef" State="_state" />
+                break;
+            case WizardStep.Email:
+                <WizardEmail @ref="_emailRef" State="_state" />
                 break;
             case WizardStep.Dependencies:
                 <WizardDependencies State="_state" />
@@ -68,8 +71,8 @@
     public class WizardState
     {
         public int DevicesAdded { get; set; }
-        public int SettingsConfigured { get; set; }
-        public int SettingsTotal { get; set; }
+        public bool JellyfinConfigured { get; set; }
+        public bool SmtpConfigured { get; set; }
         public int DependenciesFound { get; set; }
         public int DependenciesTotal { get; set; }
     }
@@ -78,20 +81,25 @@
     {
         Welcome = 0,
         Devices = 1,
-        Services = 2,
-        Dependencies = 3,
-        Done = 4
+        Jellyfin = 2,
+        Email = 3,
+        Dependencies = 4,
+        Done = 5
     }
 
-    private readonly string[] _stepLabels = ["Welcome", "Devices", "Services", "Dependencies", "Done"];
+    private readonly string[] _stepLabels = ["Welcome", "Devices", "Jellyfin", "Email", "Dependencies", "Done"];
     private WizardStep _currentStep = WizardStep.Welcome;
     private readonly WizardState _state = new();
-    private Setup.WizardServices? _servicesRef;
+    private Setup.WizardJellyfin? _jellyfinRef;
+    private Setup.WizardEmail? _emailRef;
 
     private async Task GoNext()
     {
-        if (_currentStep == WizardStep.Services && _servicesRef is not null)
-            await _servicesRef.SaveAsync();
+        // Save the current step's data before advancing
+        if (_currentStep == WizardStep.Jellyfin && _jellyfinRef is not null)
+            await _jellyfinRef.SaveAsync();
+        else if (_currentStep == WizardStep.Email && _emailRef is not null)
+            await _emailRef.SaveAsync();
 
         if (_currentStep < WizardStep.Done)
             _currentStep = (WizardStep)((int)_currentStep + 1);
@@ -99,9 +107,14 @@
 
     private async Task GoBack()
     {
+        // Save before going back too
+        if (_currentStep == WizardStep.Jellyfin && _jellyfinRef is not null)
+            await _jellyfinRef.SaveAsync();
+        else if (_currentStep == WizardStep.Email && _emailRef is not null)
+            await _emailRef.SaveAsync();
+
         if (_currentStep > WizardStep.Welcome)
             _currentStep = (WizardStep)((int)_currentStep - 1);
-        await Task.CompletedTask;
     }
 
     private async Task FinishSetup()

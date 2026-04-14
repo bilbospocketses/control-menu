@@ -26,7 +26,13 @@ public class EmailService : IEmailService
         var password = await _config.GetSecretAsync("smtp-password");
 
         if (string.IsNullOrEmpty(server) || string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
-            return (false, "SMTP settings not configured. Set server, username, and password in Settings > Jellyfin.");
+            return (false, "SMTP not configured. Set server, username, and password in Settings > General.");
+
+        if (string.IsNullOrWhiteSpace(to) || !to.Contains('@'))
+            return (false, $"Invalid recipient address: \"{to}\". Set a valid notification email in Settings > General.");
+
+        // Use username as from address if it looks like an email, otherwise use notification-email
+        var from = username.Contains('@') ? username : to;
 
         var port = int.TryParse(portStr, out var p) ? p : 587;
 
@@ -38,7 +44,7 @@ public class EmailService : IEmailService
                 EnableSsl = true
             };
 
-            using var message = new MailMessage(username, to, subject, body);
+            using var message = new MailMessage(from, to, subject, body);
             await client.SendMailAsync(message, ct);
             return (true, null);
         }
@@ -52,7 +58,7 @@ public class EmailService : IEmailService
     {
         var to = await _config.GetSettingAsync("notification-email");
         if (string.IsNullOrEmpty(to))
-            return (false, "Notification email not configured in Settings > Jellyfin.");
+            return (false, "Notification email not configured. Set it in Settings > General.");
 
         return await SendAsync(to, "Control Menu — Test Email",
             $"This is a test email from Control Menu.\n\nSent at {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC.", ct);

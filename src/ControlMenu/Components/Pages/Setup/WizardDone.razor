@@ -14,36 +14,40 @@
             @if (State.DevicesAdded > 0)
             {
                 <i class="bi bi-check-circle-fill text-ok summary-icon"></i>
-                <span>@State.DevicesAdded device(s) added</span>
+                <span>@State.DevicesAdded device(s) registered</span>
             }
             else
             {
                 <i class="bi bi-exclamation-triangle-fill text-warning summary-icon"></i>
-                <span>No devices configured — <a href="/settings/devices">go to Settings</a></span>
+                <span>No devices registered — <a href="/settings/devices">add in Settings</a></span>
             }
         </div>
 
-        <!-- Services -->
+        <!-- Jellyfin -->
         <div class="summary-item">
-            @if (State.SettingsTotal == 0)
-            {
-                <i class="bi bi-dash-circle summary-icon text-neutral"></i>
-                <span>No module settings to configure</span>
-            }
-            else if (State.SettingsConfigured == State.SettingsTotal)
+            @if (State.JellyfinConfigured)
             {
                 <i class="bi bi-check-circle-fill text-ok summary-icon"></i>
-                <span>All settings configured</span>
-            }
-            else if (State.SettingsConfigured > 0)
-            {
-                <i class="bi bi-exclamation-triangle-fill text-warning summary-icon"></i>
-                <span>@State.SettingsConfigured of @State.SettingsTotal settings configured — <a href="/settings/modules">go to Settings</a></span>
+                <span>Jellyfin configured</span>
             }
             else
             {
-                <i class="bi bi-exclamation-triangle-fill text-warning summary-icon"></i>
-                <span>No settings configured — <a href="/settings/modules">go to Settings</a></span>
+                <i class="bi bi-dash-circle summary-icon text-neutral"></i>
+                <span>Jellyfin not configured — <a href="/settings/jellyfin">set up in Settings</a></span>
+            }
+        </div>
+
+        <!-- Email -->
+        <div class="summary-item">
+            @if (State.SmtpConfigured)
+            {
+                <i class="bi bi-check-circle-fill text-ok summary-icon"></i>
+                <span>Email notifications configured</span>
+            }
+            else
+            {
+                <i class="bi bi-dash-circle summary-icon text-neutral"></i>
+                <span>Email not configured — <a href="/settings/general">set up in Settings</a></span>
             }
         </div>
 
@@ -57,23 +61,18 @@
             else if (State.DependenciesFound == State.DependenciesTotal)
             {
                 <i class="bi bi-check-circle-fill text-ok summary-icon"></i>
-                <span>All dependencies found</span>
-            }
-            else if (State.DependenciesFound > 0)
-            {
-                <i class="bi bi-exclamation-triangle-fill text-warning summary-icon"></i>
-                <span>@State.DependenciesFound of @State.DependenciesTotal dependencies found — <a href="/settings/dependencies">go to Settings</a></span>
+                <span>All @State.DependenciesTotal dependencies found</span>
             }
             else
             {
                 <i class="bi bi-exclamation-triangle-fill text-warning summary-icon"></i>
-                <span>No dependencies found — <a href="/settings/dependencies">go to Settings</a></span>
+                <span>@State.DependenciesFound of @State.DependenciesTotal dependencies found — <a href="/settings/dependencies">check Settings</a></span>
             }
         </div>
 
     </div>
 
-    <p class="done-footer">You can re-run this wizard anytime from Settings &gt; General.</p>
+    <p class="done-footer">You can re-run this wizard anytime from Settings > General.</p>
 </div>
 
 @code {
@@ -92,7 +91,7 @@
 
     .done-icon {
         font-size: 64px;
-        color: var(--status-ok, #2ea043);
+        color: var(--success-color);
         margin-bottom: 1rem;
     }
 
@@ -132,15 +131,15 @@
     }
 
     .text-ok {
-        color: var(--status-ok, #2ea043);
+        color: var(--success-color);
     }
 
     .text-warning {
-        color: var(--status-warning, #e6a700);
+        color: var(--warning-color);
     }
 
     .text-neutral {
-        color: var(--text-muted, #888);
+        color: var(--text-muted);
     }
 
     .done-footer {

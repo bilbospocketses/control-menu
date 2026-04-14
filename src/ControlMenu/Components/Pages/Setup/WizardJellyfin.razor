@@ -1,0 +1,158 @@
+@using ControlMenu.Modules.Jellyfin.Services
+@inject IConfigurationService Config
+
+<div class="settings-section">
+    <h2>Jellyfin Media Server</h2>
+    <p>Point Control Menu at your Jellyfin Docker Compose file to auto-detect container and database paths.
+       Leave blank if you don't use Jellyfin.</p>
+
+    <div class="form-group">
+        <label>Docker Compose Path</label>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <input class="form-control" style="max-width: 400px;"
+                   placeholder="/path/to/docker-compose.yml"
+                   @bind="_composePath" />
+            <button class="btn btn-secondary btn-sm" @onclick="ParseCompose" disabled="@_parsing">
+                @(_parsing ? "Parsing..." : "Detect")
+            </button>
+        </div>
+        @if (!string.IsNullOrEmpty(_parseMessage))
+        {
+            <div class="form-hint" style="color: @(_parseError ? "var(--danger-color)" : "var(--success-color)");">
+                @_parseMessage
+            </div>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(_containerName))
+    {
+        <div class="form-group">
+            <label>Container Name <span class="form-hint">(auto-detected)</span></label>
+            <input class="form-control" style="max-width: 400px;" value="@_containerName" readonly />
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_dbPath))
+    {
+        <div class="form-group">
+            <label>Database Path <span class="form-hint">(auto-detected)</span></label>
+            <input class="form-control" style="max-width: 400px;" value="@_dbPath" readonly />
+        </div>
+    }
+
+    <hr style="border-color: var(--border-color); margin: 1.5rem 0;" />
+
+    <h3>API Connection</h3>
+    <p style="color: var(--text-secondary); font-size: 0.9rem;">
+        Required for Cast & Crew image updates. Find your API key in Jellyfin Dashboard > API Keys.
+    </p>
+
+    <div class="form-group">
+        <label>Base URL</label>
+        <input class="form-control" style="max-width: 400px;"
+               placeholder="http://127.0.0.1:8096"
+               @bind="_baseUrl" />
+    </div>
+
+    <div class="form-group">
+        <label>API Key</label>
+        <input type="password" class="form-control" style="max-width: 400px;"
+               placeholder="Enter Jellyfin API key..."
+               @bind="_apiKey" />
+    </div>
+
+    <div class="form-group">
+        <label>User ID</label>
+        <input class="form-control" style="max-width: 400px;"
+               placeholder="Jellyfin user ID (for person image refresh)"
+               @bind="_userId" />
+        <div class="form-hint">Find in Jellyfin Dashboard > Users > click user > the GUID in the URL.</div>
+    </div>
+
+    <div class="form-group">
+        <label>Backup Retention (days)</label>
+        <input type="number" class="form-control" style="max-width: 120px;" min="1" max="90"
+               @bind="_retentionDays" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public SetupWizard.WizardState State { get; set; } = default!;
+
+    private string _composePath = "";
+    private string _containerName = "";
+    private string _dbPath = "";
+    private string _baseUrl = "";
+    private string _apiKey = "";
+    private string _userId = "";
+    private int _retentionDays = 5;
+    private bool _parsing;
+    private string? _parseMessage;
+    private bool _parseError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _composePath = await Config.GetSettingAsync("jellyfin-compose-path") ?? "";
+        _containerName = await Config.GetSettingAsync("jellyfin-container-name") ?? "";
+        _dbPath = await Config.GetSettingAsync("jellyfin-db-path") ?? "";
+        _baseUrl = await Config.GetSettingAsync("jellyfin-base-url") ?? "http://127.0.0.1:8096";
+        _apiKey = await Config.GetSecretAsync("jellyfin-api-key") ?? "";
+        _userId = await Config.GetSettingAsync("jellyfin-user-id") ?? "";
+        var retStr = await Config.GetSettingAsync("jellyfin-backup-retention-days");
+        _retentionDays = int.TryParse(retStr, out var d) ? d : 5;
+        UpdateState();
+    }
+
+    private async Task ParseCompose()
+    {
+        if (string.IsNullOrWhiteSpace(_composePath)) return;
+        _parsing = true;
+        _parseMessage = null;
+        StateHasChanged();
+
+        var result = ComposeParser.Parse(_composePath.Trim());
+        _parsing = false;
+
+        if (result.ErrorMessage is not null)
+        {
+            _parseMessage = result.ErrorMessage;
+            _parseError = true;
+        }
+        else
+        {
+            _containerName = result.ContainerName ?? "";
+            _dbPath = result.DbPath ?? "";
+            _parseMessage = $"Detected container: {_containerName}, DB: {_dbPath}";
+            _parseError = false;
+
+            // Auto-save parsed values immediately
+            await Config.SetSettingAsync("jellyfin-compose-path", _composePath.Trim());
+            if (!string.IsNullOrEmpty(_containerName))
+                await Config.SetSettingAsync("jellyfin-container-name", _containerName);
+            if (!string.IsNullOrEmpty(result.DbPath))
+                await Config.SetSettingAsync("jellyfin-db-path", result.DbPath);
+            if (!string.IsNullOrEmpty(result.ConfigHostPath))
+                await Config.SetSettingAsync("jellyfin-backup-dir", OperationLogger.GetBackupDirectory());
+        }
+        UpdateState();
+    }
+
+    public async Task SaveAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_composePath))
+            await Config.SetSettingAsync("jellyfin-compose-path", _composePath.Trim());
+        if (!string.IsNullOrWhiteSpace(_baseUrl))
+            await Config.SetSettingAsync("jellyfin-base-url", _baseUrl.Trim());
+        if (!string.IsNullOrWhiteSpace(_apiKey))
+            await Config.SetSecretAsync("jellyfin-api-key", _apiKey.Trim());
+        if (!string.IsNullOrWhiteSpace(_userId))
+            await Config.SetSettingAsync("jellyfin-user-id", _userId.Trim());
+        await Config.SetSettingAsync("jellyfin-backup-retention-days", _retentionDays.ToString());
+        UpdateState();
+    }
+
+    private void UpdateState()
+    {
+        State.JellyfinConfigured = !string.IsNullOrEmpty(_containerName) || !string.IsNullOrEmpty(_apiKey);
+    }
+}

@@ -1,0 +1,121 @@
+@inject IConfigurationService Config
+@inject IEmailService EmailService
+
+<div class="settings-section">
+    <h2>Email Notifications</h2>
+    <p>Configure SMTP to receive email alerts when long-running jobs complete (e.g., Cast & Crew updates).
+       Skip if you don't need notifications.</p>
+
+    <div class="form-group">
+        <label>SMTP Server</label>
+        <input class="form-control" style="max-width: 300px;"
+               placeholder="smtp.gmail.com"
+               @bind="_smtpServer" />
+    </div>
+
+    <div class="form-group">
+        <label>SMTP Port</label>
+        <input type="number" class="form-control" style="max-width: 120px;"
+               @bind="_smtpPort" />
+    </div>
+
+    <div class="form-group">
+        <label>Username</label>
+        <input class="form-control" style="max-width: 300px;"
+               placeholder="you@gmail.com"
+               @bind="_smtpUsername" />
+    </div>
+
+    <div class="form-group">
+        <label>Password / App Password</label>
+        <input type="password" class="form-control" style="max-width: 300px;"
+               placeholder="Enter SMTP password..."
+               @bind="_smtpPassword" />
+        <div class="form-hint">For Gmail, use an <a href="https://myaccount.google.com/apppasswords" target="_blank">App Password</a>.</div>
+    </div>
+
+    <div class="form-group">
+        <label>Notification Email</label>
+        <input type="email" class="form-control" style="max-width: 300px;"
+               placeholder="notifications@example.com"
+               @bind="_notificationEmail" />
+        <div class="form-hint">Where to send alerts and job completion notifications.</div>
+    </div>
+
+    @if (_hasAllFields)
+    {
+        <button class="btn btn-secondary btn-sm" @onclick="SendTest" disabled="@_sendingTest">
+            <i class="bi bi-envelope"></i> @(_sendingTest ? "Sending..." : "Send Test Email")
+        </button>
+    }
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="form-hint" style="margin-top: 0.5rem; color: @(_messageIsError ? "var(--danger-color)" : "var(--success-color)");">
+            @_message
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public SetupWizard.WizardState State { get; set; } = default!;
+
+    private string _smtpServer = "";
+    private int _smtpPort = 587;
+    private string _smtpUsername = "";
+    private string _smtpPassword = "";
+    private string _notificationEmail = "";
+    private bool _sendingTest;
+    private string? _message;
+    private bool _messageIsError;
+
+    private bool _hasAllFields =>
+        !string.IsNullOrWhiteSpace(_smtpServer) &&
+        !string.IsNullOrWhiteSpace(_smtpUsername) &&
+        !string.IsNullOrWhiteSpace(_smtpPassword) &&
+        !string.IsNullOrWhiteSpace(_notificationEmail);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _smtpServer = await Config.GetSettingAsync("smtp-server") ?? "";
+        var portStr = await Config.GetSettingAsync("smtp-port");
+        _smtpPort = int.TryParse(portStr, out var p) ? p : 587;
+        _smtpUsername = await Config.GetSettingAsync("smtp-username") ?? "";
+        _smtpPassword = await Config.GetSecretAsync("smtp-password") ?? "";
+        _notificationEmail = await Config.GetSettingAsync("notification-email") ?? "";
+        UpdateState();
+    }
+
+    private async Task SendTest()
+    {
+        // Save first so EmailService reads current values
+        await SaveAsync();
+        _sendingTest = true;
+        _message = null;
+        StateHasChanged();
+
+        var (success, error) = await EmailService.SendTestAsync();
+        _sendingTest = false;
+        _message = success ? "Test email sent!" : $"Failed: {error}";
+        _messageIsError = !success;
+    }
+
+    public async Task SaveAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_smtpServer))
+            await Config.SetSettingAsync("smtp-server", _smtpServer.Trim());
+        await Config.SetSettingAsync("smtp-port", _smtpPort.ToString());
+        if (!string.IsNullOrWhiteSpace(_smtpUsername))
+            await Config.SetSettingAsync("smtp-username", _smtpUsername.Trim());
+        if (!string.IsNullOrWhiteSpace(_smtpPassword))
+            await Config.SetSecretAsync("smtp-password", _smtpPassword.Trim());
+        if (!string.IsNullOrWhiteSpace(_notificationEmail))
+            await Config.SetSettingAsync("notification-email", _notificationEmail.Trim());
+        UpdateState();
+    }
+
+    private void UpdateState()
+    {
+        State.SmtpConfigured = _hasAllFields;
+    }
+}
