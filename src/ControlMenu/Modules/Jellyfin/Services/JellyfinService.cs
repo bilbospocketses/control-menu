@@ -53,6 +53,19 @@ public class JellyfinService : IJellyfinService
         return result.ExitCode == 0;
     }
 
+    public async Task<bool> WaitForContainerReadyAsync(string containerId, int timeoutSeconds = 60, CancellationToken ct = default)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+        while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
+        {
+            var result = await _executor.ExecuteAsync("docker", $"logs --tail 20 {containerId}", null, ct);
+            if (result.StandardOutput.Contains("Startup complete"))
+                return true;
+            await Task.Delay(2000, ct);
+        }
+        return false;
+    }
+
     public async Task<string?> BackupDatabaseAsync(OperationLogger? logger = null, CancellationToken ct = default)
     {
         var dbPath = await _config.GetSettingAsync("jellyfin-db-path");

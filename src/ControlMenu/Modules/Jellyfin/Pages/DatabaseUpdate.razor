@@ -178,16 +178,31 @@ else
             else logger.Fail("SQL update failed");
             StateHasChanged();
 
-            // Step 4: Start container
+            // Step 4: Start container and wait for ready
             _steps[3].Status = StepStatus.Running;
+            _steps[3].Detail = "Starting container...";
             logger.Step("Starting Docker container");
             StateHasChanged();
             var started = await JellyfinService.StartContainerAsync(containerId);
-            _steps[3].Status = started ? StepStatus.Completed : StepStatus.Failed;
-            _steps[3].Detail = started ? "Container restarted." : "Failed to start container.";
-            if (started) logger.Ok("Container restarted");
-            else logger.Fail("Failed to start container");
-            StateHasChanged();
+            if (!started)
+            {
+                _steps[3].Status = StepStatus.Failed;
+                _steps[3].Detail = "Failed to start container.";
+                logger.Fail("Failed to start container");
+                StateHasChanged();
+            }
+            else
+            {
+                _steps[3].Detail = "Waiting for Jellyfin startup...";
+                logger.Step("Waiting for 'Startup complete' in container logs");
+                StateHasChanged();
+                var ready = await JellyfinService.WaitForContainerReadyAsync(containerId);
+                _steps[3].Status = ready ? StepStatus.Completed : StepStatus.Failed;
+                _steps[3].Detail = ready ? "Jellyfin is online." : "Container started but Jellyfin did not report ready within 60s.";
+                if (ready) logger.Ok("Jellyfin startup complete");
+                else logger.Fail("Jellyfin did not report 'Startup complete' within 60s");
+                StateHasChanged();
+            }
 
             // Step 5: Cleanup
             _steps[4].Status = StepStatus.Running;
@@ -199,9 +214,12 @@ else
             logger.Ok("Old backups removed");
             StateHasChanged();
 
-            // Done
-            _steps[5].Status = StepStatus.Completed;
-            logger.Done("All steps completed successfully");
+            // Done — only mark complete if all steps passed
+            var allPassed = _steps.Take(5).All(s => s.Status == StepStatus.Completed);
+            _steps[5].Status = allPassed ? StepStatus.Completed : StepStatus.Failed;
+            _steps[5].Detail = allPassed ? "All checks passed." : "Some steps failed — review above.";
+            if (allPassed) logger.Done("All steps completed successfully");
+            else logger.Fail("Completed with errors");
             _completed = true;
             StateHasChanged();
         }
