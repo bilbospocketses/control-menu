@@ -122,6 +122,15 @@ using (var scope = app.Services.CreateScope())
     if (devicesWithBadMac.Count > 0)
         db.SaveChanges();
 
+    // Migrate camera ports from HTTP default (80) to RTSP default (554)
+    var stalePortSettings = db.Settings
+        .Where(s => s.Key.EndsWith("-port") && s.ModuleId == "cameras" && s.Value == "80")
+        .ToList();
+    foreach (var setting in stalePortSettings)
+        setting.Value = "554";
+    if (stalePortSettings.Count > 0)
+        db.SaveChanges();
+
     var depManager = scope.ServiceProvider.GetRequiredService<IDependencyManagerService>();
     await depManager.SyncDependenciesAsync();
 
