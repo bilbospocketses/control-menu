@@ -9,6 +9,12 @@
         <input type="number" class="form-control" style="max-width:200px;" min="30" max="3600"
                value="@_discoveryInterval" @onchange="OnDiscoveryIntervalChanged" />
         <div class="form-hint">How often to scan the network for device IP changes. Min 30s, max 3600s.</div>
+        @if (!string.IsNullOrEmpty(_discoveryMessage))
+        {
+            <div class="form-hint" style="color: @(_discoveryMessageIsError ? "var(--danger-color)" : "var(--success-color)");">
+                @_discoveryMessage
+            </div>
+        }
     </div>
 </div>
 
@@ -104,6 +110,8 @@
     private string? _message;
     private bool _messageIsError;
     private int _discoveryInterval = 300;
+    private string? _discoveryMessage;
+    private bool _discoveryMessageIsError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -119,12 +127,20 @@
         {
             _discoveryInterval = val;
             await Config.SetSettingAsync("discovery-interval", val.ToString());
-            await ShowMessage("Saved.", false);
+            _discoveryMessage = "Saved.";
+            _discoveryMessageIsError = false;
         }
         else
         {
-            await ShowMessage("Must be between 30 and 3600 seconds.", true);
+            _discoveryMessage = "Must be between 30 and 3600 seconds.";
+            _discoveryMessageIsError = true;
         }
+        StateHasChanged();
+        _ = Task.Delay(3000).ContinueWith(_ => InvokeAsync(() =>
+        {
+            _discoveryMessage = null;
+            StateHasChanged();
+        }));
     }
 
     private async Task LoadDevices()
