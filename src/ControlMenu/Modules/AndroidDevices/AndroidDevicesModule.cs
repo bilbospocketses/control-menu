@@ -9,7 +9,25 @@ public class AndroidDevicesModule : IToolModule
     public string Icon => "bi-phone";
     public int SortOrder => 1;
 
-    private static string DepsRoot => Path.Combine(AppContext.BaseDirectory, "dependencies");
+    private static string DepsRoot => FindDepsRoot();
+
+    private static string FindDepsRoot()
+    {
+        // Check content root first (dev: project dir), then base dir (published)
+        var dir = AppContext.BaseDirectory;
+        for (var i = 0; i < 5; i++)
+        {
+            var candidate = Path.Combine(dir, "dependencies");
+            if (Directory.Exists(candidate)) return candidate;
+            var parent = Directory.GetParent(dir)?.FullName;
+            if (parent is null) break;
+            dir = parent;
+        }
+        // Fallback: create at base directory
+        var fallback = Path.Combine(AppContext.BaseDirectory, "dependencies");
+        Directory.CreateDirectory(fallback);
+        return fallback;
+    }
 
     public IEnumerable<ModuleDependency> Dependencies =>
     [
