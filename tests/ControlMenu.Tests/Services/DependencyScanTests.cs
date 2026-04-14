@@ -4,6 +4,7 @@ using ControlMenu.Data.Enums;
 using ControlMenu.Modules;
 using ControlMenu.Services;
 using ControlMenu.Tests.Data;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -15,6 +16,9 @@ public class DependencyScanTests : IDisposable
     private readonly Mock<ICommandExecutor> _mockExecutor = new();
     private readonly Mock<IHttpClientFactory> _mockHttpFactory = new();
     private readonly Mock<IConfigurationService> _mockConfig = new();
+    private readonly WsScrcpyService _wsScrcpy = new(
+        new Mock<IServiceScopeFactory>().Object,
+        NullLogger<WsScrcpyService>.Instance);
 
     public DependencyScanTests()
     {
@@ -27,7 +31,7 @@ public class DependencyScanTests : IDisposable
     {
         return new DependencyManagerService(
             _dbFactory, modules, _mockExecutor.Object, _mockHttpFactory.Object,
-            _mockConfig.Object, NullLogger<DependencyManagerService>.Instance);
+            _mockConfig.Object, _wsScrcpy, NullLogger<DependencyManagerService>.Instance);
     }
 
     [Fact]

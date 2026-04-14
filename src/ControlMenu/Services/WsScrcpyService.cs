@@ -157,6 +157,7 @@ public class WsScrcpyService : IHostedService, IDisposable
 
     public void Restart()
     {
+        _disposed = false;
         _crashCount = 0;
         _serviceReady = false;
         lock (_lock)

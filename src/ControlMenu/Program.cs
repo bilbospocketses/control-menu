@@ -74,8 +74,9 @@ builder.Services.AddScoped<IDependencyManagerService>(sp =>
     var executor = sp.GetRequiredService<ICommandExecutor>();
     var httpFactory = sp.GetRequiredService<IHttpClientFactory>();
     var config = sp.GetRequiredService<IConfigurationService>();
+    var wsScrcpy = sp.GetRequiredService<WsScrcpyService>();
     var logger = sp.GetRequiredService<ILogger<DependencyManagerService>>();
-    return new DependencyManagerService(dbFactory, modules, executor, httpFactory, config, logger);
+    return new DependencyManagerService(dbFactory, modules, executor, httpFactory, config, wsScrcpy, logger);
 });
 builder.Services.AddHostedService<DependencyCheckHostedService>();
 

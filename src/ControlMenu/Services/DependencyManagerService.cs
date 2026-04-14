@@ -15,6 +15,7 @@ public class DependencyManagerService : IDependencyManagerService
     private readonly ICommandExecutor _executor;
     private readonly IHttpClientFactory _httpFactory;
     private readonly IConfigurationService _config;
+    private readonly WsScrcpyService _wsScrcpy;
     private readonly ILogger<DependencyManagerService> _logger;
 
     public DependencyManagerService(
@@ -23,6 +24,7 @@ public class DependencyManagerService : IDependencyManagerService
         ICommandExecutor executor,
         IHttpClientFactory httpFactory,
         IConfigurationService config,
+        WsScrcpyService wsScrcpy,
         ILogger<DependencyManagerService> logger)
     {
         _dbFactory = dbFactory;
@@ -30,6 +32,7 @@ public class DependencyManagerService : IDependencyManagerService
         _executor = executor;
         _httpFactory = httpFactory;
         _config = config;
+        _wsScrcpy = wsScrcpy;
         _logger = logger;
     }
 
@@ -213,6 +216,8 @@ public class DependencyManagerService : IDependencyManagerService
         var installPath = await GetInstallPathAsync(entity.Name, entity.ModuleId) ?? moduleDep.InstallPath;
 
         StaleUrlAction? urlAction = null;
+        var needsAdbKill = entity.Name == "adb";
+        var stoppedScrcpy = false;
         var tempDir = Path.Combine(Path.GetTempPath(), "ControlMenu", Guid.NewGuid().ToString());
         Directory.CreateDirectory(tempDir);
 
@@ -274,7 +279,17 @@ public class DependencyManagerService : IDependencyManagerService
 
             var newVersion = ExtractVersion(verifyResult.StandardOutput, moduleDep.VersionPattern);
 
-            // 4. Swap — backup old, move in new
+            // 4. Swap — stop processes that lock the binary, backup old, move in new
+            if (needsAdbKill)
+            {
+                _logger.LogInformation("Stopping ws-scrcpy-web and ADB server before updating adb");
+                await _wsScrcpy.StopAsync(CancellationToken.None);
+                await _executor.ExecuteAsync("adb", "kill-server");
+                stoppedScrcpy = true;
+                // Give the OS a moment to release file handles
+                await Task.Delay(500);
+            }
+
             Directory.CreateDirectory(installPath);
 
             // Backup old files if upgrading
@@ -312,6 +327,11 @@ public class DependencyManagerService : IDependencyManagerService
         }
         finally
         {
+            if (stoppedScrcpy)
+            {
+                _logger.LogInformation("Restarting ws-scrcpy-web after ADB update");
+                _wsScrcpy.Restart();
+            }
             try { Directory.Delete(tempDir, recursive: true); } catch { /* best-effort cleanup */ }
         }
     }
