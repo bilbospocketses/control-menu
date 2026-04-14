@@ -1,0 +1,163 @@
+@page "/jellyfin/settings"
+@using ControlMenu.Services
+@using ControlMenu.Modules.Jellyfin.Services
+
+<PageTitle>Jellyfin — Settings</PageTitle>
+
+<h1><i class="bi bi-gear"></i> Jellyfin Settings</h1>
+
+<div class="settings-section">
+    <h2>Docker Compose</h2>
+    <p>Point Control Menu to your Jellyfin docker-compose.yml to auto-detect container name and database path.</p>
+
+    <div class="form-row" style="display:flex;gap:8px;align-items:center;margin-bottom:1rem;">
+        <label style="white-space:nowrap;">Compose File Path</label>
+        <input type="text" class="form-control" @bind="_composePath" placeholder="e.g., D:\DockerData\jellyfin\docker-compose.yml" style="flex:1;" />
+        <button class="btn btn-primary" @onclick="SaveAndParse" disabled="@_parsing">
+            <i class="bi bi-arrow-repeat"></i> @(_parsing ? "Parsing..." : "Save & Parse")
+        </button>
+    </div>
+
+    @if (_parseResult is not null)
+    {
+        @if (_parseResult.ErrorMessage is not null)
+        {
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle"></i> @_parseResult.ErrorMessage
+            </div>
+        }
+        else
+        {
+            <table class="data-table" style="max-width:600px;">
+                <tr>
+                    <td><strong>Container Name</strong></td>
+                    <td><code>@(_parseResult.ContainerName ?? "—")</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Database Path</strong></td>
+                    <td><code>@(_parseResult.DbPath ?? "—")</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Backup Directory</strong></td>
+                    <td><code>@OperationLogger.GetBackupDirectory()</code></td>
+                </tr>
+            </table>
+        }
+    }
+</div>
+
+<div class="settings-section" style="margin-top:2rem;">
+    <h2>Backup Retention</h2>
+    <div style="display:flex;gap:8px;align-items:center;">
+        <label>Keep backups for</label>
+        <input type="number" class="form-control" @bind="_retentionDays" min="1" max="365" style="width:80px;" />
+        <span>days</span>
+        <button class="btn btn-secondary" @onclick="SaveRetention" style="margin-left:8px;">Save</button>
+    </div>
+</div>
+
+<div class="settings-section" style="margin-top:2rem;">
+    <h2>Managed Directories</h2>
+    <table class="data-table" style="max-width:600px;">
+        <tr>
+            <td><strong>Backups</strong></td>
+            <td><code>@OperationLogger.GetBackupDirectory()</code></td>
+            <td>@_backupCount files, @FormatSize(_backupSize)</td>
+        </tr>
+        <tr>
+            <td><strong>Logs</strong></td>
+            <td><code>@OperationLogger.GetLogDirectory()</code></td>
+            <td>@_logCount files</td>
+        </tr>
+    </table>
+</div>
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
+        @_message
+    </div>
+}
+
+@code {
+    [Inject] private IConfigurationService Config { get; set; } = default!;
+    [Inject] private IJellyfinService JellyfinService { get; set; } = default!;
+
+    private string _composePath = "";
+    private int _retentionDays = 5;
+    private bool _parsing;
+    private ComposeParseResult? _parseResult;
+    private string? _message;
+    private bool _messageIsError;
+    private int _backupCount;
+    private long _backupSize;
+    private int _logCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _composePath = await Config.GetSettingAsync("jellyfin-compose-path") ?? "";
+        var retStr = await Config.GetSettingAsync("jellyfin-backup-retention-days");
+        _retentionDays = int.TryParse(retStr, out var d) ? d : 5;
+
+        RefreshDirectoryStats();
+
+        if (!string.IsNullOrEmpty(_composePath))
+        {
+            _parseResult = await JellyfinService.ParseComposeFileAsync();
+        }
+    }
+
+    private async Task SaveAndParse()
+    {
+        _parsing = true;
+        _message = null;
+        StateHasChanged();
+
+        await Config.SetSettingAsync("jellyfin-compose-path", _composePath);
+        _parseResult = await JellyfinService.ParseComposeFileAsync();
+
+        if (_parseResult.ErrorMessage is null)
+        {
+            _message = "Compose file parsed. Container name and database path configured.";
+            _messageIsError = false;
+        }
+        else
+        {
+            _message = _parseResult.ErrorMessage;
+            _messageIsError = true;
+        }
+
+        _parsing = false;
+    }
+
+    private async Task SaveRetention()
+    {
+        await Config.SetSettingAsync("jellyfin-backup-retention-days", _retentionDays.ToString());
+        _message = $"Backup retention set to {_retentionDays} days.";
+        _messageIsError = false;
+    }
+
+    private void RefreshDirectoryStats()
+    {
+        var backupDir = OperationLogger.GetBackupDirectory();
+        if (Directory.Exists(backupDir))
+        {
+            var files = Directory.GetFiles(backupDir, "*.db");
+            _backupCount = files.Length;
+            _backupSize = files.Sum(f => new FileInfo(f).Length);
+        }
+
+        var logDir = OperationLogger.GetLogDirectory();
+        if (Directory.Exists(logDir))
+        {
+            _logCount = Directory.GetFiles(logDir, "*.log").Length;
+        }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+}
