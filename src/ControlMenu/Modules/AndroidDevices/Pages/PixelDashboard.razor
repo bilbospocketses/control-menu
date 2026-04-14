@@ -87,7 +87,7 @@ else
 
         <div class="mirror-column">
             <span class="device-name">@_device.Name</span>
-            <div class="mirror-panel">
+            <div class="mirror-panel" style="aspect-ratio: @MirrorAspectRatio;">
                 <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" />
             </div>
         </div>
@@ -107,6 +107,8 @@ else
     private bool _showUsbWizard;
     private bool _hasPin;
     private string? _pin;
+    private int _screenW = 9;
+    private int _screenH = 20;
     private string _statusMessage = "";
     private string _statusClass = "";
     private string _statusIcon = "";
@@ -132,11 +134,38 @@ else
         if (_device?.LastKnownIp is not null)
         {
             _connected = await AdbService.ConnectAsync(_device.LastKnownIp, _device.AdbPort);
+
+            // Query actual screen dimensions for mirror sizing
+            if (_connected)
+            {
+                var size = await AdbService.GetScreenSizeAsync(_device.LastKnownIp, _device.AdbPort);
+                if (size is not null)
+                {
+                    _screenW = size.Value.Width;
+                    _screenH = size.Value.Height;
+                }
+            }
         }
     }
 
     private string Ip => _device?.LastKnownIp ?? "";
     private int Port => _device?.AdbPort ?? 5555;
+
+    // Compute mirror aspect ratio: phone video (portrait) + ws-scrcpy toolbar (~52px)
+    // At a reference height of 700px: video_width = 700 * screenW/screenH, total = video_width + 52
+    // Expressed as ratio string for CSS aspect-ratio property
+    private string MirrorAspectRatio
+    {
+        get
+        {
+            const double toolbarPx = 52.0;
+            const double refHeight = 700.0;
+            var videoWidth = refHeight * _screenW / _screenH;
+            var totalWidth = videoWidth + toolbarPx;
+            // Return as "width / height" for CSS
+            return $"{totalWidth:F0} / {refHeight:F0}";
+        }
+    }
 
     private void ToggleUsbWizard()
     {

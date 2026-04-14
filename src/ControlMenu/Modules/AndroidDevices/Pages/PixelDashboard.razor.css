@@ -140,7 +140,9 @@
     border-radius: 1rem;
 }
 
-/* Mirror panel — portrait phone stream, height-driven */
+/* Mirror panel — portrait phone stream.
+   aspect-ratio is computed server-side from actual phone dimensions (adb wm size)
+   plus the ws-scrcpy toolbar width. Set inline via style attribute. */
 .mirror-panel {
     border-radius: 0.5rem;
     overflow: hidden;
@@ -148,9 +150,11 @@
     min-height: 0;
     line-height: 0;
     font-size: 0;
+    /* aspect-ratio set via inline style */
 }
 
 .mirror-panel ::deep .scrcpy-mirror {
+    width: 100%;
     height: 100%;
     line-height: 0;
     font-size: 0;
@@ -158,12 +162,11 @@
 
 .mirror-panel ::deep .scrcpy-iframe {
     display: block;
+    width: 100%;
     height: 100%;
     border: none;
     margin: 0;
     padding: 0;
-    /* Toolbar (~35px) + 9:16 video ≈ 10:16 ratio */
-    aspect-ratio: 10 / 16;
 }
 
 /* Responsive: stack on narrow screens */

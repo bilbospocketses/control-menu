@@ -143,6 +143,17 @@ public class AdbService : IAdbService
         return devices.Where(d => !d.Contains(':')).ToList();
     }
 
+    public async Task<(int Width, int Height)?> GetScreenSizeAsync(string ip, int port, CancellationToken ct = default)
+    {
+        var result = await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell wm size", null, ct);
+        if (result.ExitCode != 0) return null;
+        // Parse "Physical size: 1080x2424" or "Override size: 1080x2424"
+        var match = System.Text.RegularExpressions.Regex.Match(result.StandardOutput,
+            @"(?:Override|Physical) size:\s*(\d+)x(\d+)");
+        if (!match.Success) return null;
+        return (int.Parse(match.Groups[1].Value), int.Parse(match.Groups[2].Value));
+    }
+
     public async Task UnlockWithPinAsync(string ip, int port, string pin, CancellationToken ct = default)
     {
         var dev = DeviceArg(ip, port);

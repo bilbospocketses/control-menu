@@ -26,6 +26,7 @@ public interface IAdbService
     Task ResetTcpPortAsync(int port, CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetConnectedDevicesAsync(CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetUsbDevicesAsync(CancellationToken ct = default);
+    Task<(int Width, int Height)?> GetScreenSizeAsync(string ip, int port, CancellationToken ct = default);
     Task UnlockWithPinAsync(string ip, int port, string pin, CancellationToken ct = default);
     Task DisconnectAllAsync(CancellationToken ct = default);
 }
