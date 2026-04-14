@@ -119,11 +119,11 @@
         {
             _discoveryInterval = val;
             await Config.SetSettingAsync("discovery-interval", val.ToString());
-            ShowMessage("Saved.", false);
+            await ShowMessage("Saved.", false);
         }
         else
         {
-            ShowMessage("Must be between 30 and 3600 seconds.", true);
+            await ShowMessage("Must be between 30 and 3600 seconds.", true);
         }
     }
 
