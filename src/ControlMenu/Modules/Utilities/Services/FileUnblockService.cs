@@ -20,7 +20,15 @@ public class FileUnblockService : IFileUnblockService
 
         // Escape single quotes for PowerShell single-quoted string ('' is a literal ')
         var safePath = directoryPath.Replace("'", "''");
-        var command = $"-Command \"$files = Get-ChildItem '{safePath}' -Recurse -File | Unblock-File -PassThru; $files.Count\"";
+
+        // Count blocked files first (files with Zone.Identifier alternate data stream),
+        // then unblock all. Unblock-File has no -PassThru, so we count separately.
+        var command = $"-Command \"" +
+            $"$blocked = Get-ChildItem '{safePath}' -Recurse -File | " +
+            $"Where-Object {{ (Get-Item $_.FullName -Stream Zone.Identifier -ErrorAction SilentlyContinue) }}; " +
+            $"$count = ($blocked | Measure-Object).Count; " +
+            $"if ($count -gt 0) {{ $blocked | Unblock-File }}; " +
+            $"$count\"";
         var result = await _executor.ExecuteAsync("powershell", command, null, ct);
 
         if (result.ExitCode != 0)
