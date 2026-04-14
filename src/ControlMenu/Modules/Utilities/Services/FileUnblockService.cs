@@ -15,7 +15,12 @@ public class FileUnblockService : IFileUnblockService
 
     public async Task<UnblockResult> UnblockDirectoryAsync(string directoryPath, CancellationToken ct = default)
     {
-        var command = $"-Command \"$files = Get-ChildItem '{directoryPath}' -Recurse | Unblock-File -PassThru; $files.Count\"";
+        if (!Directory.Exists(directoryPath))
+            return new UnblockResult(false, ErrorMessage: $"Directory not found: {directoryPath}");
+
+        // Escape single quotes for PowerShell single-quoted string ('' is a literal ')
+        var safePath = directoryPath.Replace("'", "''");
+        var command = $"-Command \"$files = Get-ChildItem '{safePath}' -Recurse -File | Unblock-File -PassThru; $files.Count\"";
         var result = await _executor.ExecuteAsync("powershell", command, null, ct);
 
         if (result.ExitCode != 0)

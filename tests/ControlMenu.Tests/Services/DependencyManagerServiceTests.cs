@@ -12,21 +12,21 @@ namespace ControlMenu.Tests.Services;
 
 public class DependencyManagerServiceTests : IDisposable
 {
-    private readonly AppDbContext _db;
+    private readonly InMemoryDbContextFactory _dbFactory;
     private readonly Mock<ICommandExecutor> _mockExecutor = new();
     private readonly Mock<IHttpClientFactory> _mockHttpFactory = new();
 
     public DependencyManagerServiceTests()
     {
-        _db = TestDbContextFactory.Create();
+        _dbFactory = TestDbContextFactory.CreateFactory();
     }
 
-    public void Dispose() => _db.Dispose();
+    public void Dispose() => _dbFactory.Dispose();
 
     private DependencyManagerService CreateService(params IToolModule[] modules)
     {
         return new DependencyManagerService(
-            _db, modules, _mockExecutor.Object, _mockHttpFactory.Object,
+            _dbFactory, modules, _mockExecutor.Object, _mockHttpFactory.Object,
             NullLogger<DependencyManagerService>.Instance);
     }
 
@@ -52,7 +52,8 @@ public class DependencyManagerServiceTests : IDisposable
         var service = CreateService(module);
         await service.SyncDependenciesAsync();
 
-        var deps = await _db.Dependencies.ToListAsync();
+        using var assertDb = _dbFactory.CreateDbContext();
+        var deps = await assertDb.Dependencies.ToListAsync();
         Assert.Single(deps);
         Assert.Equal("tool-a", deps[0].Name);
         Assert.Equal("test-module", deps[0].ModuleId);
@@ -63,7 +64,8 @@ public class DependencyManagerServiceTests : IDisposable
     [Fact]
     public async Task SyncDependenciesAsync_RemovesOrphanedDependencies()
     {
-        _db.Dependencies.Add(new Dependency
+        using var setupDb = _dbFactory.CreateDbContext();
+        setupDb.Dependencies.Add(new Dependency
         {
             Id = Guid.NewGuid(),
             ModuleId = "removed-module",
@@ -71,18 +73,20 @@ public class DependencyManagerServiceTests : IDisposable
             SourceType = UpdateSourceType.Manual,
             Status = DependencyStatus.UpToDate
         });
-        await _db.SaveChangesAsync();
+        await setupDb.SaveChangesAsync();
 
         var service = CreateService(); // no modules
         await service.SyncDependenciesAsync();
 
-        Assert.Empty(await _db.Dependencies.ToListAsync());
+        using var assertDb2 = _dbFactory.CreateDbContext();
+        Assert.Empty(await assertDb2.Dependencies.ToListAsync());
     }
 
     [Fact]
     public async Task SyncDependenciesAsync_UpdatesStaticFieldsFromCode()
     {
-        _db.Dependencies.Add(new Dependency
+        using var setupDb = _dbFactory.CreateDbContext();
+        setupDb.Dependencies.Add(new Dependency
         {
             Id = Guid.NewGuid(),
             ModuleId = "test-module",
@@ -91,7 +95,7 @@ public class DependencyManagerServiceTests : IDisposable
             Status = DependencyStatus.UpToDate,
             ProjectHomeUrl = "https://old-url.com"
         });
-        await _db.SaveChangesAsync();
+        await setupDb.SaveChangesAsync();
 
         var module = new FakeModule("test-module", "Test",
         [
@@ -113,7 +117,8 @@ public class DependencyManagerServiceTests : IDisposable
         var service = CreateService(module);
         await service.SyncDependenciesAsync();
 
-        var dep = await _db.Dependencies.SingleAsync();
+        using var assertDb3 = _dbFactory.CreateDbContext();
+        var dep = await assertDb3.Dependencies.SingleAsync();
         Assert.Equal(UpdateSourceType.GitHub, dep.SourceType);
         Assert.Equal("https://new-url.com", dep.ProjectHomeUrl);
     }
@@ -139,29 +144,31 @@ public class DependencyManagerServiceTests : IDisposable
         var service = CreateService(module);
         await service.SyncDependenciesAsync();
 
-        var dep = await _db.Dependencies.SingleAsync();
+        using var assertDb3 = _dbFactory.CreateDbContext();
+        var dep = await assertDb3.Dependencies.SingleAsync();
         Assert.Null(dep.InstalledVersion);
     }
 
     [Fact]
     public async Task GetUpdateAvailableCountAsync_ReturnsCorrectCount()
     {
-        _db.Dependencies.Add(new Dependency
+        using var setupDb = _dbFactory.CreateDbContext();
+        setupDb.Dependencies.Add(new Dependency
         {
             Id = Guid.NewGuid(), ModuleId = "m", Name = "a",
             Status = DependencyStatus.UpdateAvailable, SourceType = UpdateSourceType.Manual
         });
-        _db.Dependencies.Add(new Dependency
+        setupDb.Dependencies.Add(new Dependency
         {
             Id = Guid.NewGuid(), ModuleId = "m", Name = "b",
             Status = DependencyStatus.UpToDate, SourceType = UpdateSourceType.Manual
         });
-        _db.Dependencies.Add(new Dependency
+        setupDb.Dependencies.Add(new Dependency
         {
             Id = Guid.NewGuid(), ModuleId = "m", Name = "c",
             Status = DependencyStatus.UpdateAvailable, SourceType = UpdateSourceType.Manual
         });
-        await _db.SaveChangesAsync();
+        await setupDb.SaveChangesAsync();
 
         var service = CreateService();
         var count = await service.GetUpdateAvailableCountAsync();
@@ -189,7 +196,8 @@ public class DependencyManagerServiceTests : IDisposable
             .ReturnsAsync(new CommandResult(0, "scrcpy 3.3.2", "", false));
 
         var depId = Guid.NewGuid();
-        _db.Dependencies.Add(new Dependency
+        using var setupDb = _dbFactory.CreateDbContext();
+        setupDb.Dependencies.Add(new Dependency
         {
             Id = depId,
             ModuleId = "android-module",
@@ -198,7 +206,7 @@ public class DependencyManagerServiceTests : IDisposable
             Status = DependencyStatus.UpToDate,
             InstalledVersion = "3.3.2"
         });
-        await _db.SaveChangesAsync();
+        await setupDb.SaveChangesAsync();
 
         var handler = new MockHttpHandler(@"{""tag_name"": ""v3.3.4"", ""assets"": []}");
         var httpClient = new HttpClient(handler);
@@ -233,7 +241,8 @@ public class DependencyManagerServiceTests : IDisposable
             .ReturnsAsync(new CommandResult(0, "Android Debug Bridge version 36.0.0", "", false));
 
         var depId = Guid.NewGuid();
-        _db.Dependencies.Add(new Dependency
+        using var setupDb = _dbFactory.CreateDbContext();
+        setupDb.Dependencies.Add(new Dependency
         {
             Id = depId,
             ModuleId = "android-module",
@@ -242,7 +251,7 @@ public class DependencyManagerServiceTests : IDisposable
             Status = DependencyStatus.UpToDate,
             InstalledVersion = "36.0.0"
         });
-        await _db.SaveChangesAsync();
+        await setupDb.SaveChangesAsync();
 
         var xmlContent = "<repo><major>37</major><minor>0</minor><micro>0</micro></repo>";
         var handler = new MockHttpHandler(xmlContent);
@@ -276,7 +285,8 @@ public class DependencyManagerServiceTests : IDisposable
             .ReturnsAsync(new CommandResult(0, "Docker version 27.1.0, build abc123", "", false));
 
         var depId = Guid.NewGuid();
-        _db.Dependencies.Add(new Dependency
+        using var setupDb = _dbFactory.CreateDbContext();
+        setupDb.Dependencies.Add(new Dependency
         {
             Id = depId,
             ModuleId = "jellyfin-module",
@@ -285,7 +295,7 @@ public class DependencyManagerServiceTests : IDisposable
             Status = DependencyStatus.UpToDate,
             InstalledVersion = "27.1.0"
         });
-        await _db.SaveChangesAsync();
+        await setupDb.SaveChangesAsync();
 
         var service = CreateService(module);
         var result = await service.CheckDependencyAsync(depId);

@@ -1,25 +1,22 @@
+@using ControlMenu.Services
 @inject IConfigurationService Config
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject IEmailService EmailService
 
 <div class="settings-section">
     <h2>General</h2>
-    <p>Application-wide configuration settings.</p>
 
     <div class="form-group">
         <label>Theme</label>
-        <select class="form-control" style="max-width: 200px;" value="@_theme" @onchange="OnThemeChanged">
-            <option value="system">System (auto)</option>
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-        </select>
-    </div>
-
-    <div class="form-group">
-        <label>Device Discovery Interval (seconds)</label>
-        <input type="number" class="form-control" style="max-width: 200px;" min="30" max="3600"
-               value="@_discoveryInterval" @onchange="OnDiscoveryIntervalChanged" />
-        <div class="form-hint">How often to scan the network for device IP changes. Min 30s, max 3600s.</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn @(_theme == "dark" ? "btn-primary" : "btn-secondary")" @onclick='() => SetTheme("dark")'>
+                <i class="bi bi-moon-fill"></i> Dark
+            </button>
+            <button class="btn @(_theme == "light" ? "btn-primary" : "btn-secondary")" @onclick='() => SetTheme("light")'>
+                <i class="bi bi-sun-fill"></i> Light
+            </button>
+        </div>
     </div>
 
     <div class="form-group">
@@ -27,51 +24,143 @@
         <button class="btn btn-secondary" @onclick="RerunWizard"><i class="bi bi-arrow-counterclockwise"></i> Re-run Setup Wizard</button>
         <div class="form-hint">Walk through the initial setup again.</div>
     </div>
-
-    @if (_saved)
-    {
-        <div class="alert alert-success">Settings saved.</div>
-    }
 </div>
 
+<div class="settings-section" style="margin-top:2rem;">
+    <h2>Email (SMTP)</h2>
+    <p>Configure SMTP for sending notification emails from any module.</p>
+
+    <div class="form-group">
+        <label>SMTP Server</label>
+        <input class="form-control" style="max-width:300px;" value="@_smtpServer"
+               placeholder="mail.smtp2go.com" @onchange="SaveSmtpServer" />
+    </div>
+    <div class="form-group">
+        <label>SMTP Port</label>
+        <input type="number" class="form-control" style="max-width:100px;" value="@_smtpPort"
+               @onchange="SaveSmtpPort" />
+    </div>
+    <div class="form-group">
+        <label>Username</label>
+        <input class="form-control" style="max-width:300px;" value="@_smtpUsername"
+               @onchange="SaveSmtpUsername" />
+    </div>
+    <div class="form-group">
+        <label>Password</label>
+        <input type="password" class="form-control" style="max-width:300px;" value="@_smtpPassword"
+               @onchange="SaveSmtpPassword" />
+    </div>
+    <div class="form-group">
+        <label>Default Notification Email</label>
+        <input type="email" class="form-control" style="max-width:300px;" value="@_notificationEmail"
+               placeholder="you@example.com" @onchange="SaveNotificationEmail" />
+        <div class="form-hint">Default recipient for all notification emails.</div>
+    </div>
+    <div class="form-group">
+        <button class="btn btn-secondary" @onclick="SendTestEmail" disabled="@_sendingTest">
+            <i class="bi bi-envelope"></i> @(_sendingTest ? "Sending..." : "Send Test Email")
+        </button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
+        @_message
+    </div>
+}
+
 @code {
-    private string _theme = "system";
-    private int _discoveryInterval = 300;
-    private bool _saved;
+    private string _theme = "dark";
+    private string _smtpServer = "";
+    private string _smtpPort = "587";
+    private string _smtpUsername = "";
+    private string _smtpPassword = "";
+    private string _notificationEmail = "";
+    private bool _sendingTest;
+    private string? _message;
+    private bool _messageIsError;
 
     protected override async Task OnInitializedAsync()
     {
-        _theme = await Config.GetSettingAsync("theme") ?? "system";
-        var interval = await Config.GetSettingAsync("discovery-interval");
-        if (int.TryParse(interval, out var parsed))
-            _discoveryInterval = parsed;
+        _theme = await JS.InvokeAsync<string>("themeManager.get");
+        _smtpServer = await Config.GetSettingAsync("smtp-server") ?? "";
+        _smtpPort = await Config.GetSettingAsync("smtp-port") ?? "587";
+        _smtpUsername = await Config.GetSettingAsync("smtp-username") ?? "";
+        _smtpPassword = await Config.GetSecretAsync("smtp-password") ?? "";
+        _notificationEmail = await Config.GetSettingAsync("notification-email") ?? "";
     }
 
-    private async Task OnThemeChanged(ChangeEventArgs e)
+    private async Task SetTheme(string theme)
     {
-        _theme = e.Value?.ToString() ?? "system";
-        await Config.SetSettingAsync("theme", _theme);
-        await JS.InvokeVoidAsync("themeManager.set", _theme);
-        await ShowSaved();
+        _theme = theme;
+        await JS.InvokeVoidAsync("themeManager.set", theme);
+        ShowMessage("Theme updated.", false);
     }
 
-    private async Task OnDiscoveryIntervalChanged(ChangeEventArgs e)
+    private async Task SaveSmtpServer(ChangeEventArgs e)
     {
-        if (int.TryParse(e.Value?.ToString(), out var val) && val >= 30 && val <= 3600)
+        _smtpServer = e.Value?.ToString() ?? "";
+        await Config.SetSettingAsync("smtp-server", _smtpServer);
+        ShowMessage("Saved.", false);
+    }
+
+    private async Task SaveSmtpPort(ChangeEventArgs e)
+    {
+        _smtpPort = e.Value?.ToString() ?? "587";
+        await Config.SetSettingAsync("smtp-port", _smtpPort);
+        ShowMessage("Saved.", false);
+    }
+
+    private async Task SaveSmtpUsername(ChangeEventArgs e)
+    {
+        _smtpUsername = e.Value?.ToString() ?? "";
+        await Config.SetSettingAsync("smtp-username", _smtpUsername);
+        ShowMessage("Saved.", false);
+    }
+
+    private async Task SaveSmtpPassword(ChangeEventArgs e)
+    {
+        _smtpPassword = e.Value?.ToString() ?? "";
+        if (!string.IsNullOrEmpty(_smtpPassword))
         {
-            _discoveryInterval = val;
-            await Config.SetSettingAsync("discovery-interval", val.ToString());
-            await ShowSaved();
+            await Config.SetSecretAsync("smtp-password", _smtpPassword);
+            ShowMessage("Saved.", false);
+        }
+        else
+        {
+            await Config.DeleteSettingAsync("smtp-password");
+            ShowMessage("Password cleared.", false);
         }
     }
 
-    private async Task ShowSaved()
+    private async Task SaveNotificationEmail(ChangeEventArgs e)
     {
-        _saved = true;
+        _notificationEmail = e.Value?.ToString() ?? "";
+        await Config.SetSettingAsync("notification-email", _notificationEmail);
+        ShowMessage("Saved.", false);
+    }
+
+    private async Task SendTestEmail()
+    {
+        _sendingTest = true;
+        _message = null;
         StateHasChanged();
-        await Task.Delay(2000);
-        _saved = false;
-        StateHasChanged();
+
+        var (success, error) = await EmailService.SendTestAsync();
+        _sendingTest = false;
+        ShowMessage(success ? "Test email sent successfully!" : $"Failed: {error}", !success);
+    }
+
+    private void ShowMessage(string msg, bool isError)
+    {
+        _message = msg;
+        _messageIsError = isError;
+        _ = Task.Delay(3000).ContinueWith(_ => InvokeAsync(() =>
+        {
+            _message = null;
+            StateHasChanged();
+        }));
     }
 
     private async Task RerunWizard()

@@ -17,7 +17,7 @@
                 <span class="badge">@_updateCount</span>
             </a>
         }
-        <button class="theme-toggle" @onclick="CycleTheme" title="@ThemeLabel">
+        <button class="theme-toggle" @onclick="ToggleTheme" title="@ThemeLabel">
             <i class="bi @ThemeIcon"></i>
         </button>
     </div>
@@ -27,21 +27,10 @@
     [Parameter]
     public string PageTitle { get; set; } = "Home";
 
-    private string CurrentTheme { get; set; } = "system";
+    private string CurrentTheme { get; set; } = "dark";
 
-    private string ThemeIcon => CurrentTheme switch
-    {
-        "dark" => "bi-moon-fill",
-        "light" => "bi-sun-fill",
-        _ => "bi-circle-half"
-    };
-
-    private string ThemeLabel => CurrentTheme switch
-    {
-        "dark" => "Dark theme",
-        "light" => "Light theme",
-        _ => "System theme"
-    };
+    private string ThemeIcon => CurrentTheme == "dark" ? "bi-sun-fill" : "bi-moon-fill";
+    private string ThemeLabel => CurrentTheme == "dark" ? "Switch to light" : "Switch to dark";
 
     [Inject]
     private IJSRuntime JS { get; set; } = default!;
@@ -65,15 +54,8 @@
         }
     }
 
-    private async Task CycleTheme()
+    private async Task ToggleTheme()
     {
-        CurrentTheme = CurrentTheme switch
-        {
-            "system" => "dark",
-            "dark" => "light",
-            "light" => "system",
-            _ => "system"
-        };
-        await JS.InvokeVoidAsync("themeManager.set", CurrentTheme);
+        CurrentTheme = await JS.InvokeAsync<string>("themeManager.toggle");
     }
 }

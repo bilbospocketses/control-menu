@@ -1,4 +1,6 @@
 @inherits LayoutComponentBase
+@inject NavigationManager Nav
+@implements IDisposable
 
 <div class="app-layout">
     <Sidebar />
@@ -14,4 +16,43 @@
 
 @code {
     private string _pageTitle = "Home";
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        UpdateTitle(Nav.Uri);
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        UpdateTitle(e.Location);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void UpdateTitle(string uri)
+    {
+        var path = new Uri(uri).AbsolutePath.Trim('/');
+        _pageTitle = path switch
+        {
+            "" => "Home",
+            "settings" or "settings/general" => "Settings",
+            "settings/devices" => "Settings — Devices",
+            "settings/jellyfin" => "Settings — Jellyfin",
+            "settings/dependencies" => "Settings — Dependencies",
+            "setup" => "Setup Wizard",
+            _ when path.StartsWith("android/googletv") => "Google TV Dashboard",
+            _ when path.StartsWith("android/pixel") => "Pixel Dashboard",
+            _ when path.StartsWith("android") => "Android Devices",
+            _ when path.StartsWith("jellyfin/db-update") => "DB Date Update",
+            _ when path.StartsWith("jellyfin/cast-crew") => "Cast & Crew Update",
+            _ when path.StartsWith("utilities/icon") => "Icon Converter",
+            _ when path.StartsWith("utilities/unblock") => "File Unblocker",
+            _ => path.Split('/').Last().Replace("-", " ")
+        };
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+    }
 }

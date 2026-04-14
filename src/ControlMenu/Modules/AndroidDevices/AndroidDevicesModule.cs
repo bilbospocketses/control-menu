@@ -9,6 +9,26 @@ public class AndroidDevicesModule : IToolModule
     public string Icon => "bi-phone";
     public int SortOrder => 1;
 
+    private static readonly string DepsRoot = FindDepsRoot();
+
+    private static string FindDepsRoot()
+    {
+        // Check content root first (dev: project dir), then base dir (published)
+        var dir = AppContext.BaseDirectory;
+        for (var i = 0; i < 5; i++)
+        {
+            var candidate = Path.Combine(dir, "dependencies");
+            if (Directory.Exists(candidate)) return candidate;
+            var parent = Directory.GetParent(dir)?.FullName;
+            if (parent is null) break;
+            dir = parent;
+        }
+        // Fallback: create at base directory
+        var fallback = Path.Combine(AppContext.BaseDirectory, "dependencies");
+        Directory.CreateDirectory(fallback);
+        return fallback;
+    }
+
     public IEnumerable<ModuleDependency> Dependencies =>
     [
         new ModuleDependency
@@ -16,14 +36,15 @@ public class AndroidDevicesModule : IToolModule
             Name = "adb",
             ExecutableName = "adb",
             VersionCommand = "adb --version",
-            VersionPattern = @"Android Debug Bridge version ([\d.]+)",
+            VersionPattern = @"Version ([\d.]+)",
             SourceType = UpdateSourceType.DirectUrl,
             ProjectHomeUrl = "https://developer.android.com/tools/releases/platform-tools",
             DownloadUrl = OperatingSystem.IsWindows()
                 ? "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
                 : "https://dl.google.com/android/repository/platform-tools-latest-linux.zip",
             VersionCheckUrl = "https://dl.google.com/android/repository/repository2-3.xml",
-            VersionCheckPattern = @"<major>(\d+)</major>\s*<minor>(\d+)</minor>\s*<micro>(\d+)</micro>"
+            VersionCheckPattern = @"path=""platform-tools"".*?<major>(\d+)</major>\s*<minor>(\d+)</minor>\s*<micro>(\d+)</micro>",
+            InstallPath = Path.Combine(DepsRoot, "platform-tools")
         },
         new ModuleDependency
         {
@@ -33,7 +54,8 @@ public class AndroidDevicesModule : IToolModule
             VersionPattern = @"scrcpy ([\d.]+)",
             SourceType = UpdateSourceType.GitHub,
             GitHubRepo = "Genymobile/scrcpy",
-            AssetPattern = @"scrcpy-win64-v[\d.]+\.zip"
+            AssetPattern = @"scrcpy-win64-v[\d.]+\.zip",
+            InstallPath = Path.Combine(DepsRoot, "scrcpy")
         },
         new ModuleDependency
         {
@@ -43,7 +65,8 @@ public class AndroidDevicesModule : IToolModule
             VersionPattern = @"v([\d.]+)",
             SourceType = UpdateSourceType.DirectUrl,
             ProjectHomeUrl = "https://nodejs.org/",
-            DownloadUrl = "https://nodejs.org/en/download/"
+            DownloadUrl = "https://nodejs.org/en/download/",
+            InstallPath = Path.Combine(DepsRoot, "node")
         },
         new ModuleDependency
         {
@@ -60,9 +83,9 @@ public class AndroidDevicesModule : IToolModule
 
     public IEnumerable<NavEntry> GetNavEntries() =>
     [
-        new NavEntry("Device List", "/android/devices", "bi-list-ul", 0),
-        new NavEntry("Google TV", "/android/googletv", "bi-tv", 1),
-        new NavEntry("Pixel", "/android/pixel", "bi-phone", 2)
+        new NavEntry("Device List", "/android/devices", "📋", 0),
+        new NavEntry("Google TV", "/android/googletv", "📺", 1),
+        new NavEntry("Pixel", "/android/pixel", "📱", 2)
     ];
 
     public IEnumerable<BackgroundJobDefinition> GetBackgroundJobs() => [];

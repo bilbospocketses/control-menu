@@ -9,6 +9,24 @@ public class JellyfinModule : IToolModule
     public string Icon => "bi-film";
     public int SortOrder => 2;
 
+    private static readonly string DepsRoot = FindDepsRoot();
+
+    private static string FindDepsRoot()
+    {
+        var dir = AppContext.BaseDirectory;
+        for (var i = 0; i < 5; i++)
+        {
+            var candidate = Path.Combine(dir, "dependencies");
+            if (Directory.Exists(candidate)) return candidate;
+            var parent = Directory.GetParent(dir)?.FullName;
+            if (parent is null) break;
+            dir = parent;
+        }
+        var fallback = Path.Combine(AppContext.BaseDirectory, "dependencies");
+        Directory.CreateDirectory(fallback);
+        return fallback;
+    }
+
     public IEnumerable<ModuleDependency> Dependencies =>
     [
         new ModuleDependency
@@ -27,29 +45,20 @@ public class JellyfinModule : IToolModule
             VersionCommand = "sqlite3 --version",
             VersionPattern = @"([\d.]+)",
             SourceType = UpdateSourceType.Manual,
-            ProjectHomeUrl = "https://www.sqlite.org/download.html"
+            ProjectHomeUrl = "https://www.sqlite.org/download.html",
+            InstallPath = Path.Combine(DepsRoot, "sqlite3")
         }
     ];
 
-    public IEnumerable<ConfigRequirement> ConfigRequirements =>
-    [
-        new ConfigRequirement("jellyfin-api-key", "Jellyfin API Key", "API key for Jellyfin REST API", IsSecret: true),
-        new ConfigRequirement("jellyfin-db-path", "Database Path", "Path to jellyfin.db", DefaultValue: "D:/DockerData/jellyfin/config/data/jellyfin.db"),
-        new ConfigRequirement("jellyfin-container-name", "Container Name", "Docker container name", DefaultValue: "jellyfin"),
-        new ConfigRequirement("jellyfin-backup-dir", "Backup Directory", "Path for database backups", DefaultValue: "C:/scripts/tools-menu/jellyfin-db-bkup-and-logs"),
-        new ConfigRequirement("jellyfin-base-url", "Jellyfin URL", "Base URL for Jellyfin API", DefaultValue: "http://127.0.0.1:8096"),
-        new ConfigRequirement("jellyfin-user-id", "User ID", "Jellyfin user ID for API calls"),
-        new ConfigRequirement("smtp-server", "SMTP Server", "SMTP server for notifications", DefaultValue: "mail.smtp2go.com"),
-        new ConfigRequirement("smtp-port", "SMTP Port", "SMTP server port", DefaultValue: "587"),
-        new ConfigRequirement("smtp-username", "SMTP Username", "SMTP login username"),
-        new ConfigRequirement("smtp-password", "SMTP Password", "SMTP login password", IsSecret: true),
-        new ConfigRequirement("notification-email", "Notification Email", "Email for completion alerts")
-    ];
+    // All Jellyfin settings are managed in Settings > Jellyfin tab directly
+    // SMTP/email settings are in Settings > General
+    public IEnumerable<ConfigRequirement> ConfigRequirements => [];
 
     public IEnumerable<NavEntry> GetNavEntries() =>
     [
-        new NavEntry("DB Date Update", "/jellyfin/db-update", "bi-calendar-date", 0),
-        new NavEntry("Cast & Crew", "/jellyfin/cast-crew", "bi-people", 1)
+        new NavEntry("DB Date Update", "/jellyfin/db-update", "🗃️", 0),
+        new NavEntry("Cast & Crew", "/jellyfin/cast-crew", "🎭", 1),
+        // Jellyfin settings are under main Settings > Jellyfin tab
     ];
 
     public IEnumerable<BackgroundJobDefinition> GetBackgroundJobs() =>

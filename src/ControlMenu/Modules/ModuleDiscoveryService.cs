@@ -12,7 +12,7 @@ public class ModuleDiscoveryService
             .SelectMany(a => a.GetTypes())
             .Where(t => t is { IsAbstract: false, IsInterface: false }
                         && typeof(IToolModule).IsAssignableFrom(t)
-                        && t.GetConstructor(Type.EmptyTypes) is not null)
+                        && t.GetConstructor(Type.EmptyTypes) is not null) // Modules must have parameterless constructors
             .Select(t => (IToolModule)Activator.CreateInstance(t)!)
             .OrderBy(m => m.SortOrder)
             .ThenBy(m => m.DisplayName)

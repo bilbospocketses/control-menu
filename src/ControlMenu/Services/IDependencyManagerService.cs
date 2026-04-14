@@ -10,4 +10,5 @@ public interface IDependencyManagerService
     Task<int> GetUpdateAvailableCountAsync();
     Task<IReadOnlyList<Data.Entities.Dependency>> GetAllDependenciesAsync();
     Task<IReadOnlyList<DependencyScanResult>> ScanForDependenciesAsync();
+    Task<DependencyScanResult?> ValidateManualPathAsync(string name, string moduleId, string executablePath);
 }

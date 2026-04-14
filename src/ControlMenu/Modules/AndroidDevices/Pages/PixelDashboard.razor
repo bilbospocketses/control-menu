@@ -3,6 +3,7 @@
 @using ControlMenu.Data.Entities
 @using ControlMenu.Data.Enums
 @using ControlMenu.Services
+@implements IDisposable
 @using ControlMenu.Modules.AndroidDevices.Services
 
 <PageTitle>Pixel - @(_device?.Name ?? "Select Device")</PageTitle>
@@ -30,33 +31,35 @@ else
         </div>
     }
 
-    <div class="action-card-grid">
-        <!-- Reset ADB Port -->
-        <div class="action-card">
-            <div class="action-card-icon"><i class="bi bi-usb-plug"></i></div>
-            <h3>Reset ADB Port</h3>
-            <p>Reset TCP/IP port to 5555 after reboot. Requires USB connection.</p>
-            <button class="btn btn-warning" @onclick="ResetAdbPort" disabled="@_busy">
-                <i class="bi bi-arrow-counterclockwise"></i> Reset Port
-            </button>
+    <div class="dashboard-layout">
+        <div class="controls-panel">
+            <h3 class="panel-heading">Quick Actions</h3>
+
+            <!-- Reset ADB Port -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-usb-plug"></i> Reset ADB Port
+                </div>
+                <span class="action-status">Requires USB</span>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-warning" @onclick="ResetAdbPort" disabled="@_busy">Reset</button>
+                </div>
+            </div>
+
+            <!-- ADB Connect -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-plug"></i> ADB Connect
+                </div>
+                <span class="action-status">WiFi connection</span>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-primary" @onclick="ConnectDevice" disabled="@_busy">Connect</button>
+                </div>
+            </div>
         </div>
 
-        <!-- Connect -->
-        <div class="action-card">
-            <div class="action-card-icon"><i class="bi bi-plug"></i></div>
-            <h3>ADB Connect</h3>
-            <p>Connect to device over WiFi</p>
-            <button class="btn btn-primary" @onclick="ConnectDevice" disabled="@_busy">
-                <i class="bi bi-wifi"></i> Connect
-            </button>
-        </div>
-
-        <!-- Screen Mirror -->
-        <div class="action-card">
-            <div class="action-card-icon"><i class="bi bi-display"></i></div>
-            <h3>Screen Mirror</h3>
-            <p>Browser-based screen mirroring</p>
-            <ScrcpyMirror Udid="@($"{Ip}:{Port}")" />
+        <div class="mirror-panel">
+            <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" />
         </div>
     </div>
 }
@@ -65,6 +68,7 @@ else
     [Parameter] public Guid? DeviceId { get; set; }
     [Inject] private IDeviceService DeviceService { get; set; } = default!;
     [Inject] private IAdbService AdbService { get; set; } = default!;
+    [Inject] private INetworkDiscoveryService NetworkDiscovery { get; set; } = default!;
 
     private Device? _device;
     private bool _connected;
@@ -91,35 +95,74 @@ else
         }
     }
 
-    private string Ip => _device!.LastKnownIp!;
-    private int Port => _device!.AdbPort;
+    private string Ip => _device?.LastKnownIp ?? throw new InvalidOperationException("Device IP not available");
+    private int Port => _device?.AdbPort ?? 5555;
 
     private async Task ResetAdbPort()
     {
         _busy = true;
-        SetStatus("Connect device via USB, then this will reset TCP port to 5555...", "status-warning", "bi-usb-plug");
-        await AdbService.ResetTcpPortAsync(5555);
-        SetStatus("ADB port reset to 5555. You can disconnect USB now.", "status-success", "bi-check-circle");
+        var port = _device?.AdbPort ?? 5555;
+        SetStatus($"Connect device via USB, then this will reset TCP port to {port}...", "status-warning", "bi-usb-plug");
+        await AdbService.ResetTcpPortAsync(port);
+        SetStatus($"ADB port reset to {port}. You can disconnect USB now.", "status-success", "bi-check-circle");
         _busy = false;
     }
 
     private async Task ConnectDevice()
     {
-        if (_device?.LastKnownIp is null)
+        if (_device is null) return;
+
+        // Resolve IP from ARP table if not known
+        if (_device.LastKnownIp is null && !string.IsNullOrEmpty(_device.MacAddress))
+        {
+            var ip = await NetworkDiscovery.ResolveIpFromMacAsync(_device.MacAddress);
+            if (ip is not null)
+            {
+                _device.LastKnownIp = ip;
+                await DeviceService.UpdateLastSeenAsync(_device.Id, ip);
+            }
+        }
+
+        if (_device.LastKnownIp is null)
         {
             SetStatus("No IP address known for this device. Run a network scan in Settings.", "status-warning", "bi-exclamation-triangle");
             return;
         }
         _busy = true;
         _connected = await AdbService.ConnectAsync(Ip, Port);
+        if (_connected)
+        {
+            await DeviceService.UpdateLastSeenAsync(_device.Id, _device.LastKnownIp);
+        }
         SetStatus(_connected ? "Connected successfully." : "Connection failed.", _connected ? "status-success" : "status-warning", _connected ? "bi-check-circle" : "bi-x-circle");
         _busy = false;
     }
 
-    private void SetStatus(string message, string cssClass, string icon)
+    private CancellationTokenSource? _statusCts;
+
+    private void SetStatus(string message, string cssClass, string icon, int dismissMs = 5000)
     {
         _statusMessage = message;
         _statusClass = cssClass;
         _statusIcon = icon;
+
+        _statusCts?.Cancel();
+        _statusCts = new CancellationTokenSource();
+        var token = _statusCts.Token;
+
+        _ = Task.Delay(dismissMs, token).ContinueWith(_ =>
+        {
+            InvokeAsync(() =>
+            {
+                _statusMessage = "";
+                StateHasChanged();
+            });
+        }, TaskContinuationOptions.OnlyOnRanToCompletion);
+    }
+
+    public void Dispose()
+    {
+        _statusCts?.Cancel();
+        _statusCts?.Dispose();
     }
 }

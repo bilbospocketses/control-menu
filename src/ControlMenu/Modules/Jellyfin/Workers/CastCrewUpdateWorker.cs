@@ -108,7 +108,8 @@ public class CastCrewUpdateWorker
             {
                 // Save resume data so next run can pick up where we left off
                 await _jobService.FailJobAsync(jobId,
-                    $"Cancelled after processing {processed} of {totalOverall}. Resume supported.");
+                    $"Cancelled after processing {processed} of {totalOverall}. Resume supported.",
+                    resultData);
             }
             else
             {
@@ -117,8 +118,12 @@ public class CastCrewUpdateWorker
         }
         catch (OperationCanceledException)
         {
-            // Save resume state on cancellation
-            // Job stays in Running state for resume
+            // Token was cancelled — mark job as failed with resume info so it doesn't stay stuck in Running
+            try
+            {
+                await _jobService.FailJobAsync(jobId, "Cancelled. Resume supported on next run.");
+            }
+            catch { /* best effort — scope may be disposed */ }
         }
         catch (Exception ex)
         {

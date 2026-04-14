@@ -7,16 +7,16 @@ namespace ControlMenu.Tests.Services;
 
 public class DeviceServiceTests : IDisposable
 {
-    private readonly ControlMenu.Data.AppDbContext _db;
+    private readonly InMemoryDbContextFactory _factory;
     private readonly DeviceService _service;
 
     public DeviceServiceTests()
     {
-        _db = TestDbContextFactory.Create();
-        _service = new DeviceService(_db);
+        _factory = TestDbContextFactory.CreateFactory();
+        _service = new DeviceService(_factory);
     }
 
-    public void Dispose() => _db.Dispose();
+    public void Dispose() => _factory.Dispose();
 
     private Device MakeDevice(string name = "Test TV", string mac = "aa-bb-cc-dd-ee-ff")
     {

@@ -7,18 +7,18 @@ namespace ControlMenu.Tests.Services;
 
 public class ConfigurationServiceTests : IDisposable
 {
-    private readonly AppDbContext _db;
+    private readonly InMemoryDbContextFactory _dbFactory;
     private readonly ConfigurationService _service;
 
     public ConfigurationServiceTests()
     {
-        _db = TestDbContextFactory.Create();
+        _dbFactory = TestDbContextFactory.CreateFactory();
         var provider = DataProtectionProvider.Create("ControlMenu-Tests");
         var secretStore = new SecretStore(provider);
-        _service = new ConfigurationService(_db, secretStore);
+        _service = new ConfigurationService(_dbFactory, secretStore);
     }
 
-    public void Dispose() => _db.Dispose();
+    public void Dispose() => _dbFactory.Dispose();
 
     [Fact]
     public async Task GetSettingAsync_NonExistent_ReturnsNull()
@@ -56,7 +56,8 @@ public class ConfigurationServiceTests : IDisposable
     public async Task SetSecret_StoresEncryptedValue()
     {
         await _service.SetSecretAsync("api-key", "secret-value-123");
-        var setting = _db.Settings.Single(s => s.Key == "api-key");
+        using var db = _dbFactory.CreateDbContext();
+        var setting = db.Settings.Single(s => s.Key == "api-key");
         Assert.True(setting.IsSecret);
         Assert.NotEqual("secret-value-123", setting.Value);
     }
