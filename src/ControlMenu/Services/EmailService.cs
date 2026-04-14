@@ -38,7 +38,7 @@ public class EmailService : IEmailService
                 EnableSsl = true
             };
 
-            var message = new MailMessage(username, to, subject, body);
+            using var message = new MailMessage(username, to, subject, body);
             await client.SendMailAsync(message, ct);
             return (true, null);
         }

@@ -3,6 +3,7 @@
 @using ControlMenu.Data.Entities
 @using ControlMenu.Data.Enums
 @using ControlMenu.Services
+@implements IDisposable
 @using ControlMenu.Modules.AndroidDevices.Services
 
 <PageTitle>Pixel - @(_device?.Name ?? "Select Device")</PageTitle>
@@ -94,15 +95,16 @@ else
         }
     }
 
-    private string Ip => _device!.LastKnownIp!;
-    private int Port => _device!.AdbPort;
+    private string Ip => _device?.LastKnownIp ?? throw new InvalidOperationException("Device IP not available");
+    private int Port => _device?.AdbPort ?? 5555;
 
     private async Task ResetAdbPort()
     {
         _busy = true;
-        SetStatus("Connect device via USB, then this will reset TCP port to 5555...", "status-warning", "bi-usb-plug");
-        await AdbService.ResetTcpPortAsync(5555);
-        SetStatus("ADB port reset to 5555. You can disconnect USB now.", "status-success", "bi-check-circle");
+        var port = _device?.AdbPort ?? 5555;
+        SetStatus($"Connect device via USB, then this will reset TCP port to {port}...", "status-warning", "bi-usb-plug");
+        await AdbService.ResetTcpPortAsync(port);
+        SetStatus($"ADB port reset to {port}. You can disconnect USB now.", "status-success", "bi-check-circle");
         _busy = false;
     }
 
@@ -156,5 +158,11 @@ else
                 StateHasChanged();
             });
         }, TaskContinuationOptions.OnlyOnRanToCompletion);
+    }
+
+    public void Dispose()
+    {
+        _statusCts?.Cancel();
+        _statusCts?.Dispose();
     }
 }

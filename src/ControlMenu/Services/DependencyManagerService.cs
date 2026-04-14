@@ -10,20 +10,20 @@ namespace ControlMenu.Services;
 
 public class DependencyManagerService : IDependencyManagerService
 {
-    private readonly AppDbContext _db;
+    private readonly IDbContextFactory<AppDbContext> _dbFactory;
     private readonly IReadOnlyList<IToolModule> _modules;
     private readonly ICommandExecutor _executor;
     private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<DependencyManagerService> _logger;
 
     public DependencyManagerService(
-        AppDbContext db,
+        IDbContextFactory<AppDbContext> dbFactory,
         IReadOnlyList<IToolModule> modules,
         ICommandExecutor executor,
         IHttpClientFactory httpFactory,
         ILogger<DependencyManagerService> logger)
     {
-        _db = db;
+        _dbFactory = dbFactory;
         _modules = modules;
         _executor = executor;
         _httpFactory = httpFactory;
@@ -32,11 +32,12 @@ public class DependencyManagerService : IDependencyManagerService
 
     public async Task SyncDependenciesAsync()
     {
+        using var db = await _dbFactory.CreateDbContextAsync();
         var declared = _modules
             .SelectMany(m => m.Dependencies.Select(d => (Module: m, Dep: d)))
             .ToList();
 
-        var existing = await _db.Dependencies.ToListAsync();
+        var existing = await db.Dependencies.ToListAsync();
 
         // Remove orphaned
         var declaredKeys = declared
@@ -47,7 +48,7 @@ public class DependencyManagerService : IDependencyManagerService
             .Where(e => !declaredKeys.Contains((e.ModuleId, e.Name)))
             .ToList();
 
-        _db.Dependencies.RemoveRange(toRemove);
+        db.Dependencies.RemoveRange(toRemove);
 
         // Upsert declared
         foreach (var (module, dep) in declared)
@@ -64,7 +65,7 @@ public class DependencyManagerService : IDependencyManagerService
                     Name = dep.Name,
                     Status = DependencyStatus.UpToDate
                 };
-                _db.Dependencies.Add(entity);
+                db.Dependencies.Add(entity);
             }
 
             // Update static fields from code
@@ -76,26 +77,30 @@ public class DependencyManagerService : IDependencyManagerService
             entity.InstalledVersion = await GetInstalledVersionAsync(dep);
         }
 
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
     }
 
     public async Task<int> GetUpdateAvailableCountAsync()
     {
-        return await _db.Dependencies
+        using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Dependencies
             .CountAsync(d => d.Status == DependencyStatus.UpdateAvailable);
     }
 
     public async Task<IReadOnlyList<Dependency>> GetAllDependenciesAsync()
     {
-        return await _db.Dependencies
+        using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Dependencies
             .OrderBy(d => d.ModuleId)
             .ThenBy(d => d.Name)
+            .AsNoTracking()
             .ToListAsync();
     }
 
     public async Task<DependencyCheckResult> CheckDependencyAsync(Guid dependencyId)
     {
-        var entity = await _db.Dependencies.FindAsync(dependencyId);
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var entity = await db.Dependencies.FindAsync(dependencyId);
         if (entity is null)
             return new DependencyCheckResult(dependencyId, "", DependencyStatus.CheckFailed,
                 null, null, "Dependency not found");
@@ -124,7 +129,7 @@ public class DependencyManagerService : IDependencyManagerService
             }
 
             entity.LastChecked = DateTime.UtcNow;
-            await _db.SaveChangesAsync();
+            await db.SaveChangesAsync();
 
             return new DependencyCheckResult(
                 entity.Id, entity.Name, entity.Status,
@@ -134,7 +139,7 @@ public class DependencyManagerService : IDependencyManagerService
         {
             entity.Status = DependencyStatus.CheckFailed;
             entity.LastChecked = DateTime.UtcNow;
-            await _db.SaveChangesAsync();
+            await db.SaveChangesAsync();
 
             _logger.LogError(ex, "Failed to check dependency {Name}", entity.Name);
             return new DependencyCheckResult(
@@ -145,12 +150,16 @@ public class DependencyManagerService : IDependencyManagerService
 
     public async Task<IReadOnlyList<DependencyCheckResult>> CheckAllAsync()
     {
-        var deps = await _db.Dependencies.ToListAsync();
+        List<Guid> depIds;
+        {
+            using var db = await _dbFactory.CreateDbContextAsync();
+            depIds = await db.Dependencies.Select(d => d.Id).ToListAsync();
+        }
         var results = new List<DependencyCheckResult>();
 
-        foreach (var dep in deps)
+        foreach (var id in depIds)
         {
-            results.Add(await CheckDependencyAsync(dep.Id));
+            results.Add(await CheckDependencyAsync(id));
         }
 
         return results;
@@ -158,7 +167,8 @@ public class DependencyManagerService : IDependencyManagerService
 
     public async Task<AssetMatch?> ResolveDownloadAssetAsync(Guid dependencyId)
     {
-        var entity = await _db.Dependencies.FindAsync(dependencyId);
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var entity = await db.Dependencies.FindAsync(dependencyId);
         if (entity is null) return null;
 
         var moduleDep = FindModuleDependency(entity.ModuleId, entity.Name);
@@ -187,7 +197,8 @@ public class DependencyManagerService : IDependencyManagerService
 
     public async Task<UpdateResult> DownloadAndInstallAsync(Guid dependencyId, AssetMatch asset)
     {
-        var entity = await _db.Dependencies.FindAsync(dependencyId);
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var entity = await db.Dependencies.FindAsync(dependencyId);
         if (entity is null)
             return new UpdateResult(false, null, "Dependency not found", null);
 
@@ -203,28 +214,21 @@ public class DependencyManagerService : IDependencyManagerService
         {
             // 1. Download
             var client = _httpFactory.CreateClient("dependency-updates");
-
-            var handler = new HttpClientHandler { AllowAutoRedirect = false };
-            using var redirectClient = new HttpClient(handler);
-            var response = await redirectClient.GetAsync(asset.DownloadUrl,
+            var response = await client.GetAsync(asset.DownloadUrl,
                 HttpCompletionOption.ResponseHeadersRead);
 
-            // Handle redirects
-            if ((int)response.StatusCode is >= 301 and <= 308)
+            // Check if we were redirected (HttpClient follows redirects automatically)
+            if (response.RequestMessage?.RequestUri?.ToString() is string finalUrl
+                && finalUrl != asset.DownloadUrl)
             {
-                var newUrl = response.Headers.Location?.ToString();
-                if (newUrl is not null)
-                {
-                    entity.DownloadUrl = newUrl;
-                    urlAction = StaleUrlAction.Redirected;
-                    response = await client.GetAsync(newUrl);
-                }
+                entity.DownloadUrl = finalUrl;
+                urlAction = StaleUrlAction.Redirected;
             }
 
             if (!response.IsSuccessStatusCode)
             {
                 entity.Status = DependencyStatus.UrlInvalid;
-                await _db.SaveChangesAsync();
+                await db.SaveChangesAsync();
                 return new UpdateResult(false, null,
                     $"Download failed: HTTP {(int)response.StatusCode}", StaleUrlAction.Invalid);
             }
@@ -292,7 +296,7 @@ public class DependencyManagerService : IDependencyManagerService
             entity.LatestKnownVersion = newVersion;
             entity.Status = DependencyStatus.UpToDate;
             entity.LastChecked = DateTime.UtcNow;
-            await _db.SaveChangesAsync();
+            await db.SaveChangesAsync();
 
             return new UpdateResult(true, newVersion, null, urlAction);
         }
@@ -309,7 +313,8 @@ public class DependencyManagerService : IDependencyManagerService
 
     public async Task<IReadOnlyList<DependencyScanResult>> ScanForDependenciesAsync()
     {
-        var existing = await _db.Dependencies.ToListAsync();
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = await db.Dependencies.ToListAsync();
         var results = new List<DependencyScanResult>();
 
         foreach (var module in _modules)
@@ -354,6 +359,48 @@ public class DependencyManagerService : IDependencyManagerService
         }
 
         return results;
+    }
+
+    public async Task<DependencyScanResult?> ValidateManualPathAsync(string name, string moduleId, string executablePath)
+    {
+        if (!File.Exists(executablePath))
+            return null;
+
+        var dep = _modules
+            .Where(m => m.Id == moduleId)
+            .SelectMany(m => m.Dependencies)
+            .FirstOrDefault(d => d.Name == name);
+        if (dep is null) return null;
+
+        // Run the version command using the manual path as the executable
+        var parts = dep.VersionCommand.Split(' ', 2);
+        var args = parts.Length > 1 ? parts[1] : null;
+
+        try
+        {
+            var result = await _executor.ExecuteAsync(executablePath, args);
+            if (result.ExitCode != 0) return null;
+
+            var version = ExtractVersion(result.StandardOutput, dep.VersionPattern);
+            if (version is null) return null;
+
+            // Persist to DB so future scans find it as "Previously configured"
+            using var db = await _dbFactory.CreateDbContextAsync();
+            var entity = await db.Dependencies.FirstOrDefaultAsync(e =>
+                e.ModuleId == moduleId && e.Name == name);
+            if (entity is not null)
+            {
+                entity.InstalledVersion = version;
+                await db.SaveChangesAsync();
+            }
+
+            return new DependencyScanResult(name, moduleId, Found: true,
+                Path: executablePath, Version: version, Source: "Manual");
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     // --- Private helpers ---
@@ -469,20 +516,13 @@ public class DependencyManagerService : IDependencyManagerService
     {
         if (moduleDep.GitHubRepo is null) return;
 
-        var client = _httpFactory.CreateClient("github-api");
-        var url = $"https://api.github.com/repos/{moduleDep.GitHubRepo}/releases/latest";
-        var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Add("Accept", "application/vnd.github+json");
-        request.Headers.Add("User-Agent", "ControlMenu");
+        using var doc = await FetchGitHubReleaseAsync(moduleDep.GitHubRepo);
+        if (!doc.RootElement.TryGetProperty("tag_name", out var tagProp)) return;
 
-        var response = await client.SendAsync(request);
-        response.EnsureSuccessStatusCode();
+        var tag = tagProp.GetString()?.TrimStart('v');
+        if (tag is null) return;
 
-        var json = await response.Content.ReadAsStringAsync();
-        var tagMatch = Regex.Match(json, @"""tag_name""\s*:\s*""v?([\d.]+)""");
-        if (!tagMatch.Success) return;
-
-        entity.LatestKnownVersion = tagMatch.Groups[1].Value;
+        entity.LatestKnownVersion = tag;
         entity.Status = CompareVersions(entity.InstalledVersion, entity.LatestKnownVersion) < 0
             ? DependencyStatus.UpdateAvailable
             : DependencyStatus.UpToDate;
@@ -513,40 +553,25 @@ public class DependencyManagerService : IDependencyManagerService
 
     private async Task<AssetMatch?> ResolveGitHubAssetAsync(ModuleDependency moduleDep)
     {
-        var client = _httpFactory.CreateClient("github-api");
-        var url = $"https://api.github.com/repos/{moduleDep.GitHubRepo}/releases/latest";
-        var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Add("Accept", "application/vnd.github+json");
-        request.Headers.Add("User-Agent", "ControlMenu");
+        using var doc = await FetchGitHubReleaseAsync(moduleDep.GitHubRepo!);
 
-        var response = await client.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-
-        var json = await response.Content.ReadAsStringAsync();
-
-        // Build platform-aware pattern
         var basePattern = moduleDep.AssetPattern ?? moduleDep.ExecutableName;
         var platformToken = GetPlatformToken();
-        var pattern = basePattern.Replace("win64", platformToken);
-
-        // Parse assets from JSON (simple regex — no JSON dependency needed)
-        var assets = Regex.Matches(json,
-            @"""name""\s*:\s*""(?<name>[^""]+)""\s*.*?" +
-            @"""size""\s*:\s*(?<size>\d+)\s*.*?" +
-            @"""browser_download_url""\s*:\s*""(?<url>[^""]+)""",
-            RegexOptions.Singleline);
 
         var matches = new List<AssetMatch>();
-        foreach (Match a in assets)
+        if (doc.RootElement.TryGetProperty("assets", out var assets))
         {
-            var name = a.Groups["name"].Value;
-            if (Regex.IsMatch(name, basePattern) && name.Contains(platformToken))
+            foreach (var asset in assets.EnumerateArray())
             {
-                matches.Add(new AssetMatch(
-                    name,
-                    a.Groups["url"].Value,
-                    long.Parse(a.Groups["size"].Value),
-                    AutoSelected: true));
+                var name = asset.GetProperty("name").GetString();
+                var url = asset.GetProperty("browser_download_url").GetString();
+                var size = asset.GetProperty("size").GetInt64();
+                if (name is null || url is null) continue;
+
+                if (Regex.IsMatch(name, basePattern) && name.Contains(platformToken))
+                {
+                    matches.Add(new AssetMatch(name, url, size, AutoSelected: true));
+                }
             }
         }
 
@@ -557,6 +582,21 @@ public class DependencyManagerService : IDependencyManagerService
             return matches[0] with { AutoSelected = false };
 
         return null;
+    }
+
+    private async Task<System.Text.Json.JsonDocument> FetchGitHubReleaseAsync(string repo)
+    {
+        var client = _httpFactory.CreateClient("github-api");
+        var url = $"https://api.github.com/repos/{repo}/releases/latest";
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Add("Accept", "application/vnd.github+json");
+        request.Headers.Add("User-Agent", "ControlMenu");
+
+        var response = await client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+
+        var stream = await response.Content.ReadAsStreamAsync();
+        return await System.Text.Json.JsonDocument.ParseAsync(stream);
     }
 
     private static string GetPlatformToken()

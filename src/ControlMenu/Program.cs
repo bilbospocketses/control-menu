@@ -69,12 +69,12 @@ builder.Services.AddHttpClient("github-api");
 builder.Services.AddHttpClient("dependency-updates");
 builder.Services.AddScoped<IDependencyManagerService>(sp =>
 {
-    var db = sp.GetRequiredService<AppDbContext>();
+    var dbFactory = sp.GetRequiredService<IDbContextFactory<AppDbContext>>();
     var modules = sp.GetRequiredService<ModuleDiscoveryService>().Modules;
     var executor = sp.GetRequiredService<ICommandExecutor>();
     var httpFactory = sp.GetRequiredService<IHttpClientFactory>();
     var logger = sp.GetRequiredService<ILogger<DependencyManagerService>>();
-    return new DependencyManagerService(db, modules, executor, httpFactory, logger);
+    return new DependencyManagerService(dbFactory, modules, executor, httpFactory, logger);
 });
 builder.Services.AddHostedService<DependencyCheckHostedService>();
 

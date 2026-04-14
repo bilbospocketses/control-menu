@@ -17,7 +17,7 @@ public class JellyfinServiceTests
     {
         _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-container-name", null))
             .ReturnsAsync("jellyfin");
-        _mockExecutor.Setup(e => e.ExecuteAsync("docker", "ps --filter name=jellyfin --format {{.ID}}", null, default))
+        _mockExecutor.Setup(e => e.ExecuteAsync("docker", "ps -a --filter name=^/jellyfin$ --format {{.ID}}", null, default))
             .ReturnsAsync(new CommandResult(0, "a1b2c3d4e5f6\n", "", false));
 
         var service = CreateService();
@@ -31,7 +31,7 @@ public class JellyfinServiceTests
     {
         _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-container-name", null))
             .ReturnsAsync("jellyfin");
-        _mockExecutor.Setup(e => e.ExecuteAsync("docker", "ps --filter name=jellyfin --format {{.ID}}", null, default))
+        _mockExecutor.Setup(e => e.ExecuteAsync("docker", "ps -a --filter name=^/jellyfin$ --format {{.ID}}", null, default))
             .ReturnsAsync(new CommandResult(0, "", "", false));
 
         var service = CreateService();
@@ -102,19 +102,35 @@ public class JellyfinServiceTests
     }
 
     [Fact]
-    public async Task CleanupOldBackupsAsync_RemovesFilesOlderThanDays()
+    public async Task CleanupOldBackupsAsync_RemovesOldFiles()
     {
-        _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-backup-dir", null))
-            .ReturnsAsync("C:/scripts/tools-menu/jellyfin-db-bkup-and-logs");
+        var tempDir = Path.Combine(Path.GetTempPath(), "ControlMenu_Test_" + Guid.NewGuid());
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            // Create an old backup file (10 days old)
+            var oldFile = Path.Combine(tempDir, "jellyfin_old.db");
+            File.WriteAllText(oldFile, "old");
+            File.SetLastWriteTimeUtc(oldFile, DateTime.UtcNow.AddDays(-10));
 
-        _mockExecutor.Setup(e => e.ExecuteAsync(
-            It.IsAny<CommandDefinition>(), default))
-            .ReturnsAsync(new CommandResult(0, "", "", false));
+            // Create a recent backup file
+            var newFile = Path.Combine(tempDir, "jellyfin_new.db");
+            File.WriteAllText(newFile, "new");
 
-        var service = CreateService();
-        await service.CleanupOldBackupsAsync(5);
+            _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-backup-dir", null))
+                .ReturnsAsync(tempDir);
+            _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-backup-retention-days", null))
+                .ReturnsAsync("5");
 
-        _mockExecutor.Verify(e => e.ExecuteAsync(
-            It.IsAny<CommandDefinition>(), default), Times.Once);
+            var service = CreateService();
+            await service.CleanupOldBackupsAsync();
+
+            Assert.False(File.Exists(oldFile));
+            Assert.True(File.Exists(newFile));
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
     }
 }

@@ -48,9 +48,13 @@ public class AdbService : IAdbService
     {
         var result = await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell settings get secure screensaver_components", null, ct);
         var output = result.StandardOutput.Trim();
+        if (string.IsNullOrEmpty(output) || result.ExitCode != 0)
+            return "Unknown";
         if (output.Contains("skyfolio", StringComparison.OrdinalIgnoreCase))
             return "SkyFolio";
-        return "Google";
+        if (output.Contains("google", StringComparison.OrdinalIgnoreCase) || output.Contains("Backdrop", StringComparison.OrdinalIgnoreCase))
+            return "Google";
+        return "Unknown";
     }
 
     public async Task SetScreensaverAsync(string ip, int port, string screensaver, CancellationToken ct = default)

@@ -62,7 +62,8 @@ public class JellyfinService : IJellyfinService
         while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
         {
             var result = await _executor.ExecuteAsync("docker", $"logs --since {since} {containerId}", null, ct);
-            if (result.StandardOutput.Contains("Startup complete"))
+            if (result.StandardOutput.Contains("Startup complete") ||
+                result.StandardError.Contains("Startup complete"))
                 return true;
             await Task.Delay(2000, ct);
         }
@@ -157,15 +158,23 @@ public class JellyfinService : IJellyfinService
         var json = await client.GetStringAsync(url, ct);
 
         var persons = new List<JellyfinPerson>();
-        var itemRegex = new System.Text.RegularExpressions.Regex(
-            @"""Id""\s*:\s*""(?<id>[^""]+)"".*?""Name""\s*:\s*""(?<name>[^""]+)"".*?""ImageTags""\s*:\s*\{(?<tags>[^}]*)\}",
-            System.Text.RegularExpressions.RegexOptions.Singleline);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
 
-        foreach (System.Text.RegularExpressions.Match match in itemRegex.Matches(json))
+        if (doc.RootElement.TryGetProperty("Items", out var items))
         {
-            var tags = match.Groups["tags"].Value.Trim();
-            if (string.IsNullOrEmpty(tags))
-                persons.Add(new JellyfinPerson(match.Groups["id"].Value, match.Groups["name"].Value));
+            foreach (var item in items.EnumerateArray())
+            {
+                var id = item.GetProperty("Id").GetString();
+                var name = item.GetProperty("Name").GetString();
+                if (id is null || name is null) continue;
+
+                var hasImage = item.TryGetProperty("ImageTags", out var tags)
+                    && tags.ValueKind == System.Text.Json.JsonValueKind.Object
+                    && tags.EnumerateObject().Any();
+
+                if (!hasImage)
+                    persons.Add(new JellyfinPerson(id, name));
+            }
         }
 
         return persons.DistinctBy(p => p.Id).ToList();

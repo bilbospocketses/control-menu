@@ -37,7 +37,7 @@
 
     private async Task FocusIframe()
     {
-        await JS.InvokeVoidAsync("eval", "document.querySelector('.scrcpy-iframe')?.focus()");
+        await JS.InvokeVoidAsync("HTMLElement.prototype.focus.call", _iframeRef);
     }
 
     private async Task OpenMirrorWindow()

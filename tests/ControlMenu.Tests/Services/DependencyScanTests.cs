@@ -11,21 +11,21 @@ namespace ControlMenu.Tests.Services;
 
 public class DependencyScanTests : IDisposable
 {
-    private readonly AppDbContext _db;
+    private readonly InMemoryDbContextFactory _dbFactory;
     private readonly Mock<ICommandExecutor> _mockExecutor = new();
     private readonly Mock<IHttpClientFactory> _mockHttpFactory = new();
 
     public DependencyScanTests()
     {
-        _db = TestDbContextFactory.Create();
+        _dbFactory = TestDbContextFactory.CreateFactory();
     }
 
-    public void Dispose() => _db.Dispose();
+    public void Dispose() => _dbFactory.Dispose();
 
     private DependencyManagerService CreateService(params IToolModule[] modules)
     {
         return new DependencyManagerService(
-            _db, modules, _mockExecutor.Object, _mockHttpFactory.Object,
+            _dbFactory, modules, _mockExecutor.Object, _mockHttpFactory.Object,
             NullLogger<DependencyManagerService>.Instance);
     }
 
@@ -109,16 +109,19 @@ public class DependencyScanTests : IDisposable
             }
         ]);
 
-        _db.Dependencies.Add(new Dependency
+        using (var setupDb = _dbFactory.CreateDbContext())
         {
-            Id = Guid.NewGuid(),
-            ModuleId = "jellyfin-module",
-            Name = "docker",
-            SourceType = UpdateSourceType.Manual,
-            Status = DependencyStatus.UpToDate,
-            InstalledVersion = "27.1.0"
-        });
-        await _db.SaveChangesAsync();
+            setupDb.Dependencies.Add(new Dependency
+            {
+                Id = Guid.NewGuid(),
+                ModuleId = "jellyfin-module",
+                Name = "docker",
+                SourceType = UpdateSourceType.Manual,
+                Status = DependencyStatus.UpToDate,
+                InstalledVersion = "27.1.0"
+            });
+            await setupDb.SaveChangesAsync();
+        }
 
         var service = CreateService(module);
         var results = await service.ScanForDependenciesAsync();

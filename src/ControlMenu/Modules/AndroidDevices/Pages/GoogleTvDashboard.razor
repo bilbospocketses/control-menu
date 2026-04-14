@@ -3,6 +3,7 @@
 @using ControlMenu.Data.Entities
 @using ControlMenu.Data.Enums
 @using ControlMenu.Services
+@implements IDisposable
 @using ControlMenu.Modules.AndroidDevices.Services
 
 <PageTitle>Google TV - @(_device?.Name ?? "Select Device")</PageTitle>
@@ -212,8 +213,8 @@ else
         }
     }
 
-    private string Ip => _device!.LastKnownIp!;
-    private int Port => _device!.AdbPort;
+    private string Ip => _device?.LastKnownIp ?? throw new InvalidOperationException("Device IP not available");
+    private int Port => _device?.AdbPort ?? 5555;
 
     private async Task CheckPowerStatus()
     {
@@ -331,4 +332,10 @@ else
             0 => "Unknown",
             _ => $"{ms / 60000} min ({ms:N0} ms)"
         };
+
+    public void Dispose()
+    {
+        _statusCts?.Cancel();
+        _statusCts?.Dispose();
+    }
 }

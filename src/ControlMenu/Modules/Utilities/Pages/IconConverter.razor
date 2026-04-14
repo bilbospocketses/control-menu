@@ -117,19 +117,21 @@
                 await stream.CopyToAsync(fileStream);
             }
 
-            // Convert
+            // Convert directly to the target path (no redundant move)
             var sizes = _selectedSizes.OrderBy(s => s).ToArray();
             await IconService.ConvertToIcoAsync(sourcePath, targetPath, sizes);
 
-            // Make available for download
-            var downloadName = $"{Guid.NewGuid():N}.ico";
-            var downloadPath = Path.Combine(tempDir, downloadName);
-            File.Move(targetPath, downloadPath);
-            _downloadUrl = $"/temp/{downloadName}";
+            _downloadUrl = $"/temp/{Path.GetFileName(targetPath)}";
             _downloadReady = true;
 
             // Cleanup source
             File.Delete(sourcePath);
+
+            // Schedule cleanup of the ICO file after a reasonable download window
+            _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+            {
+                try { if (File.Exists(targetPath)) File.Delete(targetPath); } catch { }
+            });
         }
         catch (Exception ex)
         {
@@ -141,10 +143,5 @@
         }
     }
 
-    private static string FormatSize(long bytes)
-    {
-        if (bytes < 1024) return $"{bytes} B";
-        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
-        return $"{bytes / (1024.0 * 1024):F1} MB";
-    }
+    private static string FormatSize(long bytes) => ControlMenu.Services.FormatHelper.FormatSize(bytes);
 }

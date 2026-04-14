@@ -9,7 +9,7 @@ public class AndroidDevicesModule : IToolModule
     public string Icon => "bi-phone";
     public int SortOrder => 1;
 
-    private static string DepsRoot => FindDepsRoot();
+    private static readonly string DepsRoot = FindDepsRoot();
 
     private static string FindDepsRoot()
     {

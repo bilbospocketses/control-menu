@@ -11,13 +11,16 @@ public class WsScrcpyService : IHostedService, IDisposable
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<WsScrcpyService> _logger;
+    private readonly object _lock = new();
     private Process? _process;
+    private string? _indexJs;
     private int _crashCount;
     private DateTime _lastCrash = DateTime.MinValue;
     private bool _serviceReady;
+    private bool _disposed;
 
     public string BaseUrl { get; private set; } = "http://localhost:8000";
-    public bool IsRunning => _process is { HasExited: false } || _serviceReady;
+    public bool IsRunning => _serviceReady && _process is { HasExited: false };
 
     public WsScrcpyService(IServiceScopeFactory scopeFactory, ILogger<WsScrcpyService> logger)
     {
@@ -34,55 +37,40 @@ public class WsScrcpyService : IHostedService, IDisposable
             return;
         }
 
-        var indexJs = Path.Combine(path, "dist", "index.js");
-        if (!File.Exists(indexJs))
+        _indexJs = Path.Combine(path, "dist", "index.js");
+        if (!File.Exists(_indexJs))
         {
-            _logger.LogWarning("ws-scrcpy-web not found at {Path} — screen mirroring unavailable", indexJs);
+            _logger.LogWarning("ws-scrcpy-web not found at {Path} — screen mirroring unavailable", _indexJs);
+            _indexJs = null;
             return;
         }
 
         await KillOrphanOnPortAsync(cancellationToken);
 
-        SpawnProcess(indexJs);
+        lock (_lock) { SpawnProcess(); }
 
-        // Wait for HTTP 200
-        using var http = new HttpClient();
-        for (var i = 0; i < 30; i++)
-        {
-            if (cancellationToken.IsCancellationRequested) return;
-            try
-            {
-                var response = await http.GetAsync(BaseUrl, cancellationToken);
-                if (response.IsSuccessStatusCode)
-                {
-                    _serviceReady = true;
-                    _logger.LogInformation("ws-scrcpy-web ready at {Url}", BaseUrl);
-                    return;
-                }
-            }
-            catch { /* not ready yet */ }
-            await Task.Delay(500, cancellationToken);
-        }
-
-        _logger.LogWarning("ws-scrcpy-web did not become ready within 15 seconds");
+        await WaitForReadyAsync(cancellationToken);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
+        _disposed = true;
         _serviceReady = false;
-        KillProcess();
+        lock (_lock) { KillProcess(); }
         return Task.CompletedTask;
     }
 
-    private void SpawnProcess(string indexJs)
+    private void SpawnProcess()
     {
-        var workingDir = Path.GetDirectoryName(Path.GetDirectoryName(indexJs))!;
+        // Must be called under _lock
+        if (_indexJs is null) return;
+        var workingDir = Path.GetDirectoryName(Path.GetDirectoryName(_indexJs))!;
         _process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
                 FileName = "node",
-                Arguments = indexJs,
+                Arguments = _indexJs,
                 WorkingDirectory = workingDir,
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -110,9 +98,35 @@ public class WsScrcpyService : IHostedService, IDisposable
         _logger.LogInformation("ws-scrcpy-web started (PID {Pid})", _process.Id);
     }
 
+    private async Task WaitForReadyAsync(CancellationToken ct = default)
+    {
+        using var http = new HttpClient();
+        for (var i = 0; i < 30; i++)
+        {
+            if (ct.IsCancellationRequested || _disposed) return;
+            try
+            {
+                var response = await http.GetAsync(BaseUrl, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    _serviceReady = true;
+                    _logger.LogInformation("ws-scrcpy-web ready at {Url}", BaseUrl);
+                    return;
+                }
+            }
+            catch { /* not ready yet */ }
+            await Task.Delay(500, ct);
+        }
+
+        _logger.LogWarning("ws-scrcpy-web did not become ready within 15 seconds");
+    }
+
     private void OnProcessExited(object? sender, EventArgs e)
     {
+        _serviceReady = false;
         _logger.LogWarning("ws-scrcpy-web process exited");
+
+        if (_disposed) return;
 
         var now = DateTime.UtcNow;
         if ((now - _lastCrash).TotalSeconds < 30)
@@ -125,37 +139,37 @@ public class WsScrcpyService : IHostedService, IDisposable
         }
         _lastCrash = now;
 
-        if (_crashCount <= 1)
+        if (_crashCount <= 2)
         {
-            _logger.LogInformation("Restarting ws-scrcpy-web in 2 seconds...");
-            Task.Delay(2000).ContinueWith(_ =>
+            _logger.LogInformation("Restarting ws-scrcpy-web in 2 seconds (attempt {Count}/2)...", _crashCount);
+            _ = Task.Delay(2000).ContinueWith(async _ =>
             {
-                var indexJs = _process?.StartInfo.Arguments;
-                if (!string.IsNullOrEmpty(indexJs))
-                {
-                    SpawnProcess(indexJs);
-                }
+                if (_disposed || _indexJs is null) return;
+                lock (_lock) { SpawnProcess(); }
+                await WaitForReadyAsync();
             });
         }
         else
         {
-            _logger.LogError("ws-scrcpy-web crashed twice within 30s — giving up");
+            _logger.LogError("ws-scrcpy-web crashed 3 times within 30s — giving up");
         }
     }
 
     public void Restart()
     {
         _crashCount = 0;
-        var indexJs = _process?.StartInfo.Arguments;
-        KillProcess();
-        if (!string.IsNullOrEmpty(indexJs))
+        _serviceReady = false;
+        lock (_lock)
         {
-            SpawnProcess(indexJs);
+            KillProcess();
+            SpawnProcess();
         }
+        _ = WaitForReadyAsync();
     }
 
     private void KillProcess()
     {
+        // Must be called under _lock
         if (_process is { HasExited: false })
         {
             try
@@ -274,7 +288,9 @@ public class WsScrcpyService : IHostedService, IDisposable
 
     public void Dispose()
     {
-        KillProcess();
+        _disposed = true;
+        _serviceReady = false;
+        lock (_lock) { KillProcess(); }
         GC.SuppressFinalize(this);
     }
 }

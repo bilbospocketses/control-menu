@@ -23,17 +23,54 @@ public static class ComposeParser
             return new(null, null, null, $"Cannot read file: {ex.Message}");
         }
 
+        // Track per-service state to avoid matching wrong service's container_name/volumes
         string? containerName = null;
         string? configHostPath = null;
+        string? currentServiceContainer = null;
+        string? currentServiceConfig = null;
         bool inVolumes = false;
+        bool inServices = false;
 
         foreach (var rawLine in lines)
         {
             var line = rawLine.Trim();
+            if (line.Length == 0 || line.StartsWith('#')) continue;
+
+            // Top-level "services:" key
+            if (rawLine == "services:" || rawLine.StartsWith("services:"))
+            {
+                inServices = true;
+                inVolumes = false;
+                continue;
+            }
+
+            // Exit services block on another top-level key (no indentation)
+            if (inServices && !rawLine.StartsWith(" ") && !rawLine.StartsWith("\t") && line.EndsWith(':'))
+            {
+                inServices = false;
+                inVolumes = false;
+            }
+
+            // Detect service-level keys (2-space or 1-tab indent, e.g. "  jellyfin:")
+            if (inServices && (rawLine.StartsWith("  ") || rawLine.StartsWith("\t")) &&
+                !rawLine.StartsWith("    ") && !rawLine.StartsWith("\t\t") &&
+                line.EndsWith(':') && !line.StartsWith('-'))
+            {
+                // New service block — save any previous service's data if it had /config
+                if (currentServiceConfig is not null)
+                {
+                    containerName = currentServiceContainer;
+                    configHostPath = currentServiceConfig;
+                }
+                currentServiceContainer = null;
+                currentServiceConfig = null;
+                inVolumes = false;
+                continue;
+            }
 
             if (line.StartsWith("container_name:"))
             {
-                containerName = line["container_name:".Length..].Trim().Trim('"', '\'');
+                currentServiceContainer = line["container_name:".Length..].Trim().Trim('"', '\'');
             }
 
             if (line == "volumes:")
@@ -54,13 +91,21 @@ public static class ComposeParser
                 if (colonIdx > 0)
                 {
                     var hostSide = mount[..colonIdx];
+                    // Split on ':' to strip options like :ro, :rw
                     var containerSide = mount[(colonIdx + 1)..].Split(':')[0];
                     if (containerSide == "/config")
                     {
-                        configHostPath = hostSide;
+                        currentServiceConfig = hostSide;
                     }
                 }
             }
+        }
+
+        // Save last service
+        if (currentServiceConfig is not null)
+        {
+            containerName = currentServiceContainer;
+            configHostPath = currentServiceConfig;
         }
 
         if (configHostPath is null)
@@ -72,15 +117,18 @@ public static class ComposeParser
 
     private static int FindMountSeparator(string mount)
     {
+        // Find the colon that separates host:container (not the Windows drive letter colon)
         for (int i = 1; i < mount.Length - 1; i++)
         {
             if (mount[i] == ':' && mount[i + 1] == '/')
             {
+                // Skip Windows drive letter (e.g., C:/)
                 if (i == 1 && char.IsLetter(mount[0]))
                     continue;
                 return i;
             }
         }
-        return mount.LastIndexOf(':');
+        // No ":<path>" found — don't use LastIndexOf as it matches option colons (:ro, :rw)
+        return -1;
     }
 }

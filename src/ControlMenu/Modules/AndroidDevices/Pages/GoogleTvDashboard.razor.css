@@ -158,7 +158,7 @@
 .action-status-inline {
     font-size: 0.8rem;
     font-weight: 500;
-    color: #ffffff;
+    color: var(--text-primary);
 }
 
 .action-buttons {

@@ -75,7 +75,13 @@
     private int _adbPort = 5555;
     private string _macAddress = "";
 
-    private readonly List<Device> _devices = [];
+    private List<Device> _devices = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _devices = (await DeviceService.GetAllDevicesAsync()).ToList();
+        State.DevicesAdded = _devices.Count;
+    }
 
     private bool CanAdd =>
         !string.IsNullOrWhiteSpace(_name) &&

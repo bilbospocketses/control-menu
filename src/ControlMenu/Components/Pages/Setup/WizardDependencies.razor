@@ -131,11 +131,23 @@
         _manualPaths.TryAdd(name, "");
     }
 
-    private void OkManualPath(string name)
+    private async Task OkManualPath(string name)
     {
         _editing.Remove(name);
-        _accepted.Add(name);
-        UpdateState();
+        if (!_manualPaths.TryGetValue(name, out var path) || string.IsNullOrWhiteSpace(path))
+            return;
+
+        var dep = _results.FirstOrDefault(r => r.Name == name);
+        if (dep is null) return;
+
+        var validated = await DepManager.ValidateManualPathAsync(name, dep.ModuleId, path.Trim());
+        if (validated is not null)
+        {
+            // Replace the scan result with the validated one
+            _results = _results.Select(r => r.Name == name ? validated : r).ToList();
+            _accepted.Add(name);
+            UpdateState();
+        }
     }
 
     private void CancelManualPath(string name)

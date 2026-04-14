@@ -35,13 +35,10 @@ public class JellyfinModuleTests
     }
 
     [Fact]
-    public void ConfigRequirements_IncludesApiKeyAndPaths()
+    public void ConfigRequirements_IsEmpty_SettingsMovedToSettingsPage()
     {
-        var reqs = _module.ConfigRequirements.ToList();
-        Assert.Contains(reqs, r => r.Key == "jellyfin-api-key" && r.IsSecret);
-        Assert.Contains(reqs, r => r.Key == "jellyfin-db-path");
-        Assert.Contains(reqs, r => r.Key == "jellyfin-container-name");
-        Assert.Contains(reqs, r => r.Key == "jellyfin-backup-dir");
+        // Jellyfin config is now managed in Settings > Jellyfin tab directly
+        Assert.Empty(_module.ConfigRequirements);
     }
 
     [Fact]
@@ -62,13 +59,9 @@ public class JellyfinModuleTests
     }
 
     [Fact]
-    public void SmtpConfigRequirements_AllPresent()
+    public void SmtpConfigRequirements_MovedToGeneralSettings()
     {
-        var reqs = _module.ConfigRequirements.ToList();
-        Assert.Contains(reqs, r => r.Key == "smtp-server");
-        Assert.Contains(reqs, r => r.Key == "smtp-port");
-        Assert.Contains(reqs, r => r.Key == "smtp-username");
-        Assert.Contains(reqs, r => r.Key == "smtp-password" && r.IsSecret);
-        Assert.Contains(reqs, r => r.Key == "notification-email");
+        // SMTP settings are now in Settings > General, not in module config
+        Assert.Empty(_module.ConfigRequirements);
     }
 }

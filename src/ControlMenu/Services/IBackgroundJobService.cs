@@ -9,7 +9,7 @@ public interface IBackgroundJobService
     Task StartJobAsync(Guid id, int processId);
     Task UpdateProgressAsync(Guid id, int progress, string? message = null);
     Task CompleteJobAsync(Guid id, string? resultData = null);
-    Task FailJobAsync(Guid id, string errorMessage);
+    Task FailJobAsync(Guid id, string errorMessage, string? resultData = null);
     Task RequestCancellationAsync(Guid id);
     Task<IReadOnlyList<Job>> GetActiveJobsAsync();
     Task<IReadOnlyList<Job>> GetJobsByModuleAsync(string moduleId);

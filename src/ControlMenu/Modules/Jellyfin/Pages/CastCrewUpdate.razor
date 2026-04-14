@@ -3,6 +3,7 @@
 @using ControlMenu.Data.Enums
 @using ControlMenu.Services
 @using ControlMenu.Modules.Jellyfin.Services
+@using Microsoft.Extensions.DependencyInjection
 @implements IDisposable
 
 <PageTitle>Jellyfin — Cast & Crew Update</PageTitle>
@@ -97,25 +98,32 @@ else
 
 @code {
     [Inject] private IBackgroundJobService JobService { get; set; } = default!;
-    [Inject] private IJellyfinService JellyfinService { get; set; } = default!;
+    [Inject] private IServiceScopeFactory ScopeFactory { get; set; } = default!;
 
     private Job? _activeJob;
     private List<Job> _recentJobs = [];
     private bool _starting;
+    private bool _disposed;
     private Timer? _pollTimer;
+    private CancellationTokenSource? _workerCts;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadJobs();
 
-        // Poll for progress updates every 5 seconds if there's an active job
         _pollTimer = new Timer(async _ =>
         {
-            await InvokeAsync(async () =>
+            if (_disposed) return;
+            try
             {
-                await LoadJobs();
-                StateHasChanged();
-            });
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed) return;
+                    await LoadJobs();
+                    StateHasChanged();
+                });
+            }
+            catch (ObjectDisposedException) { }
         }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
 
@@ -139,12 +147,21 @@ else
         var job = await JobService.CreateJobAsync("jellyfin", "cast-crew-update");
         _activeJob = job;
 
-        // Launch worker in background
+        _workerCts?.Dispose();
+        _workerCts = new CancellationTokenSource();
+        var ct = _workerCts.Token;
+        var jobId = job.Id;
+
+        // Launch worker with its own DI scope so services survive circuit disposal
         _ = Task.Run(async () =>
         {
-            await JobService.StartJobAsync(job.Id, Environment.ProcessId);
-            var worker = new Workers.CastCrewUpdateWorker(JellyfinService, JobService);
-            await worker.ExecuteAsync(job.Id, CancellationToken.None);
+            using var scope = ScopeFactory.CreateScope();
+            var jellyfinService = scope.ServiceProvider.GetRequiredService<IJellyfinService>();
+            var jobService = scope.ServiceProvider.GetRequiredService<IBackgroundJobService>();
+
+            await jobService.StartJobAsync(jobId, Environment.ProcessId);
+            var worker = new Workers.CastCrewUpdateWorker(jellyfinService, jobService);
+            await worker.ExecuteAsync(jobId, ct);
         });
 
         _starting = false;
@@ -153,11 +170,15 @@ else
     private async Task CancelJob()
     {
         if (_activeJob is null) return;
+        _workerCts?.Cancel();
         await JobService.RequestCancellationAsync(_activeJob.Id);
     }
 
     public void Dispose()
     {
+        _disposed = true;
         _pollTimer?.Dispose();
+        _workerCts?.Cancel();
+        _workerCts?.Dispose();
     }
 }

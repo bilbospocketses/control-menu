@@ -159,29 +159,37 @@
 
     private async Task SaveBaseUrl(ChangeEventArgs e)
     {
-        await Config.SetSettingAsync("jellyfin-base-url", e.Value?.ToString() ?? "");
+        _baseUrl = e.Value?.ToString() ?? "";
+        await Config.SetSettingAsync("jellyfin-base-url", _baseUrl);
         ShowMessage("Saved.", false);
     }
 
     private async Task SaveApiKey(ChangeEventArgs e)
     {
-        var val = e.Value?.ToString() ?? "";
-        if (!string.IsNullOrEmpty(val))
+        _apiKey = e.Value?.ToString() ?? "";
+        if (!string.IsNullOrEmpty(_apiKey))
         {
-            await Config.SetSecretAsync("jellyfin-api-key", val);
+            await Config.SetSecretAsync("jellyfin-api-key", _apiKey);
             ShowMessage("Saved.", false);
+        }
+        else
+        {
+            await Config.DeleteSettingAsync("jellyfin-api-key");
+            ShowMessage("API key cleared.", false);
         }
     }
 
     private async Task SaveUserId(ChangeEventArgs e)
     {
-        await Config.SetSettingAsync("jellyfin-user-id", e.Value?.ToString() ?? "");
+        _userId = e.Value?.ToString() ?? "";
+        await Config.SetSettingAsync("jellyfin-user-id", _userId);
         ShowMessage("Saved.", false);
     }
 
     private async Task SaveCastCrewEmail(ChangeEventArgs e)
     {
-        await Config.SetSettingAsync("jellyfin-castcrew-notify-email", e.Value?.ToString() ?? "");
+        _castCrewEmail = e.Value?.ToString() ?? "";
+        await Config.SetSettingAsync("jellyfin-castcrew-notify-email", _castCrewEmail);
         ShowMessage("Saved.", false);
     }
 
@@ -219,10 +227,5 @@
         }));
     }
 
-    private static string FormatSize(long bytes)
-    {
-        if (bytes < 1024) return $"{bytes} B";
-        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
-        return $"{bytes / (1024.0 * 1024.0):F1} MB";
-    }
+    private static string FormatSize(long bytes) => Services.FormatHelper.FormatSize(bytes);
 }

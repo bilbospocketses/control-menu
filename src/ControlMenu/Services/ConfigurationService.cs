@@ -6,12 +6,12 @@ namespace ControlMenu.Services;
 
 public class ConfigurationService : IConfigurationService
 {
-    private readonly AppDbContext _db;
+    private readonly IDbContextFactory<AppDbContext> _dbFactory;
     private readonly ISecretStore _secretStore;
 
-    public ConfigurationService(AppDbContext db, ISecretStore secretStore)
+    public ConfigurationService(IDbContextFactory<AppDbContext> dbFactory, ISecretStore secretStore)
     {
-        _db = db;
+        _dbFactory = dbFactory;
         _secretStore = secretStore;
     }
 
@@ -23,7 +23,9 @@ public class ConfigurationService : IConfigurationService
 
     public async Task SetSettingAsync(string key, string value, string? moduleId = null)
     {
-        var setting = await FindSettingAsync(key, moduleId);
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var setting = await db.Settings
+            .FirstOrDefaultAsync(s => s.Key == key && s.ModuleId == moduleId);
         if (setting is null)
         {
             setting = new Setting
@@ -34,14 +36,14 @@ public class ConfigurationService : IConfigurationService
                 Value = value,
                 IsSecret = false
             };
-            _db.Settings.Add(setting);
+            db.Settings.Add(setting);
         }
         else
         {
             setting.Value = value;
             setting.IsSecret = false;
         }
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
     }
 
     public async Task<string?> GetSecretAsync(string key, string? moduleId = null)
@@ -53,8 +55,10 @@ public class ConfigurationService : IConfigurationService
 
     public async Task SetSecretAsync(string key, string value, string? moduleId = null)
     {
+        using var db = await _dbFactory.CreateDbContextAsync();
         var encrypted = _secretStore.Encrypt(value);
-        var setting = await FindSettingAsync(key, moduleId);
+        var setting = await db.Settings
+            .FirstOrDefaultAsync(s => s.Key == key && s.ModuleId == moduleId);
         if (setting is null)
         {
             setting = new Setting
@@ -65,36 +69,40 @@ public class ConfigurationService : IConfigurationService
                 Value = encrypted,
                 IsSecret = true
             };
-            _db.Settings.Add(setting);
+            db.Settings.Add(setting);
         }
         else
         {
             setting.Value = encrypted;
             setting.IsSecret = true;
         }
-        await _db.SaveChangesAsync();
+        await db.SaveChangesAsync();
     }
 
     public async Task DeleteSettingAsync(string key, string? moduleId = null)
     {
-        var setting = await FindSettingAsync(key, moduleId);
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var setting = await db.Settings
+            .FirstOrDefaultAsync(s => s.Key == key && s.ModuleId == moduleId);
         if (setting is not null)
         {
-            _db.Settings.Remove(setting);
-            await _db.SaveChangesAsync();
+            db.Settings.Remove(setting);
+            await db.SaveChangesAsync();
         }
     }
 
     public async Task<IReadOnlyList<Setting>> GetModuleSettingsAsync(string moduleId)
     {
-        return await _db.Settings
+        using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Settings
             .Where(s => s.ModuleId == moduleId)
             .ToListAsync();
     }
 
     private async Task<Setting?> FindSettingAsync(string key, string? moduleId)
     {
-        return await _db.Settings
+        using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Settings
             .FirstOrDefaultAsync(s => s.Key == key && s.ModuleId == moduleId);
     }
 }

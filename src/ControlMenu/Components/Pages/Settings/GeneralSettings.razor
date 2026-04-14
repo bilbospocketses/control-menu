@@ -100,35 +100,44 @@
 
     private async Task SaveSmtpServer(ChangeEventArgs e)
     {
-        await Config.SetSettingAsync("smtp-server", e.Value?.ToString() ?? "");
+        _smtpServer = e.Value?.ToString() ?? "";
+        await Config.SetSettingAsync("smtp-server", _smtpServer);
         ShowMessage("Saved.", false);
     }
 
     private async Task SaveSmtpPort(ChangeEventArgs e)
     {
-        await Config.SetSettingAsync("smtp-port", e.Value?.ToString() ?? "");
+        _smtpPort = e.Value?.ToString() ?? "587";
+        await Config.SetSettingAsync("smtp-port", _smtpPort);
         ShowMessage("Saved.", false);
     }
 
     private async Task SaveSmtpUsername(ChangeEventArgs e)
     {
-        await Config.SetSettingAsync("smtp-username", e.Value?.ToString() ?? "");
+        _smtpUsername = e.Value?.ToString() ?? "";
+        await Config.SetSettingAsync("smtp-username", _smtpUsername);
         ShowMessage("Saved.", false);
     }
 
     private async Task SaveSmtpPassword(ChangeEventArgs e)
     {
-        var val = e.Value?.ToString() ?? "";
-        if (!string.IsNullOrEmpty(val))
+        _smtpPassword = e.Value?.ToString() ?? "";
+        if (!string.IsNullOrEmpty(_smtpPassword))
         {
-            await Config.SetSecretAsync("smtp-password", val);
+            await Config.SetSecretAsync("smtp-password", _smtpPassword);
             ShowMessage("Saved.", false);
+        }
+        else
+        {
+            await Config.DeleteSettingAsync("smtp-password");
+            ShowMessage("Password cleared.", false);
         }
     }
 
     private async Task SaveNotificationEmail(ChangeEventArgs e)
     {
-        await Config.SetSettingAsync("notification-email", e.Value?.ToString() ?? "");
+        _notificationEmail = e.Value?.ToString() ?? "";
+        await Config.SetSettingAsync("notification-email", _notificationEmail);
         ShowMessage("Saved.", false);
     }
 

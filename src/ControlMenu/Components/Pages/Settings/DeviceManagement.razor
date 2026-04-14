@@ -139,7 +139,17 @@
 
     private void ShowEditForm(ControlMenu.Data.Entities.Device device)
     {
-        _formDevice = device;
+        _formDevice = new ControlMenu.Data.Entities.Device
+        {
+            Id = device.Id,
+            Name = device.Name,
+            Type = device.Type,
+            AdbPort = device.AdbPort,
+            MacAddress = device.MacAddress,
+            ModuleId = device.ModuleId,
+            LastKnownIp = device.LastKnownIp,
+            LastSeen = device.LastSeen
+        };
         _isEditing = true;
         _showForm = true;
     }

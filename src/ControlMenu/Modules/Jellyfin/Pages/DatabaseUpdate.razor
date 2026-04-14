@@ -124,6 +124,7 @@ else
         ];
 
         using var logger = OperationLogger.Create("db-date-update");
+        string? containerId = null;
 
         try
         {
@@ -131,7 +132,7 @@ else
             _steps[0].Status = StepStatus.Running;
             logger.Step("Stopping Docker container");
             StateHasChanged();
-            var containerId = await JellyfinService.GetContainerIdAsync();
+            containerId = await JellyfinService.GetContainerIdAsync();
             if (containerId is null)
             {
                 _steps[0].Status = StepStatus.Failed;
@@ -152,8 +153,9 @@ else
                 return;
             }
             _steps[0].Status = StepStatus.Completed;
-            _steps[0].Detail = $"Container {containerId[..12]} stopped.";
-            logger.Ok($"Container {containerId[..12]} stopped");
+            var shortId = containerId.Length >= 12 ? containerId[..12] : containerId;
+            _steps[0].Detail = $"Container {shortId} stopped.";
+            logger.Ok($"Container {shortId} stopped");
             StateHasChanged();
 
             // Step 2: Backup
@@ -229,6 +231,19 @@ else
             var current = _steps.FirstOrDefault(s => s.Status == StepStatus.Running);
             if (current is not null) current.Status = StepStatus.Failed;
             logger.Fail($"Unexpected error: {ex.Message}");
+
+            // Attempt to restart container if it was stopped before the error
+            if (containerId is not null && _steps[0].Status == StepStatus.Completed)
+            {
+                try
+                {
+                    await JellyfinService.StartContainerAsync(containerId);
+                    logger.Ok("Container restarted after error recovery");
+                }
+                catch { /* best effort */ }
+            }
+
+            StateHasChanged();
         }
         finally
         {
@@ -236,6 +251,7 @@ else
             _recentLogs = OperationLogger.GetRecentLogs(10)
                 .Where(l => l.Operation == "db-date-update")
                 .ToList();
+            StateHasChanged();
         }
     }
 

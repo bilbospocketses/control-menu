@@ -8,16 +8,16 @@ namespace ControlMenu.Tests.Services;
 
 public class BackgroundJobServiceTests : IDisposable
 {
-    private readonly AppDbContext _db;
+    private readonly InMemoryDbContextFactory _dbFactory;
     private readonly BackgroundJobService _service;
 
     public BackgroundJobServiceTests()
     {
-        _db = TestDbContextFactory.Create();
-        _service = new BackgroundJobService(_db);
+        _dbFactory = TestDbContextFactory.CreateFactory();
+        _service = new BackgroundJobService(_dbFactory);
     }
 
-    public void Dispose() => _db.Dispose();
+    public void Dispose() => _dbFactory.Dispose();
 
     [Fact]
     public async Task CreateJobAsync_InsertsJobWithQueuedStatus()

@@ -9,7 +9,7 @@ public class JellyfinModule : IToolModule
     public string Icon => "bi-film";
     public int SortOrder => 2;
 
-    private static string DepsRoot => FindDepsRoot();
+    private static readonly string DepsRoot = FindDepsRoot();
 
     private static string FindDepsRoot()
     {
