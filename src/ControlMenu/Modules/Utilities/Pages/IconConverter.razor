@@ -1,7 +1,9 @@
 @page "/utilities/icon-converter"
 @using ControlMenu.Modules.Utilities.Services
+@using Microsoft.AspNetCore.Components.Forms
 @inject IIconConversionService IconService
 @inject IWebHostEnvironment Env
+@inject IJSRuntime JS
 
 <PageTitle>Icon Converter</PageTitle>
 
@@ -11,9 +13,17 @@
 <div class="converter-panel">
     <div class="form-group">
         <label class="form-label">Image Path</label>
-        <input type="text" class="form-control" style="max-width:500px;"
-               placeholder="C:\path\to\image.png"
-               @bind="_sourcePath" />
+        <div style="display:flex; gap:0.4rem; align-items:center;">
+            <input type="text" class="form-control" style="max-width:500px;"
+                   placeholder="C:\path\to\image.png"
+                   @bind="_sourcePath" />
+            <label class="btn btn-secondary btn-sm" style="cursor:pointer; margin:0;" title="Select image file">
+                <i class="bi bi-file-earmark-image"></i>
+                <InputFile OnChange="OnFileSelected" accept=".png,.jpg,.jpeg,.bmp,.gif"
+                           style="display:none;" />
+            </label>
+        </div>
+        <div class="form-hint">Type a path or click the file button to select an image. The ICO will be saved in the same folder.</div>
     </div>
 
     <div class="form-group">
@@ -76,6 +86,30 @@
     private string? _savedPath;
     private string? _downloadUrl;
     private string? _error;
+    private string? _uploadedTempPath;
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _savedPath = null;
+        _downloadUrl = null;
+        _error = null;
+
+        // Save the uploaded file to a temp location and set the path
+        var tempDir = Path.Combine(Env.WebRootPath, "temp");
+        Directory.CreateDirectory(tempDir);
+
+        var originalName = e.File.Name;
+        var tempPath = Path.Combine(tempDir, $"{Guid.NewGuid():N}{Path.GetExtension(originalName)}");
+
+        await using (var stream = e.File.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024))
+        await using (var fileStream = new FileStream(tempPath, FileMode.Create))
+        {
+            await stream.CopyToAsync(fileStream);
+        }
+
+        _uploadedTempPath = tempPath;
+        _sourcePath = tempPath;
+    }
 
     private void ToggleSize(int size, bool selected)
     {
@@ -109,12 +143,19 @@
             await IconService.ConvertToIcoAsync(source, targetPath, sizes);
             _savedPath = targetPath;
 
-            // Also create a web-downloadable copy
+            // Create a web-downloadable copy
             var tempDir = Path.Combine(Env.WebRootPath, "temp");
             Directory.CreateDirectory(tempDir);
             var webCopy = Path.Combine(tempDir, $"{Guid.NewGuid():N}.ico");
             File.Copy(targetPath, webCopy);
             _downloadUrl = $"/temp/{Path.GetFileName(webCopy)}";
+
+            // Clean up uploaded temp file if we used the file picker
+            if (_uploadedTempPath is not null && File.Exists(_uploadedTempPath))
+            {
+                File.Delete(_uploadedTempPath);
+                _uploadedTempPath = null;
+            }
 
             _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
             {
