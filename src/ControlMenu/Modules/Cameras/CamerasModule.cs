@@ -29,10 +29,11 @@ public class CamerasModule : IToolModule
     public int SortOrder => 4;
 
     /// <summary>
-    /// Set by Program.cs on startup from the camera-count setting.
+    /// Set by Program.cs on startup from camera settings.
     /// Used by GetNavEntries() which can't do async.
     /// </summary>
     public static int CameraCount { get; set; } = ICameraService.DefaultCameraCount;
+    public static Dictionary<int, string> CameraNames { get; set; } = new();
 
     public IEnumerable<ModuleDependency> Dependencies =>
     [
@@ -54,7 +55,11 @@ public class CamerasModule : IToolModule
     public IEnumerable<NavEntry> GetNavEntries()
     {
         for (var i = 1; i <= CameraCount; i++)
-            yield return new NavEntry($"Camera {i}", $"/cameras/{i}", "📷", i);
+        {
+            var name = CameraNames.TryGetValue(i, out var n) && !string.IsNullOrWhiteSpace(n)
+                ? n : $"Camera {i}";
+            yield return new NavEntry(name, $"/cameras/{i}", "📷", i);
+        }
     }
 
     public IEnumerable<BackgroundJobDefinition> GetBackgroundJobs() => [];

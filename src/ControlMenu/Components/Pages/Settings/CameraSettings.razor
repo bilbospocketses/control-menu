@@ -121,6 +121,7 @@
         if (!string.IsNullOrWhiteSpace(GetValue(_names, index)) && !string.IsNullOrWhiteSpace(GetValue(_ips, index)))
         {
             await CameraService.SaveCameraAsync(index, _names[index].Trim(), _ips[index].Trim(), GetIntValue(_ports, index, 554));
+            CamerasModule.CameraNames[index] = _names[index].Trim();
         }
         if (!string.IsNullOrWhiteSpace(GetValue(_usernames, index)) && !string.IsNullOrWhiteSpace(GetValue(_passwords, index)))
         {

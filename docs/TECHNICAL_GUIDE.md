@@ -522,7 +522,7 @@ Implements `IToolModule` with:
 - `SortOrder`: `4`
 - `Icon`: `"bi-camera-video"`
 - `Dependencies`: go2rtc (GitHub source: `AlexxIT/go2rtc`, asset: `go2rtc_win64.zip`)
-- `GetNavEntries()`: Dynamically generates one `NavEntry` per configured camera. Each entry links to `/cameras/{index}`.
+- `GetNavEntries()`: Dynamically generates one `NavEntry` per configured camera using user-defined names (falls back to "Camera N" if unnamed). Camera count and names are preloaded into static properties at startup by `Program.cs` and updated when settings are saved.
 
 Uses `FindDepsRoot()` to resolve the absolute path to the `dependencies/` folder, consistent with other modules.
 
