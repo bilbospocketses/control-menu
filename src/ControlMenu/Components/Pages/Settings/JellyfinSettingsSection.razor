@@ -220,7 +220,7 @@
     {
         _message = msg;
         _messageIsError = isError;
-        _ = Task.Delay(3000).ContinueWith(_ => InvokeAsync(() =>
+        _ = Task.Delay(isError ? 10000 : 5000).ContinueWith(_ => InvokeAsync(() =>
         {
             _message = null;
             StateHasChanged();

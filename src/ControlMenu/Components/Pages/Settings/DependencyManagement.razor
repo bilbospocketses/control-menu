@@ -239,13 +239,9 @@
         var result = await DepManager.DownloadAndInstallAsync(_updateTargetId, _resolvedAsset!);
 
         _updatingId = null;
-        if (result.Success)
-            ShowSaveMessage($"Updated to version {result.NewVersion}");
-        else
-        {
-            _message = $"Update failed: {result.ErrorMessage}";
-            _messageIsError = true;
-        }
+        ShowSaveMessage(
+            result.Success ? $"Updated to version {result.NewVersion}" : $"Update failed: {result.ErrorMessage}",
+            !result.Success);
 
         await LoadDependencies();
     }
@@ -292,13 +288,11 @@
         _updatingAll = false;
         await LoadDependencies();
 
-        if (failed == 0)
-            ShowSaveMessage($"Updated {succeeded} dependenc{(succeeded == 1 ? "y" : "ies")} successfully");
-        else
-        {
-            _message = $"Updated {succeeded}, failed {failed}";
-            _messageIsError = true;
-        }
+        ShowSaveMessage(
+            failed == 0
+                ? $"Updated {succeeded} dependenc{(succeeded == 1 ? "y" : "ies")} successfully"
+                : $"Updated {succeeded}, failed {failed}",
+            failed > 0);
     }
 
     private async Task OnPathChanged(string name, string moduleId, ChangeEventArgs e)
@@ -318,11 +312,11 @@
         ShowSaveMessage($"{name} path reset to default.");
     }
 
-    private void ShowSaveMessage(string msg)
+    private void ShowSaveMessage(string msg, bool isError = false)
     {
         _message = msg;
-        _messageIsError = false;
-        _ = Task.Delay(3000).ContinueWith(_ => InvokeAsync(() =>
+        _messageIsError = isError;
+        _ = Task.Delay(isError ? 10000 : 5000).ContinueWith(_ => InvokeAsync(() =>
         {
             _message = null;
             StateHasChanged();
