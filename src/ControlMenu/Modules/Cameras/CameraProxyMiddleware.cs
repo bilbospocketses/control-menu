@@ -209,11 +209,19 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
     {
         context.Response.StatusCode = (int)response.StatusCode;
 
+        // Determine if this is text content we should rewrite
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
+        var isTextContent = _rewritableContentTypes.Any(ct =>
+            contentType.Contains(ct, StringComparison.OrdinalIgnoreCase));
+
         foreach (var header in response.Headers.Concat(response.Content.Headers))
         {
             if (_stripHeaders.Any(h => h.Equals(header.Key, StringComparison.OrdinalIgnoreCase))) continue;
             if (header.Key.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase)) continue;
-            if (header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)) continue;
+
+            // Only strip Content-Length for text content (we rewrite the body, changing length)
+            // For binary content, preserve it so the browser knows the exact size
+            if (header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase) && isTextContent) continue;
 
             if (header.Key.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase))
             {
@@ -240,14 +248,11 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
             context.Response.Headers.Append(header.Key, header.Value.ToArray());
         }
 
-        var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
-        if (_rewritableContentTypes.Any(ct => contentType.Contains(ct, StringComparison.OrdinalIgnoreCase)))
+        if (isTextContent)
         {
             var body = await response.Content.ReadAsStringAsync();
             body = AbsolutePathRegex().Replace(body, $"{proxyPrefix}/$1");
 
-            // Inject sessionStorage auth info into HTML pages so the camera's JS
-            // sees an authenticated session and doesn't redirect to login
             if (contentType.Contains("html", StringComparison.OrdinalIgnoreCase) &&
                 _sessions.TryGetValue(cameraIndex, out var session))
             {
@@ -258,6 +263,7 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         }
         else
         {
+            // Binary pass-through: stream directly without reading into memory
             await response.Content.CopyToAsync(context.Response.Body);
         }
     }
