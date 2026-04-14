@@ -46,17 +46,17 @@
     <div class="form-group">
         <label>Base URL</label>
         <input class="form-control" style="max-width:300px;" value="@_baseUrl"
-               placeholder="http://127.0.0.1:8096" @onchange="e => SaveSetting("jellyfin-base-url", e)" />
+               placeholder="http://127.0.0.1:8096" @onchange="SaveBaseUrl" />
     </div>
     <div class="form-group">
         <label>API Key</label>
         <input type="password" class="form-control" style="max-width:300px;" value="@_apiKey"
-               @onchange="e => SaveSecret("jellyfin-api-key", e)" />
+               @onchange="SaveApiKey" />
     </div>
     <div class="form-group">
         <label>User ID</label>
         <input class="form-control" style="max-width:300px;" value="@_userId"
-               @onchange="e => SaveSetting("jellyfin-user-id", e)" />
+               @onchange="SaveUserId" />
         <div class="form-hint">Jellyfin user ID for API calls (used by Cast & Crew updates).</div>
     </div>
 </div>
@@ -77,7 +77,7 @@
         <label>Notification Email</label>
         <input type="email" class="form-control" style="max-width:300px;" value="@_castCrewEmail"
                placeholder="Uses default from General if blank"
-               @onchange="e => SaveSetting("jellyfin-castcrew-notify-email", e)" />
+               @onchange="SaveCastCrewEmail" />
         <div class="form-hint">Receives completion alerts for Cast & Crew updates. Leave blank to use the default notification email from General settings.</div>
     </div>
 </div>
@@ -157,20 +157,32 @@
         _parsing = false;
     }
 
-    private async Task SaveSetting(string key, ChangeEventArgs e)
+    private async Task SaveBaseUrl(ChangeEventArgs e)
     {
-        await Config.SetSettingAsync(key, e.Value?.ToString() ?? "");
+        await Config.SetSettingAsync("jellyfin-base-url", e.Value?.ToString() ?? "");
         ShowMessage("Saved.", false);
     }
 
-    private async Task SaveSecret(string key, ChangeEventArgs e)
+    private async Task SaveApiKey(ChangeEventArgs e)
     {
         var val = e.Value?.ToString() ?? "";
         if (!string.IsNullOrEmpty(val))
         {
-            await Config.SetSecretAsync(key, val);
+            await Config.SetSecretAsync("jellyfin-api-key", val);
             ShowMessage("Saved.", false);
         }
+    }
+
+    private async Task SaveUserId(ChangeEventArgs e)
+    {
+        await Config.SetSettingAsync("jellyfin-user-id", e.Value?.ToString() ?? "");
+        ShowMessage("Saved.", false);
+    }
+
+    private async Task SaveCastCrewEmail(ChangeEventArgs e)
+    {
+        await Config.SetSettingAsync("jellyfin-castcrew-notify-email", e.Value?.ToString() ?? "");
+        ShowMessage("Saved.", false);
     }
 
     private async Task SaveRetention()

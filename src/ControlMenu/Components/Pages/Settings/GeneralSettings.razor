@@ -33,27 +33,27 @@
     <div class="form-group">
         <label>SMTP Server</label>
         <input class="form-control" style="max-width:300px;" value="@_smtpServer"
-               placeholder="mail.smtp2go.com" @onchange="e => SaveSetting("smtp-server", e)" />
+               placeholder="mail.smtp2go.com" @onchange="SaveSmtpServer" />
     </div>
     <div class="form-group">
         <label>SMTP Port</label>
         <input type="number" class="form-control" style="max-width:100px;" value="@_smtpPort"
-               @onchange="e => SaveSetting("smtp-port", e)" />
+               @onchange="SaveSmtpPort" />
     </div>
     <div class="form-group">
         <label>Username</label>
         <input class="form-control" style="max-width:300px;" value="@_smtpUsername"
-               @onchange="e => SaveSetting("smtp-username", e)" />
+               @onchange="SaveSmtpUsername" />
     </div>
     <div class="form-group">
         <label>Password</label>
         <input type="password" class="form-control" style="max-width:300px;" value="@_smtpPassword"
-               @onchange="e => SaveSecret("smtp-password", e)" />
+               @onchange="SaveSmtpPassword" />
     </div>
     <div class="form-group">
         <label>Default Notification Email</label>
         <input type="email" class="form-control" style="max-width:300px;" value="@_notificationEmail"
-               placeholder="you@example.com" @onchange="e => SaveSetting("notification-email", e)" />
+               placeholder="you@example.com" @onchange="SaveNotificationEmail" />
         <div class="form-hint">Default recipient for all notification emails.</div>
     </div>
     <div class="form-group">
@@ -98,21 +98,38 @@
         ShowMessage("Theme updated.", false);
     }
 
-    private async Task SaveSetting(string key, ChangeEventArgs e)
+    private async Task SaveSmtpServer(ChangeEventArgs e)
     {
-        var val = e.Value?.ToString() ?? "";
-        await Config.SetSettingAsync(key, val);
+        await Config.SetSettingAsync("smtp-server", e.Value?.ToString() ?? "");
         ShowMessage("Saved.", false);
     }
 
-    private async Task SaveSecret(string key, ChangeEventArgs e)
+    private async Task SaveSmtpPort(ChangeEventArgs e)
+    {
+        await Config.SetSettingAsync("smtp-port", e.Value?.ToString() ?? "");
+        ShowMessage("Saved.", false);
+    }
+
+    private async Task SaveSmtpUsername(ChangeEventArgs e)
+    {
+        await Config.SetSettingAsync("smtp-username", e.Value?.ToString() ?? "");
+        ShowMessage("Saved.", false);
+    }
+
+    private async Task SaveSmtpPassword(ChangeEventArgs e)
     {
         var val = e.Value?.ToString() ?? "";
         if (!string.IsNullOrEmpty(val))
         {
-            await Config.SetSecretAsync(key, val);
+            await Config.SetSecretAsync("smtp-password", val);
             ShowMessage("Saved.", false);
         }
+    }
+
+    private async Task SaveNotificationEmail(ChangeEventArgs e)
+    {
+        await Config.SetSettingAsync("notification-email", e.Value?.ToString() ?? "");
+        ShowMessage("Saved.", false);
     }
 
     private async Task SendTestEmail()
