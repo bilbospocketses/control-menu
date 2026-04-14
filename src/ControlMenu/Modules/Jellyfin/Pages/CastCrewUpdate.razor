@@ -10,7 +10,7 @@
 <PageTitle>Jellyfin — Cast & Crew Update</PageTitle>
 
 <h1><i class="bi bi-people"></i> Cast & Crew Image Update</h1>
-<p class="page-subtitle">Updates images for all cast members, directors, and producers in Jellyfin media libraries. This process typically takes several days to complete.</p>
+<p class="page-subtitle">Updates images for all cast members, directors, and producers in Jellyfin media libraries. This process typically takes several hours to complete.</p>
 
 @if (_activeJob is not null)
 {
@@ -61,7 +61,7 @@ else
             <i class="bi bi-info-circle"></i>
             <div>
                 <p><strong>What this does:</strong> Calls the Jellyfin API to find all people without images and triggers an image refresh for each one.</p>
-                <p><strong>Duration:</strong> Typically about a week for large libraries.</p>
+                <p><strong>Duration:</strong> Typically about 2 hours for large libraries.</p>
                 <p><strong>Runs in background:</strong> You can close this page. A notification email is sent when finished.</p>
             </div>
         </div>
