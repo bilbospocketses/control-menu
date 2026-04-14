@@ -20,6 +20,10 @@
                 <i class="bi bi-puzzle"></i> Module Settings
             </button>
         }
+        <button class="settings-nav-item @(ActiveSection == "jellyfin" ? "active" : "")"
+                @onclick='() => Navigate("jellyfin")'>
+            <i class="bi bi-film"></i> Jellyfin
+        </button>
         <button class="settings-nav-item @(ActiveSection == "dependencies" ? "active" : "")"
                 @onclick='() => Navigate("dependencies")'>
             <i class="bi bi-box-seam"></i> Dependencies
@@ -37,6 +41,9 @@
                 break;
             case "modules":
                 <ModuleSettings />
+                break;
+            case "jellyfin":
+                <JellyfinSettingsSection />
                 break;
             case "dependencies":
                 <DependencyManagement />

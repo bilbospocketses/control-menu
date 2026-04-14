@@ -68,7 +68,7 @@ public class JellyfinModule : IToolModule
     [
         new NavEntry("DB Date Update", "/jellyfin/db-update", "bi-calendar-date", 0),
         new NavEntry("Cast & Crew", "/jellyfin/cast-crew", "bi-people", 1),
-        new NavEntry("Settings", "/jellyfin/settings", "bi-gear", 2)
+        // Jellyfin settings are under main Settings > Jellyfin tab
     ];
 
     public IEnumerable<BackgroundJobDefinition> GetBackgroundJobs() =>
