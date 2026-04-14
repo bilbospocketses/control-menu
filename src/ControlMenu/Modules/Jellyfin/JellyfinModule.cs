@@ -44,7 +44,12 @@ public class JellyfinModule : IToolModule
             ExecutableName = "sqlite3",
             VersionCommand = "sqlite3 --version",
             VersionPattern = @"([\d.]+)",
-            SourceType = UpdateSourceType.Manual,
+            SourceType = UpdateSourceType.DirectUrl,
+            DownloadUrl = OperatingSystem.IsWindows()
+                ? "https://sqlite.org/2026/sqlite-tools-win-x64-3530000.zip"
+                : "https://sqlite.org/2026/sqlite-tools-linux-x64-3530000.zip",
+            VersionCheckUrl = "https://www.sqlite.org/download.html",
+            VersionCheckPattern = @"version\s+(\d+\.\d+\.\d+)",
             ProjectHomeUrl = "https://www.sqlite.org/download.html",
             InstallPath = Path.Combine(DepsRoot, "sqlite3")
         }

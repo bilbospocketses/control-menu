@@ -587,6 +587,34 @@ public class DependencyManagerService : IDependencyManagerService
         entity.Status = CompareVersions(entity.InstalledVersion, latestVersion) < 0
             ? DependencyStatus.UpdateAvailable
             : DependencyStatus.UpToDate;
+
+        // Update download URL if the current one contains an old version-encoded filename
+        if (entity.Status == DependencyStatus.UpdateAvailable && moduleDep.DownloadUrl is not null)
+        {
+            var updatedUrl = BuildVersionedDownloadUrl(moduleDep.DownloadUrl, content, moduleDep);
+            if (updatedUrl is not null)
+                entity.DownloadUrl = updatedUrl;
+        }
+    }
+
+    private static string? BuildVersionedDownloadUrl(string templateUrl, string pageContent, ModuleDependency dep)
+    {
+        // Find the actual download URL on the page that matches the asset pattern or executable name
+        var platform = OperatingSystem.IsWindows() ? "win" : "linux";
+        var pattern = $@"(sqlite-tools-{platform}-x64-\d+\.zip)";
+        var match = Regex.Match(pageContent, pattern);
+        if (!match.Success) return null;
+
+        var filename = match.Groups[1].Value;
+        // Reconstruct the full URL based on the page's year directory
+        var yearMatch = Regex.Match(pageContent, @"href=""(\d{4})/" + Regex.Escape(filename));
+        if (yearMatch.Success)
+            return $"https://sqlite.org/{yearMatch.Groups[1].Value}/{filename}";
+
+        // Fall back: replace the version-encoded part of the template URL
+        var templateFilename = Path.GetFileName(new Uri(templateUrl).AbsolutePath);
+        var templateDir = templateUrl[..templateUrl.LastIndexOf('/')];
+        return $"{templateDir}/{filename}";
     }
 
     private async Task<AssetMatch?> ResolveGitHubAssetAsync(ModuleDependency moduleDep)
