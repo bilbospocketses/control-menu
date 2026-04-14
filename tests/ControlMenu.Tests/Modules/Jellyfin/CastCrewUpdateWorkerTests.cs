@@ -13,6 +13,8 @@ public class CastCrewUpdateWorkerTests : IDisposable
     private readonly AppDbContext _db;
     private readonly Mock<IJellyfinService> _mockJellyfin = new();
     private readonly Mock<IBackgroundJobService> _mockJobService;
+    private readonly Mock<IEmailService> _mockEmail = new();
+    private readonly Mock<IConfigurationService> _mockConfig = new();
     private static readonly JellyfinApiConfig TestApiConfig = new("http://localhost:8096", "test-key", "test-user");
 
     public CastCrewUpdateWorkerTests()
@@ -20,6 +22,9 @@ public class CastCrewUpdateWorkerTests : IDisposable
         _db = TestDbContextFactory.Create();
         _mockJobService = new Mock<IBackgroundJobService>();
         _mockJellyfin.Setup(j => j.GetApiConfigAsync()).ReturnsAsync(TestApiConfig);
+        _mockConfig.Setup(c => c.GetSettingAsync("notification-email", It.IsAny<string?>())).ReturnsAsync("test@example.com");
+        _mockEmail.Setup(e => e.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((true, (string?)null));
     }
 
     public void Dispose() => _db.Dispose();
@@ -50,7 +55,7 @@ public class CastCrewUpdateWorkerTests : IDisposable
                 Status = JobStatus.Running
             });
 
-        var worker = new CastCrewUpdateWorker(_mockJellyfin.Object, _mockJobService.Object);
+        var worker = new CastCrewUpdateWorker(_mockJellyfin.Object, _mockJobService.Object, _mockEmail.Object, _mockConfig.Object);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await worker.ExecuteAsync(jobId, cts.Token);
@@ -87,7 +92,7 @@ public class CastCrewUpdateWorkerTests : IDisposable
                 CancellationRequested = cancelRequested
             });
 
-        var worker = new CastCrewUpdateWorker(_mockJellyfin.Object, _mockJobService.Object);
+        var worker = new CastCrewUpdateWorker(_mockJellyfin.Object, _mockJobService.Object, _mockEmail.Object, _mockConfig.Object);
 
         // Cancel after a short delay
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
@@ -118,7 +123,7 @@ public class CastCrewUpdateWorkerTests : IDisposable
                 Status = JobStatus.Running
             });
 
-        var worker = new CastCrewUpdateWorker(_mockJellyfin.Object, _mockJobService.Object);
+        var worker = new CastCrewUpdateWorker(_mockJellyfin.Object, _mockJobService.Object, _mockEmail.Object, _mockConfig.Object);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await worker.ExecuteAsync(jobId, cts.Token);

@@ -206,9 +206,10 @@ else
                 using var opLog = OperationLogger.Create("cast-crew-update", utcOffset);
                 var jellyfinService = scope.ServiceProvider.GetRequiredService<IJellyfinService>();
                 var jobService = scope.ServiceProvider.GetRequiredService<IBackgroundJobService>();
+                var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
 
                 await jobService.StartJobAsync(jobId, Environment.ProcessId);
-                var worker = new Workers.CastCrewUpdateWorker(jellyfinService, jobService, opLog);
+                var worker = new Workers.CastCrewUpdateWorker(jellyfinService, jobService, emailService, config, opLog);
                 await worker.ExecuteAsync(jobId, CancellationToken.None);
                 Logger.LogInformation("Cast & Crew worker finished for job {JobId}", jobId);
             }

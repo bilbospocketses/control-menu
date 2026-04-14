@@ -494,7 +494,9 @@ public class DependencyManagerService : IDependencyManagerService
         var parts = dep.VersionCommand.Split(' ', 2);
         var args = parts.Length > 1 ? parts[1] : null;
 
-        // Try the configured install path first (local dependency store)
+        // If we manage this dependency locally, only check the local path — never
+        // fall back to system PATH, which would report a stale version and cause
+        // an update loop.
         if (moduleId is not null && dep.InstallPath is not null)
         {
             var customPath = await _config.GetSettingAsync($"dep-path-{dep.Name}");
@@ -505,22 +507,24 @@ public class DependencyManagerService : IDependencyManagerService
                 exeName += ".exe";
 
             var localExe = Path.Combine(installDir, exeName);
-            if (File.Exists(localExe))
+            if (!File.Exists(localExe))
+                return null; // Not installed yet — don't check system PATH
+
+            try
             {
-                try
+                var localResult = await _executor.ExecuteAsync(localExe, args);
+                if (localResult.ExitCode == 0)
                 {
-                    var localResult = await _executor.ExecuteAsync(localExe, args);
-                    if (localResult.ExitCode == 0)
-                    {
-                        var v = ExtractVersion(localResult.StandardOutput, dep.VersionPattern);
-                        if (v is not null) return v;
-                    }
+                    var v = ExtractVersion(localResult.StandardOutput, dep.VersionPattern);
+                    if (v is not null) return v;
                 }
-                catch { /* fall through to PATH */ }
             }
+            catch { /* binary exists but failed to run */ }
+
+            return null;
         }
 
-        // Fall back to system PATH
+        // No local install path — use system PATH
         var command = parts[0];
         try
         {
@@ -585,29 +589,17 @@ public class DependencyManagerService : IDependencyManagerService
 
         entity.LatestKnownVersion = latestVersion;
 
-        if (CompareVersions(entity.InstalledVersion, latestVersion) < 0)
-        {
-            // If this is a "-latest-" URL and we already downloaded it (installed version
-            // was set by a prior install), the CDN may be serving an older binary than the
-            // version check page advertises. Don't loop — mark as UpToDate.
-            var downloadUrl = entity.DownloadUrl ?? moduleDep.DownloadUrl ?? "";
-            if (downloadUrl.Contains("-latest-") && entity.InstalledVersion is not null)
-            {
-                entity.Status = DependencyStatus.UpToDate;
-                entity.LatestKnownVersion = entity.InstalledVersion;
-            }
-            else
-            {
-                entity.Status = DependencyStatus.UpdateAvailable;
-            }
-        }
-        else
-        {
-            entity.Status = DependencyStatus.UpToDate;
-        }
+        entity.Status = CompareVersions(entity.InstalledVersion, latestVersion) < 0
+            ? DependencyStatus.UpdateAvailable
+            : DependencyStatus.UpToDate;
 
+        // Resolve versioned download URL from template (e.g., Node.js dist)
+        if (moduleDep.DownloadUrlTemplate is not null)
+        {
+            entity.DownloadUrl = moduleDep.DownloadUrlTemplate.Replace("{version}", latestVersion);
+        }
         // Update download URL if the current one contains an old version-encoded filename
-        if (entity.Status == DependencyStatus.UpdateAvailable && moduleDep.DownloadUrl is not null)
+        else if (entity.Status == DependencyStatus.UpdateAvailable && moduleDep.DownloadUrl is not null)
         {
             var updatedUrl = BuildVersionedDownloadUrl(moduleDep.DownloadUrl, content, moduleDep);
             if (updatedUrl is not null)

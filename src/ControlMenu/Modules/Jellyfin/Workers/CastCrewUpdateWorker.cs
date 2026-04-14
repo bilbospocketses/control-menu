@@ -14,13 +14,17 @@ public class CastCrewUpdateWorker
 
     private readonly IJellyfinService _jellyfin;
     private readonly IBackgroundJobService _jobService;
+    private readonly IEmailService _email;
+    private readonly IConfigurationService _config;
     private readonly OperationLogger? _logger;
 
     public CastCrewUpdateWorker(IJellyfinService jellyfinService, IBackgroundJobService jobService,
-        OperationLogger? logger = null)
+        IEmailService emailService, IConfigurationService configService, OperationLogger? logger = null)
     {
         _jellyfin = jellyfinService;
         _jobService = jobService;
+        _email = emailService;
+        _config = configService;
         _logger = logger;
     }
 
@@ -130,17 +134,21 @@ public class CastCrewUpdateWorker
                 var cancelMsg = $"Cancelled after processing {processed:N0} of {totalOverall:N0}. Resume supported.";
                 _logger?.Fail(cancelMsg);
                 await _jobService.FailJobAsync(jobId, cancelMsg, resultData);
+                await SendNotificationAsync("Cancelled", cancelMsg);
             }
             else if (processed == 0 && errors > 0)
             {
                 var failMsg = $"0 of {totalOverall:N0} persons succeeded — all {errors:N0} updates failed";
                 _logger?.Fail(failMsg);
                 await _jobService.FailJobAsync(jobId, failMsg, resultData);
+                await SendNotificationAsync("Failed", failMsg);
             }
             else
             {
-                _logger?.Done($"Completed: {processed:N0} succeeded, {errors:N0} failed out of {totalOverall:N0} total");
+                var summary = $"{processed:N0} succeeded, {errors:N0} failed out of {totalOverall:N0} total";
+                _logger?.Done($"Completed: {summary}");
                 await _jobService.CompleteJobAsync(jobId, resultData);
+                await SendNotificationAsync("Completed", summary);
             }
         }
         catch (OperationCanceledException)
@@ -176,6 +184,23 @@ public class CastCrewUpdateWorker
             {
                 await Task.Delay(RetryDelayMs * attempt, ct);
             }
+        }
+    }
+
+    private async Task SendNotificationAsync(string status, string details)
+    {
+        try
+        {
+            var to = await _config.GetSettingAsync("notification-email");
+            if (string.IsNullOrEmpty(to)) return;
+
+            var subject = $"Cast & Crew Update — {status}";
+            var body = $"Cast & Crew image update has {status.ToLowerInvariant()}.\n\n{details}";
+            await _email.SendAsync(to, subject, body);
+        }
+        catch
+        {
+            // Best effort — don't fail the job over a notification
         }
     }
 

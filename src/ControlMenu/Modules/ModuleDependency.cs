@@ -17,4 +17,9 @@ public record ModuleDependency
     public string[] RelatedFiles { get; init; } = [];
     public string? VersionCheckUrl { get; init; }
     public string? VersionCheckPattern { get; init; }
+    /// <summary>
+    /// Download URL with {version} placeholder, e.g. "https://nodejs.org/dist/v{version}/node-v{version}-win-x64.zip".
+    /// Resolved during version check when the latest version is discovered.
+    /// </summary>
+    public string? DownloadUrlTemplate { get; init; }
 }

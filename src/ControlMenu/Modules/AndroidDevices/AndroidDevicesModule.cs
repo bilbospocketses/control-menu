@@ -44,6 +44,9 @@ public class AndroidDevicesModule : IToolModule
                 : "https://dl.google.com/android/repository/platform-tools-latest-linux.zip",
             VersionCheckUrl = "https://dl.google.com/android/repository/repository2-3.xml",
             VersionCheckPattern = @"path=""platform-tools"".*?<major>(\d+)</major>\s*<minor>(\d+)</minor>\s*<micro>(\d+)</micro>",
+            DownloadUrlTemplate = OperatingSystem.IsWindows()
+                ? "https://dl.google.com/android/repository/platform-tools_r{version}-win.zip"
+                : "https://dl.google.com/android/repository/platform-tools_r{version}-linux.zip",
             InstallPath = Path.Combine(DepsRoot, "platform-tools")
         },
         new ModuleDependency
@@ -67,6 +70,11 @@ public class AndroidDevicesModule : IToolModule
             SourceType = UpdateSourceType.DirectUrl,
             ProjectHomeUrl = "https://nodejs.org/",
             DownloadUrl = "https://nodejs.org/en/download/",
+            VersionCheckUrl = "https://nodejs.org/dist/latest-v22.x/",
+            VersionCheckPattern = @"node-v(\d+\.\d+\.\d+)",
+            DownloadUrlTemplate = OperatingSystem.IsWindows()
+                ? "https://nodejs.org/dist/v{version}/node-v{version}-win-x64.zip"
+                : "https://nodejs.org/dist/v{version}/node-v{version}-linux-x64.tar.gz",
             InstallPath = Path.Combine(DepsRoot, "node")
         },
         new ModuleDependency
