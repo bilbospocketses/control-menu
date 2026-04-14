@@ -40,7 +40,7 @@ public class AndroidDevicesModuleTests
         var entries = _module.GetNavEntries().ToList();
         Assert.Contains(entries, e => e.Href == "/android/devices");
         Assert.Contains(entries, e => e.Href == "/android/googletv");
-        Assert.Contains(entries, e => e.Href == "/android/pixel");
+        Assert.Contains(entries, e => e.Href == "/android/phone");
     }
 
     [Fact]

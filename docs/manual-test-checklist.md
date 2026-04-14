@@ -80,7 +80,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Screen mirror iframe loads (if ws-scrcpy-web is configured)
 - [ ] Navigate away and back — no console errors about disposed components
 
-## 9. Android > Pixel Dashboard
+## 9. Android > Android Phone Dashboard
 
 - [ ] Page loads
 - [ ] "Reset ADB Port" uses the device's configured port (check the status message)
@@ -147,7 +147,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 
 - [ ] Navigate to `/settings/nonexistent` — shows "Unknown settings section" message with link
 - [ ] Navigate to `/android/googletv` without a device — first Google TV device is selected (no crash)
-- [ ] Navigate to `/android/pixel` without a device — first Pixel device is selected (no crash)
+- [ ] Navigate to `/android/phone` without a device — first Android Phone device is selected (no crash)
 
 ## 18. ws-scrcpy-web Integration
 

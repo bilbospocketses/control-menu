@@ -8,16 +8,16 @@
 
 <PageTitle>Google TV - @(_device?.Name ?? "Select Device")</PageTitle>
 
-<h1><i class="bi bi-tv"></i> Google TV</h1>
-
 @if (_device is null)
 {
+    <h1><i class="bi bi-tv"></i> Google TV</h1>
     <p>No device selected. <a href="/android/devices">Select a device</a>.</p>
 }
 else
 {
     <div class="device-header">
-        <h2>@_device.Name</h2>
+        <h1><i class="bi bi-tv"></i> Google TV</h1>
+        <span class="device-name">@_device.Name</span>
         <span class="status-badge @(_connected ? "connected" : "disconnected")">
             <i class="bi @(_connected ? "bi-wifi" : "bi-wifi-off")"></i>
             @(_connected ? "Connected" : "Disconnected")

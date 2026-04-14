@@ -20,7 +20,7 @@
 
 Control Menu replaces a collection of PowerShell scripts with a cross-platform web UI. It manages:
 
-- **Android Devices** &mdash; Connect, reboot, toggle power/screensaver, manage ADB settings, and screen mirror Google TVs and Pixel phones via [ws-scrcpy-web](https://github.com/ANG-DEVELOPERS/ws-scrcpy-web)
+- **Android Devices** &mdash; Connect, reboot, toggle power/screensaver, manage ADB settings, and screen mirror Google TVs and Android phones via [ws-scrcpy-web](https://github.com/ANG-DEVELOPERS/ws-scrcpy-web)
 - **Jellyfin Media Server** &mdash; Database date updates, cast & crew image refresh (background worker with resume support), Docker container management, automated backups with configurable retention
 - **Utilities** &mdash; Image-to-ICO icon conversion (PNG, JPG, BMP, GIF, WEBP, TIFF via SkiaSharp) with native file picker, Windows Zone.Identifier file unblocker
 - **Dependency Management** &mdash; Auto-installs and updates ADB, scrcpy, Node.js, and sqlite3 to a self-contained `dependencies/` folder. Configurable install paths per tool. Version checks via GitHub API and direct URL scraping.
@@ -73,7 +73,7 @@ src/ControlMenu/
     Shared/             #   ScrcpyMirror component
   Data/                 # EF Core entities, enums, migrations
   Modules/              # Pluggable tool modules
-    AndroidDevices/     #   ADB service, Google TV & Pixel dashboards
+    AndroidDevices/     #   ADB service, Google TV & Android Phone dashboards
     Jellyfin/           #   Docker ops, DB updates, Cast/Crew worker
     Utilities/          #   Icon converter, File unblocker
   Services/             # Core services (config, secrets, jobs, dependencies, email)

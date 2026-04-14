@@ -41,7 +41,7 @@
             "settings/dependencies" => "Settings — Dependencies",
             "setup" => "Setup Wizard",
             _ when path.StartsWith("android/googletv") => "Google TV Dashboard",
-            _ when path.StartsWith("android/pixel") => "Pixel Dashboard",
+            _ when path.StartsWith("android/phone") || path.StartsWith("android/pixel") => "Android Phone",
             _ when path.StartsWith("android") => "Android Devices",
             _ when path.StartsWith("jellyfin/db-update") => "DB Date Update",
             _ when path.StartsWith("jellyfin/cast-crew") => "Cast & Crew Update",

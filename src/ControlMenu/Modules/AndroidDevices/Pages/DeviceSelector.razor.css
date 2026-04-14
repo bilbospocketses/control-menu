@@ -1,0 +1,10 @@
+/* Tighten vertical spacing to match other Android pages */
+:host {
+    display: block;
+    margin-top: -8px;
+}
+
+h1 {
+    margin-bottom: 0.25rem;
+    font-size: 1.4rem;
+}

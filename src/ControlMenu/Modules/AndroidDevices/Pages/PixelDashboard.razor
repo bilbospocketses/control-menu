@@ -1,3 +1,5 @@
+@page "/android/phone"
+@page "/android/phone/{DeviceId:guid}"
 @page "/android/pixel"
 @page "/android/pixel/{DeviceId:guid}"
 @using ControlMenu.Data.Entities
@@ -6,18 +8,18 @@
 @implements IDisposable
 @using ControlMenu.Modules.AndroidDevices.Services
 
-<PageTitle>Pixel - @(_device?.Name ?? "Select Device")</PageTitle>
-
-<h1><i class="bi bi-phone"></i> Pixel</h1>
+<PageTitle>Android Phone - @(_device?.Name ?? "Select Device")</PageTitle>
 
 @if (_device is null)
 {
+    <h1><i class="bi bi-phone"></i> Android Phone</h1>
     <p>No device selected. <a href="/android/devices">Select a device</a>.</p>
 }
 else
 {
     <div class="device-header">
-        <h2>@_device.Name</h2>
+        <h1><i class="bi bi-phone"></i> Android Phone</h1>
+        <span class="device-name">@_device.Name</span>
         <span class="status-badge @(_connected ? "connected" : "disconnected")">
             <i class="bi @(_connected ? "bi-wifi" : "bi-wifi-off")"></i>
             @(_connected ? "Connected" : "Disconnected")
@@ -31,56 +33,62 @@ else
         </div>
     }
 
-    <div class="controls-panel">
-        <h3 class="panel-heading">Quick Actions</h3>
+    <div class="dashboard-layout">
+        <div class="controls-panel">
+            <h3 class="panel-heading">Quick Actions</h3>
 
-        <!-- Enable Wireless ADB -->
-        <div class="action-row">
-            <div class="action-label">
-                <i class="bi bi-usb-plug"></i> Enable Wireless ADB
+            <!-- Enable Wireless ADB -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-usb-plug"></i> Enable Wireless ADB
+                </div>
+                <span class="action-status">Requires USB cable</span>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-warning" @onclick="ToggleUsbWizard" disabled="@_busy">
+                        @(_showUsbWizard ? "Close" : "Setup")
+                    </button>
+                </div>
             </div>
-            <span class="action-status">Requires USB cable</span>
-            <div class="action-buttons">
-                <button class="btn btn-sm btn-warning" @onclick="ToggleUsbWizard" disabled="@_busy">
-                    @(_showUsbWizard ? "Close" : "Setup")
-                </button>
-            </div>
-        </div>
 
-        @if (_showUsbWizard)
-        {
-            <UsbSetupWizard Port="Port" Ip="@Ip" MacAddress="@_device.MacAddress"
-                            OnComplete="OnUsbSetupComplete" />
-        }
+            @if (_showUsbWizard)
+            {
+                <UsbSetupWizard Port="Port" Ip="@Ip" MacAddress="@_device.MacAddress"
+                                OnComplete="OnUsbSetupComplete" />
+            }
 
-        <!-- ADB Connect -->
-        <div class="action-row">
-            <div class="action-label">
-                <i class="bi bi-plug"></i> ADB Connect
+            <!-- ADB Connect -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-plug"></i> ADB Connect
+                </div>
+                <span class="action-status">WiFi connection</span>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-primary" @onclick="ConnectDevice" disabled="@_busy">Connect</button>
+                </div>
             </div>
-            <span class="action-status">WiFi connection</span>
-            <div class="action-buttons">
-                <button class="btn btn-sm btn-primary" @onclick="ConnectDevice" disabled="@_busy">Connect</button>
-            </div>
-        </div>
 
-        <!-- Unlock Phone -->
-        @if (_hasPin)
-        {
+            <!-- Unlock Phone -->
             <div class="action-row">
                 <div class="action-label">
                     <i class="bi bi-unlock"></i> Unlock Phone
                 </div>
-                <span class="action-status">Send PIN to unlock screen</span>
-                <div class="action-buttons">
-                    <button class="btn btn-sm btn-success" @onclick="UnlockPhone" disabled="@(_busy || !_connected)">Unlock</button>
-                </div>
+                @if (_hasPin)
+                {
+                    <span class="action-status">Send PIN to unlock screen</span>
+                    <div class="action-buttons">
+                        <button class="btn btn-sm btn-success" @onclick="UnlockPhone" disabled="@(_busy || !_connected)">Unlock</button>
+                    </div>
+                }
+                else
+                {
+                    <span class="action-status">Set PIN in <a href="/settings/devices">Device Settings</a></span>
+                }
             </div>
-        }
-    </div>
+        </div>
 
-    <div class="mirror-panel">
-        <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" />
+        <div class="mirror-panel">
+            <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" />
+        </div>
     </div>
 }
 

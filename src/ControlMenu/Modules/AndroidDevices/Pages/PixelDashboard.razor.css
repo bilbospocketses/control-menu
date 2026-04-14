@@ -1,9 +1,26 @@
-/* Device header */
+/* Tighten vertical spacing to minimize scrolling */
+:host {
+    display: block;
+    margin-top: -8px;
+}
+
+/* Device header — page title, device name, and status on one line */
 .device-header {
     display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 1rem;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.device-header h1 {
+    margin: 0;
+    font-size: 1.4rem;
+}
+
+.device-name {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text-secondary, #6c757d);
 }
 
 .status-badge {
@@ -20,9 +37,9 @@
 
 /* Status bar */
 .status-bar {
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 1rem;
     border-radius: 0.5rem;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -31,7 +48,15 @@
 .status-warning { background: var(--warning-bg, #fff3cd); color: var(--warning-text, #856404); }
 .status-info { background: var(--info-bg, #d1ecf1); color: var(--info-text, #0c5460); }
 
-/* Controls panel — full width above the mirror */
+/* Side-by-side: controls left, portrait mirror right */
+.dashboard-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 1.25rem;
+    height: calc(100vh - 180px);
+}
+
+/* Left panel — controls */
 .controls-panel {
     background: var(--card-bg, #fff);
     border: 1px solid var(--border-color, #dee2e6);
@@ -40,7 +65,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    margin-bottom: 1.25rem;
+    overflow-y: auto;
+    max-height: calc(100vh - 200px);
 }
 
 .panel-heading {
@@ -94,20 +120,21 @@
     padding: 0.2rem 0.5rem;
 }
 
-/* Mirror panel — portrait orientation for phones */
+/* Right panel — portrait mirror centered */
 .mirror-panel {
     background: var(--card-bg, #fff);
     border: 1px solid var(--border-color, #dee2e6);
     border-radius: 0.75rem;
     padding: 0.5rem;
     display: flex;
-    flex-direction: column;
-    max-width: 400px;
-    aspect-ratio: 9 / 16;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
 }
 
 .mirror-panel ::deep .scrcpy-mirror {
-    flex: 1;
+    height: 100%;
+    aspect-ratio: 9 / 16;
     display: flex;
     flex-direction: column;
 }
@@ -118,4 +145,18 @@
     height: 100%;
     border: none;
     border-radius: 0.5rem;
+}
+
+/* Responsive: stack on narrow screens */
+@media (max-width: 768px) {
+    .dashboard-layout {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+    .controls-panel {
+        max-height: none;
+    }
+    .mirror-panel {
+        min-height: 500px;
+    }
 }
