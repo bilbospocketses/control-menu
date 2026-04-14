@@ -95,19 +95,18 @@
     gap: 0.4rem;
     padding: 0.4rem 1rem;
     border-radius: 8px;
-    background: color-mix(in srgb, var(--accent-color, #10b981) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--accent-color, #10b981) 25%, transparent);
+    background: transparent;
+    border: 1px solid var(--text-secondary, #6c757d);
     color: var(--text-primary);
     font-size: 0.875rem;
     font-weight: 500;
     text-decoration: none;
-    transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    transition: background 0.15s, transform 0.1s;
     white-space: nowrap;
 }
 
 .pill-link:hover {
-    background: color-mix(in srgb, var(--accent-color, #10b981) 22%, transparent);
-    border-color: color-mix(in srgb, var(--accent-color, #10b981) 45%, transparent);
+    background: var(--hover-bg, rgba(255, 255, 255, 0.06));
     transform: translateY(-1px);
     text-decoration: none;
     color: var(--text-primary);

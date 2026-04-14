@@ -139,10 +139,10 @@ select.form-control { appearance: auto; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
 /* ── Buttons ── */
-.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: 1px solid transparent; border-radius: 6px; font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: background-color 0.15s, border-color 0.15s; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: 1px solid var(--text-secondary, #6c757d); border-radius: 8px; font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: background-color 0.15s, border-color 0.15s; }
 .btn-primary { background-color: var(--accent-color); color: #fff; }
 .btn-primary:hover { opacity: 0.9; }
-.btn-secondary { background-color: transparent; color: var(--text-primary); border-color: var(--input-border); }
+.btn-secondary { background-color: transparent; color: var(--text-primary); border-color: var(--text-secondary, #6c757d); }
 .btn-secondary:hover { background-color: var(--hover-bg); }
 .btn-danger { background-color: var(--danger-color); color: #fff; }
 .btn-danger:hover { opacity: 0.9; }
