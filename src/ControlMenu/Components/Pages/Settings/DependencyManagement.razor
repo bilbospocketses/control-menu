@@ -25,11 +25,6 @@
                 }
             </button>
         }
-        <div class="toolbar-spacer"></div>
-        @if (!string.IsNullOrEmpty(_message))
-        {
-            <span class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin:0; padding:6px 12px;">@_message</span>
-        }
     </div>
 
     @if (_dependencies.Count == 0)
@@ -116,6 +111,13 @@
         </div>
     }
 </div>
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
+        @_message
+    </div>
+}
 
 @code {
     private List<Dependency> _dependencies = [];
