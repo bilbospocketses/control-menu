@@ -183,6 +183,14 @@ select.form-control { appearance: auto; }
 /* Disabled button state */
 .btn:disabled, .btn[disabled] { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
+/* Pill buttons */
+.btn-pill { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 999px; font-weight: 600; font-size: 0.9rem; text-decoration: none; border: none; cursor: pointer; transition: background 0.15s, transform 0.1s; }
+.btn-pill:active { transform: scale(0.97); }
+.btn-pill-success { background-color: var(--success-color); color: #fff; }
+.btn-pill-success:hover { background-color: #157347; color: #fff; }
+.btn-pill-primary { background-color: var(--accent-color); color: #fff; }
+.btn-pill-primary:hover { background-color: #0b5ed7; color: #fff; }
+
 /* ── Toolbar ── */
 .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .toolbar-spacer { flex: 1; }
