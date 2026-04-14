@@ -1,4 +1,5 @@
 @inject IDependencyManagerService DepManager
+@inject IJSRuntime JS
 
 <div class="settings-section">
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
@@ -87,8 +88,13 @@
                             <td>
                                 <div style="display:flex; gap:0.4rem; align-items:center;">
                                     <input class="form-control" style="min-width:240px; font-size:0.85rem;"
+                                           id="dep-path-@result.Name"
                                            value="@depPath"
                                            @onchange="e => OnPathChanged(result.Name, e)" />
+                                    <button class="btn btn-secondary btn-sm" title="Browse for folder"
+                                            @onclick="() => BrowseFolder(result.Name, result.ModuleId)">
+                                        <i class="bi bi-folder2-open"></i>
+                                    </button>
                                     <button class="btn btn-secondary btn-sm" title="Reset to default"
                                             @onclick="() => ResetPath(result.Name, result.ModuleId)">
                                         <i class="bi bi-arrow-counterclockwise"></i>
@@ -167,6 +173,16 @@
 
         _scanning = false;
         UpdateState();
+    }
+
+    private async Task BrowseFolder(string depName, string moduleId)
+    {
+        var path = await JS.InvokeAsync<string?>("depPathBrowse", depName);
+        if (!string.IsNullOrEmpty(path))
+        {
+            _installPaths[depName] = path;
+            await DepManager.SetInstallPathAsync(depName, path);
+        }
     }
 
     private async Task OnPathChanged(string name, ChangeEventArgs e)
