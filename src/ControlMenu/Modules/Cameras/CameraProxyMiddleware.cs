@@ -155,6 +155,13 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         return await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, context.RequestAborted);
     }
 
+    // Content types that may contain absolute URL references needing rewriting
+    private static readonly string[] _rewritableContentTypes = ["text/html", "text/javascript", "application/javascript", "text/css"];
+
+    // Hikvision/LTS well-known root paths used in their web UI
+    [GeneratedRegex(@"(?<=[""'/=])/(doc|ISAPI|SDK|PSIA|images|css|js|custom|bvw)(?=[/""])", RegexOptions.Compiled)]
+    private static partial Regex AbsolutePathRegex();
+
     private static async Task WriteProxyResponseAsync(HttpContext context, HttpResponseMessage response, int cameraIndex)
     {
         context.Response.StatusCode = (int)response.StatusCode;
@@ -165,6 +172,9 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
             if (_stripHeaders.Any(h => string.Equals(h, header.Key, StringComparison.OrdinalIgnoreCase)))
                 continue;
             if (string.Equals(header.Key, "Transfer-Encoding", StringComparison.OrdinalIgnoreCase))
+                continue;
+            // Skip Content-Length — we may rewrite the body, changing its length
+            if (string.Equals(header.Key, "Content-Length", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             // Rewrite Location headers for redirects
@@ -183,7 +193,19 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
             context.Response.Headers.Append(header.Key, header.Value.ToArray());
         }
 
-        await response.Content.CopyToAsync(context.Response.Body);
+        // For text content (HTML, JS, CSS), rewrite absolute paths to go through proxy
+        var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
+        if (_rewritableContentTypes.Any(ct => contentType.Contains(ct, StringComparison.OrdinalIgnoreCase)))
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            var prefix = $"/cameras/{cameraIndex}/proxy";
+            body = AbsolutePathRegex().Replace(body, $"{prefix}/$1");
+            await context.Response.WriteAsync(body);
+        }
+        else
+        {
+            await response.Content.CopyToAsync(context.Response.Body);
+        }
     }
 
     /// <summary>
