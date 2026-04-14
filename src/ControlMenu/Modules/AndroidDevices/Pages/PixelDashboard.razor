@@ -19,7 +19,6 @@ else
 {
     <div class="device-header">
         <h1><i class="bi bi-phone"></i> Android Phone</h1>
-        <span class="device-name">@_device.Name</span>
         <span class="status-badge @(_connected ? "connected" : "disconnected")">
             <i class="bi @(_connected ? "bi-wifi" : "bi-wifi-off")"></i>
             @(_connected ? "Connected" : "Disconnected")
@@ -86,8 +85,11 @@ else
             </div>
         </div>
 
-        <div class="mirror-panel">
-            <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" />
+        <div class="mirror-column">
+            <span class="device-name">@_device.Name</span>
+            <div class="mirror-panel">
+                <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" />
+            </div>
         </div>
     </div>
 }
@@ -123,7 +125,7 @@ else
 
         if (_device is not null)
         {
-            _pin = await Config.GetSettingAsync($"device-pin-{_device.Id}");
+            _pin = await Config.GetSecretAsync($"device-pin-{_device.Id}");
             _hasPin = !string.IsNullOrEmpty(_pin);
         }
 
@@ -145,9 +147,8 @@ else
     {
         if (_device is null || string.IsNullOrEmpty(Ip) || string.IsNullOrEmpty(_pin)) return;
         _busy = true;
-        SetStatus("Sending unlock PIN...", "status-info", "bi-unlock");
         await AdbService.UnlockWithPinAsync(Ip, Port, _pin);
-        SetStatus("Unlock command sent.", "status-success", "bi-check-circle");
+        SetStatus("Phone unlocked.", "status-success", "bi-unlock");
         _busy = false;
     }
 

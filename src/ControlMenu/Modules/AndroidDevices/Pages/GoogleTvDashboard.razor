@@ -17,7 +17,6 @@ else
 {
     <div class="device-header">
         <h1><i class="bi bi-tv"></i> Google TV</h1>
-        <span class="device-name">@_device.Name</span>
         <span class="status-badge @(_connected ? "connected" : "disconnected")">
             <i class="bi @(_connected ? "bi-wifi" : "bi-wifi-off")"></i>
             @(_connected ? "Connected" : "Disconnected")
@@ -83,8 +82,9 @@ else
 
             <!-- Screen Timeout -->
             <div class="action-row action-row-inline">
-                <div class="action-label">
-                    <i class="bi bi-clock"></i> Timeout
+                <div class="action-label action-label-centered">
+                    <i class="bi bi-clock"></i>
+                    <span class="label-stacked">Screensaver<br/>Timeout</span>
                 </div>
                 <div class="timeout-controls">
                     <span class="action-status-inline">@FormatTimeout(_screenTimeout)</span>
@@ -140,8 +140,11 @@ else
             </div>
         </div>
 
-        <div class="mirror-panel">
-            <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" />
+        <div class="mirror-column">
+            <span class="device-name">@_device.Name</span>
+            <div class="mirror-panel">
+                <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" />
+            </div>
         </div>
     </div>
 }

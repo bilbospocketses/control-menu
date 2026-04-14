@@ -146,13 +146,9 @@ public class AdbService : IAdbService
     public async Task UnlockWithPinAsync(string ip, int port, string pin, CancellationToken ct = default)
     {
         var dev = DeviceArg(ip, port);
-        // Wake screen
+        // Exact sequence from the original PowerShell script — no delays, separate adb calls
         await _executor.ExecuteAsync("adb", $"{dev} shell input keyevent 26", null, ct);
-        await Task.Delay(500, ct);
-        // Dismiss lock screen to show PIN prompt
         await _executor.ExecuteAsync("adb", $"{dev} shell input keyevent 82", null, ct);
-        await Task.Delay(500, ct);
-        // Type PIN and press Enter
         await _executor.ExecuteAsync("adb", $"{dev} shell input text {pin}", null, ct);
         await _executor.ExecuteAsync("adb", $"{dev} shell input keyevent 66", null, ct);
     }

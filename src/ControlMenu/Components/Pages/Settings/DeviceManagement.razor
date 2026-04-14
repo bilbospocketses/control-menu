@@ -173,7 +173,7 @@
             LastKnownIp = device.LastKnownIp,
             LastSeen = device.LastSeen
         };
-        _formPin = await Config.GetSettingAsync($"device-pin-{device.Id}") ?? "";
+        _formPin = await Config.GetSecretAsync($"device-pin-{device.Id}") ?? "";
         _isEditing = true;
         _showForm = true;
     }

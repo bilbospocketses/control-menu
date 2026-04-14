@@ -42,7 +42,8 @@
         {
             <div class="form-group">
                 <label>Screen Lock PIN (optional)</label>
-                <input type="password" class="form-control" @bind="Pin" placeholder="PIN" />
+                <input type="password" class="form-control" value="@Pin"
+                       @oninput="OnPinInput" placeholder="PIN" />
                 <div class="form-hint">Stored encrypted. Used to unlock the phone remotely via ADB.</div>
             </div>
         }
@@ -74,6 +75,12 @@
 
     [Parameter]
     public EventCallback OnCancel { get; set; }
+
+    private async Task OnPinInput(ChangeEventArgs e)
+    {
+        Pin = e.Value?.ToString() ?? "";
+        await PinChanged.InvokeAsync(Pin);
+    }
 
     private bool IsValid =>
         !string.IsNullOrWhiteSpace(Model.Name) &&
