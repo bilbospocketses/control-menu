@@ -2,7 +2,6 @@
 @using ControlMenu.Data.Enums
 @inject IDependencyManagerService DepManager
 @inject NavigationManager Nav
-@inject IJSRuntime JS
 
 <div class="settings-section">
     <h2>Dependencies</h2>
@@ -59,13 +58,8 @@
                             {
                                 <div style="display:flex; gap:0.4rem; align-items:center;">
                                     <input class="form-control" style="min-width:200px; font-size:0.85rem;"
-                                           id="dep-path-@dep.Name"
                                            value="@(_installPaths.GetValueOrDefault(dep.Name, ""))"
                                            @onchange="e => OnPathChanged(dep.Name, dep.ModuleId, e)" />
-                                    <button class="btn btn-secondary btn-sm" title="Browse for folder"
-                                            @onclick="() => BrowseFolder(dep.Name)">
-                                        <i class="bi bi-folder2-open"></i>
-                                    </button>
                                     <button class="btn btn-secondary btn-sm" title="Reset to default"
                                             @onclick="() => ResetPath(dep.Name, dep.ModuleId)">
                                         <i class="bi bi-arrow-counterclockwise"></i>
@@ -300,22 +294,6 @@
         _messageIsError = failed > 0;
 
         await LoadDependencies();
-    }
-
-    private async Task BrowseFolder(string depName)
-    {
-        // Use JS to trigger a native folder picker and return the selected path
-        var path = await JS.InvokeAsync<string?>("depPathBrowse", depName);
-        if (!string.IsNullOrEmpty(path))
-        {
-            var dep = _dependencies.FirstOrDefault(d => d.Name == depName);
-            if (dep is not null)
-            {
-                _installPaths[depName] = path;
-                await DepManager.SetInstallPathAsync(depName, path);
-                ShowSaveMessage($"{depName} install path saved.");
-            }
-        }
     }
 
     private async Task OnPathChanged(string name, string moduleId, ChangeEventArgs e)
