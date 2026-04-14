@@ -9,26 +9,26 @@ using ControlMenu.Modules.Cameras.Services;
 namespace ControlMenu.Modules.Cameras;
 
 /// <summary>
-/// Reverse proxy middleware for Hikvision/LTS cameras. Performs ISAPI session login
-/// to get a WebSession cookie, forwards it to the browser, and proxies all requests
-/// with digest auth. Strips iframe-blocking headers and rewrites absolute paths.
+/// Reverse proxy middleware for Hikvision/LTS cameras.
+/// Performs ISAPI session login, injects auth info into sessionStorage via script injection,
+/// and proxies all requests with digest auth + session cookie.
 /// </summary>
 public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraProxyMiddleware> logger)
 {
-    // Cache session cookies per camera so we don't re-login on every request
-    private static readonly ConcurrentDictionary<int, string> _sessionCookies = new();
+    private static readonly ConcurrentDictionary<int, CameraSession> _sessions = new();
+
+    private record CameraSession(
+        string Cookie, string SessionID, string Challenge,
+        int Iterations, string Random, string Username);
 
     private static readonly string[] _stripHeaders =
-    [
-        "X-Frame-Options",
-        "Content-Security-Policy",
-        "Content-Security-Policy-Report-Only"
-    ];
+        ["X-Frame-Options", "Content-Security-Policy", "Content-Security-Policy-Report-Only"];
 
     [GeneratedRegex(@"^/cameras/(\d+)/proxy(?:/(.*))?$", RegexOptions.IgnoreCase)]
     private static partial Regex ProxyPathRegex();
 
-    private static readonly string[] _rewritableContentTypes = ["text/html", "text/javascript", "application/javascript", "text/css"];
+    private static readonly string[] _rewritableContentTypes =
+        ["text/html", "text/javascript", "application/javascript", "text/css"];
 
     [GeneratedRegex(@"(?<=[""'/=])/(doc|ISAPI|SDK|PSIA|images|css|js|custom|bvw)(?=[/""])", RegexOptions.Compiled)]
     private static partial Regex AbsolutePathRegex();
@@ -36,17 +36,12 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
     public async Task InvokeAsync(HttpContext context)
     {
         var match = ProxyPathRegex().Match(context.Request.Path.Value ?? "");
-        if (!match.Success)
-        {
-            await next(context);
-            return;
-        }
+        if (!match.Success) { await next(context); return; }
 
         var cameraIndex = int.Parse(match.Groups[1].Value);
         var proxyPath = match.Groups[2].Success ? match.Groups[2].Value : "";
 
         var cameraService = context.RequestServices.GetRequiredService<ICameraService>();
-
         var camera = await cameraService.GetCameraAsync(cameraIndex);
         if (camera is null)
         {
@@ -70,166 +65,91 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         var handler = new HttpClientHandler
         {
             Credentials = new NetworkCredential(username, password),
-            UseCookies = false,
-            AllowAutoRedirect = false,
-            PreAuthenticate = false
+            UseCookies = false, AllowAutoRedirect = false, PreAuthenticate = false
         };
         using var client = new HttpClient(handler) { BaseAddress = baseUri, Timeout = TimeSpan.FromSeconds(30) };
 
-        // Ensure we have a session cookie (ISAPI session login)
-        if (!_sessionCookies.ContainsKey(cameraIndex))
-        {
-            var sessionCookie = await PerformSessionLoginAsync(client, username, password, cameraIndex);
-            if (sessionCookie is not null)
-                _sessionCookies[cameraIndex] = sessionCookie;
-        }
+        // Ensure we have a session
+        if (!_sessions.ContainsKey(cameraIndex))
+            await LoginAndCacheSession(client, username, password, cameraIndex);
 
         var targetUri = new Uri(baseUri, $"/{proxyPath}{context.Request.QueryString}");
         var response = await ForwardRequestAsync(client, context, targetUri, cameraIndex);
 
-        // On 401, clear session and retry with fresh login
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             logger.LogWarning("Camera {Index} returned 401, re-authenticating", cameraIndex);
-            _sessionCookies.TryRemove(cameraIndex, out _);
-            var sessionCookie = await PerformSessionLoginAsync(client, username, password, cameraIndex);
-            if (sessionCookie is not null)
-                _sessionCookies[cameraIndex] = sessionCookie;
+            _sessions.TryRemove(cameraIndex, out _);
+            await LoginAndCacheSession(client, username, password, cameraIndex);
             response = await ForwardRequestAsync(client, context, targetUri, cameraIndex);
         }
 
-        await WriteProxyResponseAsync(context, response, cameraIndex, proxyPrefix);
+        await WriteProxyResponseAsync(context, response, cameraIndex, proxyPrefix, username);
     }
 
-    /// <summary>
-    /// Performs the Hikvision ISAPI session login challenge-response flow.
-    /// Algorithm reverse-engineered from camera's webAuth.js and utils.js encodePwd.
-    /// Returns the full cookie name=value on success, or null on failure.
-    /// </summary>
-    private async Task<string?> PerformSessionLoginAsync(HttpClient client, string username, string password, int cameraIndex)
+    private async Task LoginAndCacheSession(HttpClient client, string username, string password, int cameraIndex)
+    {
+        var session = await PerformSessionLoginAsync(client, username, password, cameraIndex);
+        if (session is not null)
+            _sessions[cameraIndex] = session;
+    }
+
+    private async Task<CameraSession?> PerformSessionLoginAsync(
+        HttpClient client, string username, string password, int cameraIndex)
     {
         try
         {
-            // Step 1: GET capabilities with username + random query params
-            // The camera returns a fresh salt/challenge per request when username is provided
             var random = Random.Shared.Next(10000000, 99999999).ToString();
             var capResponse = await client.GetAsync(
                 $"/ISAPI/Security/sessionLogin/capabilities?username={Uri.EscapeDataString(username)}&random={random}");
-            if (!capResponse.IsSuccessStatusCode)
-            {
-                logger.LogWarning("Camera {Index} capabilities returned {Status}", cameraIndex, capResponse.StatusCode);
-                return null;
-            }
+            if (!capResponse.IsSuccessStatusCode) return null;
 
-            var capXml = await capResponse.Content.ReadAsStringAsync();
-            var doc = XDocument.Parse(capXml);
+            var doc = XDocument.Parse(await capResponse.Content.ReadAsStringAsync());
             var ns = doc.Root?.GetDefaultNamespace() ?? XNamespace.None;
 
             var sessionID = doc.Root?.Element(ns + "sessionID")?.Value;
             var challenge = doc.Root?.Element(ns + "challenge")?.Value;
             var salt = doc.Root?.Element(ns + "salt")?.Value;
-            var iterationsStr = doc.Root?.Element(ns + "iterations")?.Value;
             var isIrreversible = doc.Root?.Element(ns + "isIrreversible")?.Value;
             var sessionIDVersion = doc.Root?.Element(ns + "sessionIDVersion")?.Value ?? "2";
             var isValidLongTerm = doc.Root?.Element(ns + "isSessionIDValidLongTerm")?.Value ?? "false";
+            var iterations = int.TryParse(doc.Root?.Element(ns + "iterations")?.Value, out var iter) ? iter : 100;
 
-            if (sessionID is null || challenge is null)
-            {
-                logger.LogWarning("Camera {Index} capabilities missing sessionID or challenge", cameraIndex);
-                return null;
-            }
+            if (sessionID is null || challenge is null) return null;
 
-            var iterations = int.TryParse(iterationsStr, out var iter) ? iter : 100;
+            var hash = string.Equals(isIrreversible, "true", StringComparison.OrdinalIgnoreCase) && salt is not null
+                ? HashIrreversible(username, password, salt, challenge, iterations)
+                : HashLegacy(password, challenge, iterations);
 
-            // Step 2: Hash password (matches utils.js encodePwd exactly)
-            string hashedPassword;
-            if (string.Equals(isIrreversible, "true", StringComparison.OrdinalIgnoreCase) && salt is not null)
-            {
-                hashedPassword = HashPasswordIrreversible(username, password, salt, challenge, iterations);
-            }
-            else
-            {
-                hashedPassword = HashPasswordLegacy(password, challenge, iterations);
-            }
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var loginXml = $"<SessionLogin><userName>{username}</userName><password>{hash}</password><sessionID>{sessionID}</sessionID><isSessionIDValidLongTerm>{isValidLongTerm}</isSessionIDValidLongTerm><sessionIDVersion>{sessionIDVersion}</sessionIDVersion></SessionLogin>";
 
-            // Step 3: POST session login — NO digest auth on this request
-            // Must include sessionIDVersion and isSessionIDValidLongTerm
-            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
-            var loginXml = $"<SessionLogin><userName>{username}</userName><password>{hashedPassword}</password><sessionID>{sessionID}</sessionID><isSessionIDValidLongTerm>{isValidLongTerm}</isSessionIDValidLongTerm><sessionIDVersion>{sessionIDVersion}</sessionIDVersion></SessionLogin>";
-
-            // Use a plain HttpClient without digest auth for the POST
             using var plainClient = new HttpClient { BaseAddress = client.BaseAddress, Timeout = TimeSpan.FromSeconds(15) };
-            var loginContent = new StringContent(loginXml, Encoding.UTF8, "application/xml");
             var loginResponse = await plainClient.PostAsync(
-                $"/ISAPI/Security/sessionLogin?timeStamp={timestamp}", loginContent);
+                $"/ISAPI/Security/sessionLogin?timeStamp={timestamp}",
+                new StringContent(loginXml, Encoding.UTF8, "application/xml"));
 
-            if (loginResponse.IsSuccessStatusCode)
+            if (loginResponse.IsSuccessStatusCode &&
+                loginResponse.Headers.TryGetValues("Set-Cookie", out var cookies))
             {
-                if (loginResponse.Headers.TryGetValues("Set-Cookie", out var cookies))
+                var cookie = cookies.FirstOrDefault(c => c.Contains("WebSession", StringComparison.OrdinalIgnoreCase));
+                if (cookie is not null)
                 {
-                    var cookie = cookies.FirstOrDefault(c =>
-                        c.Contains("WebSession", StringComparison.OrdinalIgnoreCase));
-                    if (cookie is not null)
-                    {
-                        var cookieValue = cookie.Split(';')[0];
-                        logger.LogInformation("Camera {Index} ISAPI session login succeeded", cameraIndex);
-                        return cookieValue;
-                    }
+                    var cookieValue = cookie.Split(';')[0];
+                    logger.LogInformation("Camera {Index} session login succeeded", cameraIndex);
+                    return new CameraSession(cookieValue, sessionID, challenge, iterations, random, username);
                 }
+            }
 
-                logger.LogWarning("Camera {Index} login succeeded but no WebSession cookie", cameraIndex);
-            }
-            else
-            {
-                var body = await loginResponse.Content.ReadAsStringAsync();
-                logger.LogWarning("Camera {Index} session login returned {Status}: {Body}",
-                    cameraIndex, loginResponse.StatusCode, body.Length > 200 ? body[..200] : body);
-            }
+            var body = await loginResponse.Content.ReadAsStringAsync();
+            logger.LogWarning("Camera {Index} session login: {Status} {Body}",
+                cameraIndex, loginResponse.StatusCode, body.Length > 200 ? body[..200] : body);
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Camera {Index} ISAPI session login failed", cameraIndex);
+            logger.LogWarning(ex, "Camera {Index} session login failed", cameraIndex);
         }
-
         return null;
-    }
-
-    /// <summary>
-    /// Hikvision irreversible password hashing (matches utils.js encodePwd):
-    /// 1. SHA256(username + salt + password)
-    /// 2. SHA256(result + challenge)
-    /// 3. SHA256(result) repeated for remaining iterations
-    /// </summary>
-    private static string HashPasswordIrreversible(string username, string password, string salt, string challenge, int iterations)
-    {
-        var result = Sha256Hex(username + salt + password);
-        result = Sha256Hex(result + challenge);
-        for (var i = 2; i < iterations; i++)
-        {
-            result = Sha256Hex(result);
-        }
-        return result;
-    }
-
-    /// <summary>
-    /// Legacy (reversible) password hashing (matches utils.js encodePwd non-irreversible):
-    /// 1. SHA256(password) + challenge
-    /// 2. SHA256(result) repeated for remaining iterations
-    /// </summary>
-    private static string HashPasswordLegacy(string password, string challenge, int iterations)
-    {
-        var result = Sha256Hex(password) + challenge;
-        for (var i = 1; i < iterations; i++)
-        {
-            result = Sha256Hex(result);
-        }
-        return result;
-    }
-
-    private static string Sha256Hex(string input)
-    {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(input));
-        return Convert.ToHexStringLower(bytes);
     }
 
     private static async Task<HttpResponseMessage> ForwardRequestAsync(
@@ -239,19 +159,14 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
 
         foreach (var header in context.Request.Headers)
         {
-            if (string.Equals(header.Key, "Host", StringComparison.OrdinalIgnoreCase))
-                continue;
-            // Replace browser cookies with camera session cookie
-            if (string.Equals(header.Key, "Cookie", StringComparison.OrdinalIgnoreCase))
-                continue;
+            if (header.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)) continue;
+            if (header.Key.Equals("Cookie", StringComparison.OrdinalIgnoreCase)) continue;
             request.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
         }
 
-        // Attach the session cookie from our cache
-        if (_sessionCookies.TryGetValue(cameraIndex, out var sessionCookie))
-        {
-            request.Headers.TryAddWithoutValidation("Cookie", sessionCookie);
-        }
+        // Attach session cookie
+        if (_sessions.TryGetValue(cameraIndex, out var session))
+            request.Headers.TryAddWithoutValidation("Cookie", session.Cookie);
 
         if (context.Request.ContentLength > 0 || context.Request.Method is "POST" or "PUT" or "PATCH")
         {
@@ -264,21 +179,17 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
     }
 
     private static async Task WriteProxyResponseAsync(
-        HttpContext context, HttpResponseMessage response, int cameraIndex, string proxyPrefix)
+        HttpContext context, HttpResponseMessage response, int cameraIndex, string proxyPrefix, string username)
     {
         context.Response.StatusCode = (int)response.StatusCode;
 
         foreach (var header in response.Headers.Concat(response.Content.Headers))
         {
-            if (_stripHeaders.Any(h => string.Equals(h, header.Key, StringComparison.OrdinalIgnoreCase)))
-                continue;
-            if (string.Equals(header.Key, "Transfer-Encoding", StringComparison.OrdinalIgnoreCase))
-                continue;
-            if (string.Equals(header.Key, "Content-Length", StringComparison.OrdinalIgnoreCase))
-                continue;
+            if (_stripHeaders.Any(h => h.Equals(header.Key, StringComparison.OrdinalIgnoreCase))) continue;
+            if (header.Key.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase)) continue;
+            if (header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)) continue;
 
-            // Forward Set-Cookie with rewritten path
-            if (string.Equals(header.Key, "Set-Cookie", StringComparison.OrdinalIgnoreCase))
+            if (header.Key.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase))
             {
                 foreach (var val in header.Value)
                 {
@@ -290,14 +201,12 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
                 continue;
             }
 
-            if (string.Equals(header.Key, "Location", StringComparison.OrdinalIgnoreCase))
+            if (header.Key.Equals("Location", StringComparison.OrdinalIgnoreCase))
             {
                 var rewritten = header.Value.Select(v =>
-                {
-                    if (Uri.TryCreate(v, UriKind.Absolute, out var uri))
-                        return $"{proxyPrefix}{uri.PathAndQuery}";
-                    return $"{proxyPrefix}/{v.TrimStart('/')}";
-                });
+                    Uri.TryCreate(v, UriKind.Absolute, out var uri)
+                        ? $"{proxyPrefix}{uri.PathAndQuery}"
+                        : $"{proxyPrefix}/{v.TrimStart('/')}");
                 context.Response.Headers.Append(header.Key, rewritten.ToArray());
                 continue;
             }
@@ -310,6 +219,15 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         {
             var body = await response.Content.ReadAsStringAsync();
             body = AbsolutePathRegex().Replace(body, $"{proxyPrefix}/$1");
+
+            // Inject sessionStorage auth info into HTML pages so the camera's JS
+            // sees an authenticated session and doesn't redirect to login
+            if (contentType.Contains("html", StringComparison.OrdinalIgnoreCase) &&
+                _sessions.TryGetValue(cameraIndex, out var session))
+            {
+                body = InjectAuthScript(body, session, cameraIndex);
+            }
+
             await context.Response.WriteAsync(body);
         }
         else
@@ -318,8 +236,69 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
         }
     }
 
-    public static void ClearSession(int cameraIndex)
+    /// <summary>
+    /// Injects a script that sets sessionStorage "authInfo" and "localPluginAuthInfo"
+    /// matching what the camera's webAuth.js login flow would set.
+    /// This must run BEFORE the camera's own scripts.
+    /// </summary>
+    private static string InjectAuthScript(string html, CameraSession session, int cameraIndex)
     {
-        _sessionCookies.TryRemove(cameraIndex, out _);
+        var user = EscapeJs(session.Username);
+        var authInfo = "{\"isLogin\":true,\"authType\":4,\"auth\":\"\",\"userInfo\":\"" + user + ":\",\"szAESKey\":\"\"}";
+        var authInfoB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(authInfo));
+
+        var pluginInfo = "{\"sessionID\":\"" + EscapeJs(session.SessionID) +
+            "\",\"user\":\"" + user +
+            "\",\"challenge\":\"" + EscapeJs(session.Challenge) +
+            "\",\"iterations\":" + session.Iterations +
+            ",\"szRandom\":\"" + EscapeJs(session.Random) + "\"}";
+        var pluginInfoB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(pluginInfo));
+
+        var script = "<script>(function(){" +
+            "if(!sessionStorage.getItem(\"authInfo\")){" +
+            "sessionStorage.setItem(\"authInfo\",\"" + authInfoB64 + "\");" +
+            "sessionStorage.setItem(\"localPluginAuthInfo\",\"" + pluginInfoB64 + "\");" +
+            "}" +
+            "})();</script>\n";
+
+        // Insert before the first <script> tag so it runs before camera JS
+        var idx = html.IndexOf("<script", StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+            return html.Insert(idx, script);
+
+        // Fallback: insert before </head>
+        idx = html.IndexOf("</head>", StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+            return html.Insert(idx, script);
+
+        return html + script;
     }
+
+    // --- Hashing ---
+
+    private static string HashIrreversible(string username, string password, string salt, string challenge, int iterations)
+    {
+        var result = Sha256Hex(username + salt + password);
+        result = Sha256Hex(result + challenge);
+        for (var i = 2; i < iterations; i++)
+            result = Sha256Hex(result);
+        return result;
+    }
+
+    private static string HashLegacy(string password, string challenge, int iterations)
+    {
+        var result = Sha256Hex(password) + challenge;
+        for (var i = 1; i < iterations; i++)
+            result = Sha256Hex(result);
+        return result;
+    }
+
+    private static string Sha256Hex(string input) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(input)));
+
+    private static string EscapeJs(string value) =>
+        value.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\"", "\\\"");
+
+    public static void ClearSession(int cameraIndex) =>
+        _sessions.TryRemove(cameraIndex, out _);
 }
