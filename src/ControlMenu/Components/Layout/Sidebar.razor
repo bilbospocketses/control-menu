@@ -4,7 +4,7 @@
     <div class="sidebar-header">
         @if (!Collapsed)
         {
-            <span class="sidebar-title">Control Menu</span>
+            <a href="/" class="sidebar-title-link">Control Menu</a>
         }
         <button class="sidebar-toggle" @onclick="ToggleCollapsed" title="@(Collapsed ? "Expand sidebar" : "Collapse sidebar")">
             <i class="bi @(Collapsed ? "bi-chevron-right" : "bi-chevron-left")"></i>
@@ -28,7 +28,14 @@
             {
                 <div class="sidebar-group">
                     <div class="sidebar-group-header" @onclick="() => ToggleGroup(module.Id)">
-                        <i class="bi @module.Icon"></i>
+                        @if (ModuleImageMap.TryGetValue(module.Id, out var imgPath))
+                        {
+                            <img src="@imgPath" alt="" class="sidebar-module-icon" />
+                        }
+                        else
+                        {
+                            <i class="bi @module.Icon"></i>
+                        }
                         @if (!Collapsed)
                         {
                             <span>@module.DisplayName</span>
@@ -77,6 +84,12 @@
 @code {
     private bool Collapsed { get; set; }
     private readonly HashSet<string> _expandedGroups = new();
+
+    private static readonly Dictionary<string, string> ModuleImageMap = new()
+    {
+        ["android-devices"] = "/images/android-logo.svg",
+        ["jellyfin"] = "/images/jellyfin-logo.svg"
+    };
 
     private void ToggleCollapsed() => Collapsed = !Collapsed;
 

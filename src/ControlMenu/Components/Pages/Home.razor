@@ -10,12 +10,15 @@
 else
 {
     <div class="home-container">
-        <h1>Control Menu</h1>
-        <p class="home-subtitle">Manage your Android devices, media server, and utilities from one place.</p>
+        <div class="hero">
+            <img src="/icon-512.png" alt="Control Menu" class="hero-icon" />
+            <h1>Control Menu</h1>
+            <p class="hero-subtitle">Manage your Android devices, media server, and utilities from one place.</p>
+        </div>
 
         @if (ModuleDiscovery.Modules.Count == 0)
         {
-            <div class="home-empty-state">
+            <div class="empty-state">
                 <i class="bi bi-box-seam"></i>
                 <h2>No modules loaded</h2>
                 <p>No modules are currently loaded. Check your configuration or re-run the setup wizard.</p>
@@ -23,16 +26,38 @@ else
         }
         else
         {
-            <div class="home-module-grid">
+            <div class="module-grid">
                 @foreach (var module in ModuleDiscovery.Modules)
                 {
-                    <div class="home-module-card">
-                        <i class="bi @module.Icon"></i>
-                        <h3>@module.DisplayName</h3>
-                        <div class="module-nav-links">
+                    <div class="module-card">
+                        <div class="module-header">
+                            @if (ModuleImageMap.TryGetValue(module.Id, out var imagePath))
+                            {
+                                <img src="@imagePath" alt="@module.DisplayName" class="module-icon-img" />
+                            }
+                            else
+                            {
+                                <i class="bi @module.Icon module-icon-bi"></i>
+                            }
+                            <h3>@module.DisplayName</h3>
+                        </div>
+                        <div class="module-links">
                             @foreach (var entry in module.GetNavEntries().OrderBy(e => e.SortOrder))
                             {
-                                <a href="@entry.Href">@entry.Title</a>
+                                <a href="@entry.Href" class="pill-link">
+                                    @if (entry.Icon is not null)
+                                    {
+                                        @if (entry.Icon.StartsWith("bi-"))
+                                        {
+                                            <i class="bi @entry.Icon"></i>
+                                        }
+                                        else
+                                        {
+                                            <span class="pill-emoji">@entry.Icon</span>
+                                        }
+                                    }
+                                    <span>@entry.Title</span>
+                                </a>
                             }
                         </div>
                     </div>
@@ -50,6 +75,12 @@ else
     private IConfigurationService Config { get; set; } = default!;
 
     private bool _setupDone = true;
+
+    private static readonly Dictionary<string, string> ModuleImageMap = new()
+    {
+        ["android-devices"] = "/images/android-logo.svg",
+        ["jellyfin"] = "/images/jellyfin-logo.svg"
+    };
 
     protected override async Task OnInitializedAsync()
     {
