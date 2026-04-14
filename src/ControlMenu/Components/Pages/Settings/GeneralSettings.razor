@@ -51,7 +51,13 @@
                @onchange="SaveSmtpPassword" />
     </div>
     <div class="form-group">
-        <label>Default Notification Email</label>
+        <label>From Email</label>
+        <input type="email" class="form-control" style="max-width:300px;" value="@_fromEmail"
+               placeholder="noreply@yourdomain.com" @onchange="SaveFromEmail" />
+        <div class="form-hint">Sender address for outgoing emails. Must be authorized by your SMTP provider.</div>
+    </div>
+    <div class="form-group">
+        <label>Notification Email</label>
         <input type="email" class="form-control" style="max-width:300px;" value="@_notificationEmail"
                placeholder="you@example.com" @onchange="SaveNotificationEmail" />
         <div class="form-hint">Default recipient for all notification emails.</div>
@@ -76,6 +82,7 @@
     private string _smtpPort = "587";
     private string _smtpUsername = "";
     private string _smtpPassword = "";
+    private string _fromEmail = "";
     private string _notificationEmail = "";
     private bool _sendingTest;
     private string? _message;
@@ -88,6 +95,7 @@
         _smtpPort = await Config.GetSettingAsync("smtp-port") ?? "587";
         _smtpUsername = await Config.GetSettingAsync("smtp-username") ?? "";
         _smtpPassword = await Config.GetSecretAsync("smtp-password") ?? "";
+        _fromEmail = await Config.GetSettingAsync("smtp-from-email") ?? "";
         _notificationEmail = await Config.GetSettingAsync("notification-email") ?? "";
     }
 
@@ -132,6 +140,13 @@
             await Config.DeleteSettingAsync("smtp-password");
             ShowMessage("Password cleared.", false);
         }
+    }
+
+    private async Task SaveFromEmail(ChangeEventArgs e)
+    {
+        _fromEmail = e.Value?.ToString() ?? "";
+        await Config.SetSettingAsync("smtp-from-email", _fromEmail);
+        ShowMessage("Saved.", false);
     }
 
     private async Task SaveNotificationEmail(ChangeEventArgs e)

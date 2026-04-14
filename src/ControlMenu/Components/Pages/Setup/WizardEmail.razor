@@ -35,6 +35,14 @@
     </div>
 
     <div class="form-group">
+        <label>From Email</label>
+        <input type="email" class="form-control" style="max-width: 300px;"
+               placeholder="noreply@yourdomain.com"
+               @bind="_fromEmail" />
+        <div class="form-hint">Sender address. Must be authorized by your SMTP provider.</div>
+    </div>
+
+    <div class="form-group">
         <label>Notification Email</label>
         <input type="email" class="form-control" style="max-width: 300px;"
                placeholder="notifications@example.com"
@@ -64,6 +72,7 @@
     private int _smtpPort = 587;
     private string _smtpUsername = "";
     private string _smtpPassword = "";
+    private string _fromEmail = "";
     private string _notificationEmail = "";
     private bool _sendingTest;
     private string? _message;
@@ -73,6 +82,7 @@
         !string.IsNullOrWhiteSpace(_smtpServer) &&
         !string.IsNullOrWhiteSpace(_smtpUsername) &&
         !string.IsNullOrWhiteSpace(_smtpPassword) &&
+        !string.IsNullOrWhiteSpace(_fromEmail) &&
         !string.IsNullOrWhiteSpace(_notificationEmail);
 
     protected override async Task OnInitializedAsync()
@@ -82,6 +92,7 @@
         _smtpPort = int.TryParse(portStr, out var p) ? p : 587;
         _smtpUsername = await Config.GetSettingAsync("smtp-username") ?? "";
         _smtpPassword = await Config.GetSecretAsync("smtp-password") ?? "";
+        _fromEmail = await Config.GetSettingAsync("smtp-from-email") ?? "";
         _notificationEmail = await Config.GetSettingAsync("notification-email") ?? "";
         UpdateState();
     }
@@ -109,6 +120,8 @@
             await Config.SetSettingAsync("smtp-username", _smtpUsername.Trim());
         if (!string.IsNullOrWhiteSpace(_smtpPassword))
             await Config.SetSecretAsync("smtp-password", _smtpPassword.Trim());
+        if (!string.IsNullOrWhiteSpace(_fromEmail))
+            await Config.SetSettingAsync("smtp-from-email", _fromEmail.Trim());
         if (!string.IsNullOrWhiteSpace(_notificationEmail))
             await Config.SetSettingAsync("notification-email", _notificationEmail.Trim());
         UpdateState();

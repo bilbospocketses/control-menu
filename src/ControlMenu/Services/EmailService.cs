@@ -24,15 +24,16 @@ public class EmailService : IEmailService
         var portStr = await _config.GetSettingAsync("smtp-port");
         var username = await _config.GetSettingAsync("smtp-username");
         var password = await _config.GetSecretAsync("smtp-password");
+        var from = await _config.GetSettingAsync("smtp-from-email");
 
         if (string.IsNullOrEmpty(server) || string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
             return (false, "SMTP not configured. Set server, username, and password in Settings > General.");
 
+        if (string.IsNullOrWhiteSpace(from) || !from.Contains('@'))
+            return (false, "From email not configured. Set an authorized sender address in Settings > General.");
+
         if (string.IsNullOrWhiteSpace(to) || !to.Contains('@'))
             return (false, $"Invalid recipient address: \"{to}\". Set a valid notification email in Settings > General.");
-
-        // Use username as from address if it looks like an email, otherwise use notification-email
-        var from = username.Contains('@') ? username : to;
 
         var port = int.TryParse(portStr, out var p) ? p : 587;
 
