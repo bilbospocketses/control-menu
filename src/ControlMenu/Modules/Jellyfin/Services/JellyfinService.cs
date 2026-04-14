@@ -55,10 +55,13 @@ public class JellyfinService : IJellyfinService
 
     public async Task<bool> WaitForContainerReadyAsync(string containerId, int timeoutSeconds = 60, CancellationToken ct = default)
     {
+        var since = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
         var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
+        // Initial delay — give container time to begin writing new logs
+        await Task.Delay(3000, ct);
         while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
         {
-            var result = await _executor.ExecuteAsync("docker", $"logs --tail 20 {containerId}", null, ct);
+            var result = await _executor.ExecuteAsync("docker", $"logs --since {since} {containerId}", null, ct);
             if (result.StandardOutput.Contains("Startup complete"))
                 return true;
             await Task.Delay(2000, ct);
