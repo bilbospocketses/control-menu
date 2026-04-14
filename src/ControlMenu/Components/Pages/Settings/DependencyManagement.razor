@@ -295,6 +295,7 @@
         _installPaths[name] = newPath;
         if (!string.IsNullOrEmpty(newPath))
             await DepManager.SetInstallPathAsync(name, newPath);
+        ShowSaveMessage($"{name} install path saved.");
     }
 
     private async Task ResetPath(string name, string moduleId)
@@ -302,6 +303,18 @@
         await DepManager.SetInstallPathAsync(name, "");
         var defaultPath = DepManager.GetInstallPath(name, moduleId) ?? "";
         _installPaths[name] = defaultPath;
+        ShowSaveMessage($"{name} path reset to default.");
+    }
+
+    private void ShowSaveMessage(string msg)
+    {
+        _message = msg;
+        _messageIsError = false;
+        _ = Task.Delay(3000).ContinueWith(_ => InvokeAsync(() =>
+        {
+            _message = null;
+            StateHasChanged();
+        }));
     }
 
     private static string GetStatusClass(DependencyStatus status) => status switch
