@@ -103,17 +103,21 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
 
     /// <summary>
     /// Performs the Hikvision ISAPI session login challenge-response flow.
-    /// Returns the full Set-Cookie header value on success, or null on failure.
+    /// Algorithm reverse-engineered from camera's webAuth.js and utils.js encodePwd.
+    /// Returns the full cookie name=value on success, or null on failure.
     /// </summary>
     private async Task<string?> PerformSessionLoginAsync(HttpClient client, string username, string password, int cameraIndex)
     {
         try
         {
-            // Step 1: Get capabilities (challenge, salt, iterations, sessionID)
-            var capResponse = await client.GetAsync("/ISAPI/Security/sessionLogin/capabilities");
+            // Step 1: GET capabilities with username + random query params
+            // The camera returns a fresh salt/challenge per request when username is provided
+            var random = Random.Shared.Next(10000000, 99999999).ToString();
+            var capResponse = await client.GetAsync(
+                $"/ISAPI/Security/sessionLogin/capabilities?username={Uri.EscapeDataString(username)}&random={random}");
             if (!capResponse.IsSuccessStatusCode)
             {
-                logger.LogWarning("Camera {Index} sessionLogin capabilities returned {Status}", cameraIndex, capResponse.StatusCode);
+                logger.LogWarning("Camera {Index} capabilities returned {Status}", cameraIndex, capResponse.StatusCode);
                 return null;
             }
 
@@ -126,6 +130,8 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
             var salt = doc.Root?.Element(ns + "salt")?.Value;
             var iterationsStr = doc.Root?.Element(ns + "iterations")?.Value;
             var isIrreversible = doc.Root?.Element(ns + "isIrreversible")?.Value;
+            var sessionIDVersion = doc.Root?.Element(ns + "sessionIDVersion")?.Value ?? "2";
+            var isValidLongTerm = doc.Root?.Element(ns + "isSessionIDValidLongTerm")?.Value ?? "false";
 
             if (sessionID is null || challenge is null)
             {
@@ -135,45 +141,43 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
 
             var iterations = int.TryParse(iterationsStr, out var iter) ? iter : 100;
 
-            // Step 2: Hash password using Hikvision's challenge-response
+            // Step 2: Hash password (matches utils.js encodePwd exactly)
             string hashedPassword;
             if (string.Equals(isIrreversible, "true", StringComparison.OrdinalIgnoreCase) && salt is not null)
             {
-                // Irreversible mode: SHA-256 with salt and iterations
                 hashedPassword = HashPasswordIrreversible(username, password, salt, challenge, iterations);
             }
             else
             {
-                // Legacy mode: simple SHA-256(password) + challenge
-                hashedPassword = HashPasswordLegacy(password, challenge);
+                hashedPassword = HashPasswordLegacy(password, challenge, iterations);
             }
 
-            // Step 3: POST session login with hashed password
-            var loginXml = $@"<SessionLogin>
-<userName>{username}</userName>
-<password>{hashedPassword}</password>
-<sessionID>{sessionID}</sessionID>
-</SessionLogin>";
+            // Step 3: POST session login — NO digest auth on this request
+            // Must include sessionIDVersion and isSessionIDValidLongTerm
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
+            var loginXml = $"<SessionLogin><userName>{username}</userName><password>{hashedPassword}</password><sessionID>{sessionID}</sessionID><isSessionIDValidLongTerm>{isValidLongTerm}</isSessionIDValidLongTerm><sessionIDVersion>{sessionIDVersion}</sessionIDVersion></SessionLogin>";
 
+            // Use a plain HttpClient without digest auth for the POST
+            using var plainClient = new HttpClient { BaseAddress = client.BaseAddress, Timeout = TimeSpan.FromSeconds(15) };
             var loginContent = new StringContent(loginXml, Encoding.UTF8, "application/xml");
-            var loginResponse = await client.PostAsync("/ISAPI/Security/sessionLogin", loginContent);
+            var loginResponse = await plainClient.PostAsync(
+                $"/ISAPI/Security/sessionLogin?timeStamp={timestamp}", loginContent);
 
             if (loginResponse.IsSuccessStatusCode)
             {
-                // Extract Set-Cookie header
                 if (loginResponse.Headers.TryGetValues("Set-Cookie", out var cookies))
                 {
                     var cookie = cookies.FirstOrDefault(c =>
                         c.Contains("WebSession", StringComparison.OrdinalIgnoreCase));
                     if (cookie is not null)
                     {
-                        var cookieValue = cookie.Split(';')[0]; // Just name=value
+                        var cookieValue = cookie.Split(';')[0];
                         logger.LogInformation("Camera {Index} ISAPI session login succeeded", cameraIndex);
                         return cookieValue;
                     }
                 }
 
-                logger.LogWarning("Camera {Index} session login succeeded but no WebSession cookie in response", cameraIndex);
+                logger.LogWarning("Camera {Index} login succeeded but no WebSession cookie", cameraIndex);
             }
             else
             {
@@ -191,31 +195,35 @@ public partial class CameraProxyMiddleware(RequestDelegate next, ILogger<CameraP
     }
 
     /// <summary>
-    /// Hikvision irreversible password hashing: SHA256(SHA256(username + salt + password) + challenge)
-    /// with multiple iterations.
+    /// Hikvision irreversible password hashing (matches utils.js encodePwd):
+    /// 1. SHA256(username + salt + password)
+    /// 2. SHA256(result + challenge)
+    /// 3. SHA256(result) repeated for remaining iterations
     /// </summary>
     private static string HashPasswordIrreversible(string username, string password, string salt, string challenge, int iterations)
     {
-        // Initial hash: SHA256(password)
-        var passwordHash = Sha256Hex(password);
-
-        // Iterate: SHA256(username + salt + passwordHash)
-        var result = passwordHash;
-        for (var i = 1; i < iterations; i++)
+        var result = Sha256Hex(username + salt + password);
+        result = Sha256Hex(result + challenge);
+        for (var i = 2; i < iterations; i++)
         {
-            result = Sha256Hex(username + salt + result);
+            result = Sha256Hex(result);
         }
-
-        // Final: SHA256(result + challenge)
-        return Sha256Hex(result + challenge);
+        return result;
     }
 
     /// <summary>
-    /// Legacy (reversible) password hashing: SHA256(password + challenge)
+    /// Legacy (reversible) password hashing (matches utils.js encodePwd non-irreversible):
+    /// 1. SHA256(password) + challenge
+    /// 2. SHA256(result) repeated for remaining iterations
     /// </summary>
-    private static string HashPasswordLegacy(string password, string challenge)
+    private static string HashPasswordLegacy(string password, string challenge, int iterations)
     {
-        return Sha256Hex(password + challenge);
+        var result = Sha256Hex(password) + challenge;
+        for (var i = 1; i < iterations; i++)
+        {
+            result = Sha256Hex(result);
+        }
+        return result;
     }
 
     private static string Sha256Hex(string input)
