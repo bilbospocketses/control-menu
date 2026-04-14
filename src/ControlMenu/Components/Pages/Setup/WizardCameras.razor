@@ -1,0 +1,102 @@
+@using ControlMenu.Modules.Cameras
+@using ControlMenu.Modules.Cameras.Services
+@inject ICameraService CameraService
+
+<div class="settings-section">
+    <h2>Cameras</h2>
+    <p>Configure your CCTV cameras. Each camera needs a name, IP address, and login credentials. You can add or change these later in Settings.</p>
+
+    @for (var i = 1; i <= ICameraService.MaxCameras; i++)
+    {
+        var index = i;
+        <details class="camera-wizard-slot">
+            <summary>Camera @index @(string.IsNullOrEmpty(_names[index]) ? "" : $"— {_names[index]}")</summary>
+            <div class="camera-wizard-fields">
+                <div class="form-group">
+                    <label>Name</label>
+                    <input class="form-control" @bind="_names[index]" placeholder="e.g. Front Door" />
+                </div>
+                <div class="form-group">
+                    <label>IP Address</label>
+                    <input class="form-control" @bind="_ips[index]" placeholder="e.g. 192.168.86.101" />
+                </div>
+                <div class="form-group">
+                    <label>Port</label>
+                    <input class="form-control" type="number" @bind="_ports[index]" />
+                </div>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input class="form-control" @bind="_usernames[index]" placeholder="admin" />
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input class="form-control" type="password" @bind="_passwords[index]" placeholder="password" />
+                </div>
+            </div>
+        </details>
+    }
+</div>
+
+@code {
+    private readonly Dictionary<int, string> _names = new();
+    private readonly Dictionary<int, string> _ips = new();
+    private readonly Dictionary<int, int> _ports = new();
+    private readonly Dictionary<int, string> _usernames = new();
+    private readonly Dictionary<int, string> _passwords = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        for (var i = 1; i <= ICameraService.MaxCameras; i++)
+        {
+            var cam = await CameraService.GetCameraAsync(i);
+            _names[i] = cam?.Name ?? "";
+            _ips[i] = cam?.IpAddress ?? "";
+            _ports[i] = cam?.Port ?? 80;
+
+            var creds = await CameraService.GetCredentialsAsync(i);
+            _usernames[i] = creds?.Username ?? "";
+            _passwords[i] = creds?.Password ?? "";
+        }
+    }
+
+    public async Task SaveAsync()
+    {
+        for (var i = 1; i <= ICameraService.MaxCameras; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(_names[i]) && !string.IsNullOrWhiteSpace(_ips[i]))
+            {
+                await CameraService.SaveCameraAsync(i, _names[i].Trim(), _ips[i].Trim(), _ports[i]);
+            }
+            if (!string.IsNullOrWhiteSpace(_usernames[i]) && !string.IsNullOrWhiteSpace(_passwords[i]))
+            {
+                await CameraService.SaveCredentialsAsync(i, _usernames[i], _passwords[i]);
+            }
+        }
+    }
+}
+
+<style>
+    .camera-wizard-slot {
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .camera-wizard-slot summary {
+        cursor: pointer;
+        font-weight: 500;
+        padding: 0.4rem 0;
+    }
+
+    .camera-wizard-fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+        padding: 0.75rem 0;
+    }
+
+    .camera-wizard-fields .form-group:first-child {
+        grid-column: 1 / -1;
+    }
+</style>
