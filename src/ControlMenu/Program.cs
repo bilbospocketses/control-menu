@@ -121,6 +121,10 @@ using (var scope = app.Services.CreateScope())
 
     var depManager = scope.ServiceProvider.GetRequiredService<IDependencyManagerService>();
     await depManager.SyncDependenciesAsync();
+
+    // Load camera count for sidebar nav entries (module can't do async)
+    var cameraService = scope.ServiceProvider.GetRequiredService<ICameraService>();
+    CamerasModule.CameraCount = await cameraService.GetCameraCountAsync();
 }
 
 await app.RunAsync();

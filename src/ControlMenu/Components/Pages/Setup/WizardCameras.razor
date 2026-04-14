@@ -6,7 +6,12 @@
     <h2>Cameras</h2>
     <p>Configure your CCTV cameras. Each camera needs a name, IP address, and login credentials. You can add or change these later in Settings.</p>
 
-    @for (var i = 1; i <= ICameraService.MaxCameras; i++)
+    <div class="form-group" style="margin-bottom: 1rem;">
+        <label>Number of cameras</label>
+        <input class="form-control" type="number" min="1" @bind="_cameraCount" style="width: 80px;" />
+    </div>
+
+    @for (var i = 1; i <= _cameraCount; i++)
     {
         var index = i;
         <details class="camera-wizard-slot">
@@ -38,6 +43,7 @@
 </div>
 
 @code {
+    private int _cameraCount;
     private readonly Dictionary<int, string> _names = new();
     private readonly Dictionary<int, string> _ips = new();
     private readonly Dictionary<int, int> _ports = new();
@@ -46,7 +52,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        for (var i = 1; i <= ICameraService.MaxCameras; i++)
+        _cameraCount = await CameraService.GetCameraCountAsync();
+        for (var i = 1; i <= _cameraCount; i++)
         {
             var cam = await CameraService.GetCameraAsync(i);
             _names[i] = cam?.Name ?? "";
@@ -61,15 +68,20 @@
 
     public async Task SaveAsync()
     {
-        for (var i = 1; i <= ICameraService.MaxCameras; i++)
+        await CameraService.SetCameraCountAsync(_cameraCount);
+        CamerasModule.CameraCount = _cameraCount;
+
+        for (var i = 1; i <= _cameraCount; i++)
         {
-            if (!string.IsNullOrWhiteSpace(_names[i]) && !string.IsNullOrWhiteSpace(_ips[i]))
+            if (_names.TryGetValue(i, out var name) && _ips.TryGetValue(i, out var ip)
+                && !string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(ip))
             {
-                await CameraService.SaveCameraAsync(i, _names[i].Trim(), _ips[i].Trim(), _ports[i]);
+                await CameraService.SaveCameraAsync(i, name.Trim(), ip.Trim(), _ports.GetValueOrDefault(i, 80));
             }
-            if (!string.IsNullOrWhiteSpace(_usernames[i]) && !string.IsNullOrWhiteSpace(_passwords[i]))
+            if (_usernames.TryGetValue(i, out var user) && _passwords.TryGetValue(i, out var pass)
+                && !string.IsNullOrWhiteSpace(user) && !string.IsNullOrWhiteSpace(pass))
             {
-                await CameraService.SaveCredentialsAsync(i, _usernames[i], _passwords[i]);
+                await CameraService.SaveCredentialsAsync(i, user, pass);
             }
         }
     }

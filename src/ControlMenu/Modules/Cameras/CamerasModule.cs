@@ -1,3 +1,5 @@
+using ControlMenu.Modules.Cameras.Services;
+
 namespace ControlMenu.Modules.Cameras;
 
 public class CamerasModule : IToolModule
@@ -7,12 +9,18 @@ public class CamerasModule : IToolModule
     public string Icon => "bi-camera-video";
     public int SortOrder => 4;
 
+    /// <summary>
+    /// Set by Program.cs on startup from the camera-count setting.
+    /// Used by GetNavEntries() which can't do async.
+    /// </summary>
+    public static int CameraCount { get; set; } = ICameraService.DefaultCameraCount;
+
     public IEnumerable<ModuleDependency> Dependencies => [];
     public IEnumerable<ConfigRequirement> ConfigRequirements => [];
 
     public IEnumerable<NavEntry> GetNavEntries()
     {
-        for (var i = 1; i <= 8; i++)
+        for (var i = 1; i <= CameraCount; i++)
             yield return new NavEntry($"Camera {i}", $"/cameras/{i}", "📷", i);
     }
 

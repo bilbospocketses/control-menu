@@ -2,7 +2,9 @@ namespace ControlMenu.Modules.Cameras.Services;
 
 public interface ICameraService
 {
-    const int MaxCameras = 8;
+    const int DefaultCameraCount = 8;
+    Task<int> GetCameraCountAsync();
+    Task SetCameraCountAsync(int count);
     Task<CameraConfig?> GetCameraAsync(int index);
     Task<List<CameraConfig>> GetConfiguredCamerasAsync();
     Task SaveCameraAsync(int index, string name, string ipAddress, int port);

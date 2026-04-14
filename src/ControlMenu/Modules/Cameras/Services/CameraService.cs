@@ -6,6 +6,17 @@ public class CameraService(IConfigurationService config) : ICameraService
 {
     private const string Module = "cameras";
 
+    public async Task<int> GetCameraCountAsync()
+    {
+        var val = await config.GetSettingAsync("camera-count", Module);
+        return int.TryParse(val, out var count) ? count : ICameraService.DefaultCameraCount;
+    }
+
+    public async Task SetCameraCountAsync(int count)
+    {
+        await config.SetSettingAsync("camera-count", Math.Max(1, count).ToString(), Module);
+    }
+
     public async Task<CameraConfig?> GetCameraAsync(int index)
     {
         var name = await config.GetSettingAsync($"camera-{index}-name", Module);
@@ -20,7 +31,8 @@ public class CameraService(IConfigurationService config) : ICameraService
     public async Task<List<CameraConfig>> GetConfiguredCamerasAsync()
     {
         var cameras = new List<CameraConfig>();
-        for (var i = 1; i <= ICameraService.MaxCameras; i++)
+        var count = await GetCameraCountAsync();
+        for (var i = 1; i <= count; i++)
         {
             var cam = await GetCameraAsync(i);
             if (cam is not null)

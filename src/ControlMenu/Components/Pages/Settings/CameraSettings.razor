@@ -2,40 +2,52 @@
 @using ControlMenu.Modules.Cameras.Services
 
 <h2>Cameras</h2>
-<p>Configure up to 8 CCTV cameras. Each camera needs a name, IP address, and login credentials.</p>
+<p>Configure your CCTV cameras. Each camera needs a name, IP address, and login credentials.</p>
 
-@for (var i = 1; i <= ICameraService.MaxCameras; i++)
+<div class="form-row" style="margin-bottom: 1rem;">
+    <label>Number of cameras</label>
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+        <input class="form-control" type="number" min="1" value="@_cameraCount"
+               @onchange="OnCountChanged" style="width: 80px;" />
+        @if (_countSaved)
+        {
+            <span class="save-confirm">Saved — refresh page to update sidebar</span>
+        }
+    </div>
+</div>
+
+@for (var i = 1; i <= _cameraCount; i++)
 {
     var index = i;
     <div class="camera-settings-card">
         <h3>Camera @index</h3>
         <div class="form-row">
             <label>Name</label>
-            <input class="form-control" value="@_names[index]"
+            <input class="form-control" value="@GetValue(_names, index)"
                    @onchange="e => _names[index] = e.Value?.ToString() ?? string.Empty"
                    placeholder="e.g. Front Door" />
         </div>
         <div class="form-row">
             <label>IP Address</label>
-            <input class="form-control" value="@_ips[index]"
+            <input class="form-control" value="@GetValue(_ips, index)"
                    @onchange="e => _ips[index] = e.Value?.ToString() ?? string.Empty"
                    placeholder="e.g. 192.168.86.101" />
         </div>
         <div class="form-row">
             <label>Port</label>
-            <input class="form-control" type="number" value="@_ports[index]"
+            <input class="form-control" type="number" value="@GetIntValue(_ports, index, 80)"
                    @onchange="e => _ports[index] = int.TryParse(e.Value?.ToString(), out var p) ? p : 80"
                    placeholder="80" />
         </div>
         <div class="form-row">
             <label>Username</label>
-            <input class="form-control" value="@_usernames[index]"
+            <input class="form-control" value="@GetValue(_usernames, index)"
                    @onchange="e => _usernames[index] = e.Value?.ToString() ?? string.Empty"
                    placeholder="admin" />
         </div>
         <div class="form-row">
             <label>Password</label>
-            <input class="form-control" type="password" value="@_passwords[index]"
+            <input class="form-control" type="password" value="@GetValue(_passwords, index)"
                    @onchange="e => _passwords[index] = e.Value?.ToString() ?? string.Empty"
                    placeholder="password" />
         </div>
@@ -52,6 +64,8 @@
 @code {
     [Inject] private ICameraService CameraService { get; set; } = default!;
 
+    private int _cameraCount;
+    private bool _countSaved;
     private readonly Dictionary<int, string> _names = new();
     private readonly Dictionary<int, string> _ips = new();
     private readonly Dictionary<int, int> _ports = new();
@@ -62,16 +76,37 @@
 
     protected override async Task OnInitializedAsync()
     {
-        for (var i = 1; i <= ICameraService.MaxCameras; i++)
-        {
-            var cam = await CameraService.GetCameraAsync(i);
-            _names[i] = cam?.Name ?? "";
-            _ips[i] = cam?.IpAddress ?? "";
-            _ports[i] = cam?.Port ?? 80;
+        _cameraCount = await CameraService.GetCameraCountAsync();
+        for (var i = 1; i <= _cameraCount; i++)
+            await LoadCamera(i);
+    }
 
-            var creds = await CameraService.GetCredentialsAsync(i);
-            _usernames[i] = creds?.Username ?? "";
-            _passwords[i] = creds?.Password ?? "";
+    private async Task LoadCamera(int i)
+    {
+        var cam = await CameraService.GetCameraAsync(i);
+        _names[i] = cam?.Name ?? "";
+        _ips[i] = cam?.IpAddress ?? "";
+        _ports[i] = cam?.Port ?? 80;
+
+        var creds = await CameraService.GetCredentialsAsync(i);
+        _usernames[i] = creds?.Username ?? "";
+        _passwords[i] = creds?.Password ?? "";
+    }
+
+    private async Task OnCountChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var count) && count >= 1)
+        {
+            var oldCount = _cameraCount;
+            _cameraCount = count;
+            await CameraService.SetCameraCountAsync(count);
+            CamerasModule.CameraCount = count;
+
+            // Load any new slots
+            for (var i = oldCount + 1; i <= count; i++)
+                await LoadCamera(i);
+
+            _countSaved = true;
         }
     }
 
@@ -79,13 +114,14 @@
     {
         _saving = true;
         _savedIndex = null;
+        _countSaved = false;
         StateHasChanged();
 
-        if (!string.IsNullOrWhiteSpace(_names[index]) && !string.IsNullOrWhiteSpace(_ips[index]))
+        if (!string.IsNullOrWhiteSpace(GetValue(_names, index)) && !string.IsNullOrWhiteSpace(GetValue(_ips, index)))
         {
-            await CameraService.SaveCameraAsync(index, _names[index].Trim(), _ips[index].Trim(), _ports[index]);
+            await CameraService.SaveCameraAsync(index, _names[index].Trim(), _ips[index].Trim(), GetIntValue(_ports, index, 80));
         }
-        if (!string.IsNullOrWhiteSpace(_usernames[index]) && !string.IsNullOrWhiteSpace(_passwords[index]))
+        if (!string.IsNullOrWhiteSpace(GetValue(_usernames, index)) && !string.IsNullOrWhiteSpace(GetValue(_passwords, index)))
         {
             await CameraService.SaveCredentialsAsync(index, _usernames[index], _passwords[index]);
             CameraProxyMiddleware.ClearSession(index);
@@ -94,4 +130,10 @@
         _savedIndex = index;
         _saving = false;
     }
+
+    private static string GetValue(Dictionary<int, string> dict, int key) =>
+        dict.TryGetValue(key, out var val) ? val : "";
+
+    private static int GetIntValue(Dictionary<int, int> dict, int key, int fallback) =>
+        dict.TryGetValue(key, out var val) ? val : fallback;
 }
