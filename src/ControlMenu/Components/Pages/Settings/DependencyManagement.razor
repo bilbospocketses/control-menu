@@ -70,6 +70,13 @@
                                     @(_updatingId == dep.Id ? "Updating..." : "Update")
                                 </button>
                             }
+                            else if (dep.InstalledVersion is null && DepManager.CanAutoInstall(dep.Name, dep.ModuleId))
+                            {
+                                <button class="btn btn-primary btn-sm" @onclick="() => StartUpdate(dep)"
+                                        disabled="@(_updatingId == dep.Id)">
+                                    @(_updatingId == dep.Id ? "Installing..." : "Install")
+                                </button>
+                            }
                             <button class="btn btn-secondary btn-sm" @onclick="() => CheckOne(dep.Id)"
                                     disabled="@(_checkingId == dep.Id)">
                                 @(_checkingId == dep.Id ? "..." : "Check")
@@ -98,7 +105,7 @@
                 }
                 else
                 {
-                    <h3>Download Update</h3>
+                    <h3>Download &amp; Install</h3>
                     <p>Download <code>@_resolvedAsset.FileName</code> (@FormatSize(_resolvedAsset.SizeBytes))?</p>
                     <div class="modal-actions">
                         <button class="btn btn-primary" @onclick="ConfirmDownload">Download</button>

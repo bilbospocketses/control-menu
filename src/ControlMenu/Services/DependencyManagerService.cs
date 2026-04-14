@@ -269,25 +269,24 @@ public class DependencyManagerService : IDependencyManagerService
             var newVersion = ExtractVersion(verifyResult.StandardOutput, moduleDep.VersionPattern);
 
             // 4. Swap — backup old, move in new
-            if (Directory.Exists(moduleDep.InstallPath))
-            {
-                // Backup old files
-                foreach (var file in GetManagedFiles(moduleDep))
-                {
-                    var fullPath = Path.Combine(moduleDep.InstallPath, file);
-                    if (File.Exists(fullPath))
-                        File.Move(fullPath, fullPath + ".bak", overwrite: true);
-                }
+            Directory.CreateDirectory(moduleDep.InstallPath);
 
-                // Copy new files — find the subdirectory in extracted (e.g., platform-tools/)
-                var sourceDir = FindInstallSource(extractDir, moduleDep.ExecutableName);
-                if (sourceDir is not null)
+            // Backup old files if upgrading
+            foreach (var file in GetManagedFiles(moduleDep))
+            {
+                var fullPath = Path.Combine(moduleDep.InstallPath, file);
+                if (File.Exists(fullPath))
+                    File.Move(fullPath, fullPath + ".bak", overwrite: true);
+            }
+
+            // Copy new files — find the subdirectory in extracted (e.g., platform-tools/)
+            var sourceDir = FindInstallSource(extractDir, moduleDep.ExecutableName);
+            if (sourceDir is not null)
+            {
+                foreach (var file in Directory.GetFiles(sourceDir))
                 {
-                    foreach (var file in Directory.GetFiles(sourceDir))
-                    {
-                        File.Copy(file, Path.Combine(moduleDep.InstallPath, Path.GetFileName(file)),
-                            overwrite: true);
-                    }
+                    File.Copy(file, Path.Combine(moduleDep.InstallPath, Path.GetFileName(file)),
+                        overwrite: true);
                 }
             }
 
@@ -615,6 +614,17 @@ public class DependencyManagerService : IDependencyManagerService
             .FirstOrDefault(m => m.Id == moduleId)
             ?.Dependencies
             .FirstOrDefault(d => d.Name == name);
+    }
+
+    public bool CanAutoInstall(string name, string moduleId)
+    {
+        var dep = FindModuleDependency(moduleId, name);
+        return dep?.InstallPath is not null && dep.SourceType != UpdateSourceType.Manual;
+    }
+
+    public string? GetInstallPath(string name, string moduleId)
+    {
+        return FindModuleDependency(moduleId, name)?.InstallPath;
     }
 
     private static int CompareVersions(string? installed, string? latest)
