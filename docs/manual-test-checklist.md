@@ -7,9 +7,12 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 ## 1. Startup & Home Page
 
 - [ ] App starts without errors in console
-- [ ] Home page loads, shows module cards (Android Devices, Jellyfin, Utilities)
+- [ ] Home page loads with hero section (app icon, title, subtitle)
+- [ ] Module cards display: Android Devices, Cameras, Jellyfin, Utilities
+- [ ] Settings card displays with links to: General, Devices, Jellyfin, Dependencies, Cameras
+- [ ] Each module card shows brand logo (Android robot SVG, Jellyfin logo SVG, etc.)
+- [ ] Pill-button navigation inside each card works (links to correct pages)
 - [ ] "No modules loaded" message does NOT show (verifies module discovery works)
-- [ ] No "Phase 2+" text visible anywhere
 
 ## 2. Theme & Layout
 
@@ -21,7 +24,19 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Emoji icons show in sidebar (not Bootstrap Icons)
 - [ ] **Page title in TopBar updates** when navigating to different pages (not stuck on "Home")
 
-## 3. Settings > General
+## 3. Sidebar Persistence & Navigation
+
+- [ ] First visit: all module groups expanded by default
+- [ ] Collapse a module group, refresh page — group stays collapsed
+- [ ] Expand/Collapse All button visible when sidebar is expanded
+- [ ] Click "Collapse all" — all groups collapse, button changes to "Expand all"
+- [ ] Click "Expand all" — all groups expand
+- [ ] Expand/collapse state persists across page refresh (check `sidebar-expanded-groups` in localStorage)
+- [ ] Collapsed sidebar (pill mode): expand/collapse all button is hidden
+- [ ] App icon visible in sidebar header when expanded
+- [ ] "Control Menu" title in sidebar is a clickable link to home
+
+## 4. Settings > General
 
 - [ ] Theme toggle works from settings
 - [ ] SMTP server field: type a value, tab out — "Saved." appears, **value stays** (does not revert)
@@ -33,7 +48,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] "Send Test Email" button — shows result (success or failure message)
 - [ ] "Re-run Setup Wizard" button — navigates to wizard
 
-## 4. Settings > Devices
+## 5. Settings > Devices
 
 - [ ] Existing devices appear in the table
 - [ ] Click "Add Device" — form appears
@@ -42,8 +57,21 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] **Edit a field, click Cancel** — original value is unchanged in the table (not mutated)
 - [ ] Edit a field, click Save — change is persisted
 - [ ] Delete a device — removed from table
+- [ ] For Android Phone devices: "Screen Lock PIN" field appears (password type, stored encrypted)
 
-## 5. Settings > Jellyfin
+## 6. Settings > Cameras
+
+- [ ] Page loads at `/settings/cameras` with camera slots (default 8)
+- [ ] Each camera slot has: Name, IP Address, RTSP Port (default 554), Username, Password
+- [ ] Fill Camera 1: name + IP + credentials, click "Save Camera 1" — "Saved" appears
+- [ ] Reload page — saved values restored
+- [ ] Save camera with name + IP but no credentials — config saves, camera not added to go2rtc
+- [ ] Change camera count, save — "Saved — refresh page to update sidebar" message
+- [ ] Refresh page — sidebar shows correct number of camera entries
+- [ ] Camera names appear in sidebar (e.g., "Front Door" instead of "Camera 1")
+- [ ] Password field obscures input
+
+## 7. Settings > Jellyfin
 
 - [ ] Compose file path + Parse button works (if docker-compose.yml exists)
 - [ ] Container name and DB path auto-populate from compose parse
@@ -53,7 +81,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Backup retention setting saves
 - [ ] Managed directories section shows stats (if dirs exist)
 
-## 6. Settings > Dependencies
+## 8. Settings > Dependencies
 
 - [ ] Dependencies table loads with status badges
 - [ ] **Status badges are styled** (colored pills, not plain text)
@@ -62,32 +90,64 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] **Update dialog** has proper overlay + centered layout (not unstyled)
 - [ ] **Disabled buttons** appear visually dimmed (not identical to enabled)
 
-## 7. Setup Wizard (re-run from Settings > General)
+## 9. Setup Wizard (re-run from Settings > General)
 
 - [ ] Step 1 (Welcome) loads
 - [ ] Step 2 (Devices): Add a device, advance to Step 3, **click Back** — device still visible in table
-- [ ] Step 3 (Services): defaults show as "configured" count
-- [ ] Step 4 (Dependencies): scan runs, found items show green "Found" badges
-- [ ] Step 4: For any "Not Found" item — click "Enter Path...", enter a valid path, click OK — validates and shows version
-- [ ] Step 5 (Done) — shows summary, "Finish" completes wizard
+- [ ] Step 3 (Cameras): camera slots appear, fill details for Camera 1
+- [ ] Step 3: leave others empty, advance — only filled cameras are saved
+- [ ] Step 3: click Back to Step 2, then forward — Camera 1 data persists
+- [ ] Step 4 (Jellyfin): settings show as configured
+- [ ] Step 5 (Email): SMTP fields and notification email
+- [ ] Step 6 (Dependencies): scan runs, found items show green "Found" badges
+- [ ] Step 6: For any "Not Found" item — click "Enter Path...", enter a valid path, click OK — validates and shows version
+- [ ] Step 7 (Done) — shows summary, "Finish" completes wizard
 
-## 8. Android > Google TV Dashboard
+## 10. Android > Google TV Dashboard
 
 - [ ] Page loads without errors
 - [ ] If device connected: controls appear, power status dot is colored
 - [ ] Screensaver shows actual state (not always "Google" — may show "Unknown" if disconnected)
 - [ ] Status messages appear and auto-dismiss after 5 seconds
 - [ ] Screen mirror iframe loads (if ws-scrcpy-web is configured)
+- [ ] **Mouse clicks in mirror control the TV** (left-click = tap, right-click = back, middle = home)
+- [ ] **Clicks continue working after quality protection stream refresh** (no dead clicks)
 - [ ] Navigate away and back — no console errors about disposed components
 
-## 9. Android > Android Phone Dashboard
+## 11. Android > Android Phone Dashboard
 
 - [ ] Page loads
 - [ ] "Reset ADB Port" uses the device's configured port (check the status message)
 - [ ] Connect/disconnect works
-- [ ] Screen mirror loads
+- [ ] Screen mirror loads in portrait orientation
+- [ ] Mirror panel sizes dynamically from actual device screen dimensions (no black bars)
+- [ ] **USB Setup Wizard:** "Enable Wireless ADB" button opens wizard
+  - [ ] Step 1: "I've Connected" button, detects USB device
+  - [ ] Step 2: runs `adb tcpip`, shows spinner, then success
+  - [ ] Step 3: "Disconnect USB cable", resolves IP from MAC or shows manual IP field
+  - [ ] Step 3: "Connect Wirelessly" completes the setup
+- [ ] **Phone Unlock:** If PIN configured, "Unlock" button sends PIN via ADB
+- [ ] **Phone Unlock:** If no PIN, shows "Set PIN in Settings" link
 
-## 10. Jellyfin > DB Date Update
+## 12. Cameras > Camera View
+
+- [ ] Navigate to `/cameras/1` with unconfigured camera — "Camera 1 not configured" message with link to settings
+- [ ] Configure Camera 1 with name, IP, credentials — save, refresh, navigate to `/cameras/1`
+- [ ] Configured camera shows iframe with RTSP stream via go2rtc
+- [ ] If go2rtc is not running — "Streaming service unavailable" message
+- [ ] Camera sidebar entries use camera emoji icon
+- [ ] Configured cameras show custom names in sidebar (e.g., "Front Door")
+- [ ] Default cameras show "Camera 1", "Camera 2", etc.
+
+## 13. Cameras > go2rtc Service
+
+- [ ] On app startup, go2rtc process starts (port 1984 in use)
+- [ ] Only cameras with credentials appear in go2rtc.yaml
+- [ ] Saving camera settings triggers go2rtc restart
+- [ ] If go2rtc crashes — auto-restarts (up to 2 times in 30 seconds)
+- [ ] If go2rtc crashes 3 times in 30s — gives up (check logs)
+
+## 14. Jellyfin > DB Date Update
 
 - [ ] Page loads, shows steps overview
 - [ ] Click "Start Update":
@@ -100,7 +160,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] If any step fails: error shows immediately (red X), **container is restarted** on failure
 - [ ] Recent Operations table shows styled status badges
 
-## 11. Jellyfin > Cast & Crew Update
+## 15. Jellyfin > Cast & Crew Update
 
 - [ ] Page loads, shows info box
 - [ ] Click "Start Update" — job starts, progress bar appears
@@ -109,7 +169,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Job history table shows completed/failed jobs
 - [ ] If a previous job got stuck in "Running" state — it should now be clearable (fail on cancellation)
 
-## 12. Dependency Version Management (ADB Update Fix)
+## 16. Dependency Version Management (ADB Update Fix)
 
 - [ ] Settings > Dependencies: Check ADB — version appears (not "Not found" if installed locally)
 - [ ] ADB shows correct local version, not a stale system PATH version
@@ -118,42 +178,44 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Node.js update URL resolves to versioned dist URL (not generic download page)
 - [ ] After updating a dependency: no infinite update loop (status stays "Up to date")
 
-## 13. Cast & Crew Email Notifications
+## 17. Cast & Crew Email Notifications
 
 - [ ] Set a notification email in Settings > General
 - [ ] Run a Cast & Crew update — on completion, email is sent with summary
 - [ ] Cancel a running Cast & Crew job — email is sent with cancellation notice
 - [ ] If no notification email is set — no error, notification is silently skipped
 
-## 14. Utilities > Icon Converter
+## 18. Utilities > Icon Converter
 
 - [ ] Upload a PNG image
 - [ ] Select sizes, click Convert
 - [ ] Download link appears — file downloads successfully
 - [ ] UI is responsive during conversion (not frozen — async via Task.Run)
 
-## 15. Utilities > File Unblocker (Windows only)
+## 19. Utilities > File Unblocker (Windows only)
 
 - [ ] Enter a valid directory path — files are unblocked, count shown
 - [ ] Enter a non-existent path — "Directory not found" error message
 - [ ] Path with spaces works correctly
 
-## 16. TopBar
+## 20. TopBar
 
 - [ ] Update badge (bell icon) hover has visible background change
 - [ ] If dependency updates available: badge count shows
 
-## 17. Navigation Edge Cases
+## 21. Navigation Edge Cases
 
 - [ ] Navigate to `/settings/nonexistent` — shows "Unknown settings section" message with link
 - [ ] Navigate to `/android/googletv` without a device — first Google TV device is selected (no crash)
 - [ ] Navigate to `/android/phone` without a device — first Android Phone device is selected (no crash)
 
-## 18. ws-scrcpy-web Integration
+## 22. ws-scrcpy-web Integration
 
 - [ ] If ws-scrcpy-web is configured and running: "Screen mirroring unavailable" does NOT show
 - [ ] If ws-scrcpy-web crashes: mirror shows unavailable (not stale "running" state)
 - [ ] Restart via code: service comes back online with readiness check
+- [ ] **Stream quality refresh does not kill mouse input** (race condition fixed)
+- [ ] **Offline devices do not crash ws-scrcpy-web** (WebSocket close reason truncated)
 
 ---
 
@@ -161,11 +223,13 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 
 If you're short on time, just hit these:
 
-1. [ ] App starts, home page shows modules
+1. [ ] App starts, home page shows hero + module cards with pill buttons
 2. [ ] Theme toggle works, page title updates on navigation
-3. [ ] Settings > General: SMTP fields save without reverting
-4. [ ] Settings > Dependencies: badges are styled, disabled buttons are dimmed
-5. [ ] Jellyfin > DB Date Update: start a run, verify Step 4 detects "Startup complete"
-6. [ ] Edit a device, cancel — verify original values unchanged
-7. [ ] Settings > Dependencies: ADB check shows local version, no update loop
-8. [ ] Cast & Crew update sends email on completion (if notification email set)
+3. [ ] Sidebar expand/collapse persists across refresh
+4. [ ] Settings > General: SMTP fields save without reverting
+5. [ ] Settings > Cameras: save a camera, verify name shows in sidebar after refresh
+6. [ ] Settings > Dependencies: badges are styled, disabled buttons are dimmed
+7. [ ] Jellyfin > DB Date Update: start a run, verify Step 4 detects "Startup complete"
+8. [ ] Edit a device, cancel — verify original values unchanged
+9. [ ] Google TV mirror: clicks work, survive stream refresh
+10. [ ] Cast & Crew update sends email on completion (if notification email set)
