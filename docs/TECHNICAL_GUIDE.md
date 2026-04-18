@@ -77,7 +77,7 @@ src/ControlMenu/
     Pages/                  # Home, Settings, Setup Wizard
       Settings/             # SettingsPage, tabs: General, Devices, Cameras, Jellyfin, Dependencies
       Setup/                # Wizard steps: Welcome, Android Devices, Cameras, Jellyfin, Email, Dependencies, Done
-    Shared/                 # ScrcpyMirror, UsbSetupWizard
+    Shared/                 # ScrcpyMirror
   Data/
     AppDbContext.cs          # EF Core DbContext
     Entities/                # Device, Job, Dependency, Setting
@@ -192,7 +192,7 @@ The `Sidebar.razor` component injects `ModuleDiscoveryService` and iterates over
 
 ## 3. Android Devices Module
 
-The Android Devices module manages Google TV Streamers and Android phones over ADB (Android Debug Bridge). It provides dashboards for power management, screensaver control, launcher toggling, Projectivy backup restoration, PIN unlock, USB setup, and screen mirroring.
+The Android Devices module manages Google TV Streamers and Android phones over ADB (Android Debug Bridge). It provides dashboards for power management, screensaver control, launcher toggling, Projectivy backup restoration, PIN unlock, and screen mirroring. Devices are assumed to already have wireless debugging enabled — the module discovers and connects to them over the network via mDNS (preferred) or ARP.
 
 ### AdbService
 
@@ -219,8 +219,7 @@ Key methods:
 | `GetScreenSizeAsync(ip, port)` | Parse `wm size` output for display dimensions |
 | `UnlockWithPinAsync(ip, port, pin)` | Sequential key events: power, menu, text input, enter |
 | `GetConnectedDevicesAsync()` | Parse `adb devices` output |
-| `GetUsbDevicesAsync()` | Filter connected devices to USB-only (no `:` in serial) |
-| `ResetTcpPortAsync(port)` | `adb tcpip {port}` |
+| `ScanMdnsAsync()` | Run `adb mdns services`, parse into `MdnsAdbDevice` records (service name + IP + advertised port) |
 | `DisconnectAllAsync()` | Disconnect every connected device |
 
 The PIN unlock sequence is notable: it uses plain sequential ADB calls without delays or digit-by-digit input. The entire PIN is sent as a single `input text` command.
@@ -259,8 +258,8 @@ The module declares four dependencies, each auto-managed in the `dependencies/` 
 ### Pages
 
 - **DeviceSelector** (`/android/devices`) -- CRUD for device records, network discovery for IP resolution
-- **GoogleTvDashboard** (`/android/googletv`) -- Power toggle, screensaver selector, screen timeout, launcher enable/disable, Projectivy backup list with restore, Shizuku start, screen mirror
-- **PixelDashboard** (`/android/phone`) -- USB setup wizard, PIN unlock, portrait-mode screen mirror with aspect ratio from ADB screen dimensions
+- **GoogleTvDashboard** (`/android/googletv`) -- Power toggle, screensaver selector, screen timeout, launcher enable/disable, Projectivy backup list with restore, Shizuku start, screen mirror (passes `DeviceKind="tv"` to `ScrcpyMirror` so the ws-scrcpy-web toolbar defaults to D-pad mode)
+- **PixelDashboard** (`/android/phone`) -- ADB connect, PIN unlock, portrait-mode screen mirror with aspect ratio from ADB screen dimensions (passes `DeviceKind="phone"` to `ScrcpyMirror` so the ws-scrcpy-web toolbar defaults to Touch mode)
 
 ### WsScrcpyService
 

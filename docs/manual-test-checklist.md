@@ -50,14 +50,50 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 
 ## 5. Settings > Devices
 
-- [ ] Existing devices appear in the table
+### 5a. Registered Devices table
+
+- [ ] Existing devices appear in the table with Status dot, Name, Type, MAC, IP, ADB Port, Last Seen
+- [ ] Status dot is green for devices seen in the last 10 minutes, yellow 10m–24h, grey >24h or never
 - [ ] Click "Add Device" — form appears
-- [ ] Fill form, click Save — device appears in table
-- [ ] Click "Edit" on a device — form populates with device data
+- [ ] Fill form (Name / Type / ADB Port / MAC), click Save — device appears in table
+- [ ] Device Type dropdown offers four options: GoogleTV, AndroidPhone, AndroidTablet, AndroidWatch
+- [ ] Saving with `AndroidTablet` or `AndroidWatch` persists and shows the enum value in the Type column after reload
+- [ ] Click "Edit" on a device — form populates with the current device data (including PIN for phones)
 - [ ] **Edit a field, click Cancel** — original value is unchanged in the table (not mutated)
 - [ ] Edit a field, click Save — change is persisted
-- [ ] Delete a device — removed from table
-- [ ] For Android Phone devices: "Screen Lock PIN" field appears (password type, stored encrypted)
+- [ ] Delete a device — confirmation dialog appears, accepting removes the device from the table
+- [ ] After deleting, the device's user-assigned name is stashed at `device-name-<mac>` in the Settings table (re-appears when re-added from Scan — verify in 5c below)
+- [ ] For `AndroidPhone` type: "Screen Lock PIN" field appears in the form (password input, stored encrypted via Data Protection)
+
+### 5b. Scan Network — existing devices
+
+- [ ] Click "Scan Network" — button disables and changes to "Scanning..." while the scan runs
+- [ ] Toast message on success reports `N of M registered device(s) found` and (when applicable) `K ADB port(s) updated from mDNS` + `X new device(s) on network`
+- [ ] Registered devices' Last Seen timestamp refreshes to "Just now" for anything reachable
+- [ ] If a registered device's ADB port has drifted since it was added (common on Android 11+ phones that rotate wireless-debugging ports), the scan updates the ADB Port column silently — no prompt needed
+- [ ] Devices not advertising via mDNS are still IP-refreshed via ARP fallback (no port update for these, since ARP doesn't know the ADB port)
+
+### 5c. Discovered on Network panel
+
+- [ ] After a successful Scan Network, a "Discovered on Network" section appears **only if** mDNS found devices not already in the Registered Devices table
+- [ ] Registered devices do NOT appear in this panel (they're silently refreshed in 5b instead)
+- [ ] Each discovered row shows: Service label (e.g. `adb-49241HFAG07SUG`), IP, ADB Port, MAC, and an "Add" button
+- [ ] MAC column shows `—` when the host's ARP table hasn't resolved the IP yet; the Add button is disabled for those rows
+- [ ] Click Add on an unregistered discovered device:
+  - [ ] Device form opens with MAC, ADB Port, and IP pre-filled from the scan
+  - [ ] Name field is blank (fresh discovery) or populated with the previously-assigned name (if this MAC was deleted before — pulled from the `device-name-<mac>` setting)
+  - [ ] Within ~1–2 seconds, the Type dropdown auto-refines from `AndroidPhone` default to the correct kind based on an ADB probe (watch → AndroidWatch, TV → GoogleTV, tablet → AndroidTablet, otherwise AndroidPhone)
+  - [ ] Within the same probe, Name auto-fills from `ro.product.model` when it was blank (e.g., "Pixel 9", "Galaxy Tab A"). If Name was already remembered from a previous delete, the probe does NOT overwrite it.
+- [ ] Save the pre-filled device — it moves up into the Registered Devices table AND disappears from the Discovered panel (no double-offering)
+- [ ] Re-run Scan Network — the now-registered device is absent from Discovered (still registered, IP/port refreshed silently)
+
+### 5d. Delete → rediscover flow
+
+- [ ] Register a phone, give it a memorable name (e.g., "My Phone"), save
+- [ ] Delete it
+- [ ] Click Scan Network — the phone appears in the Discovered panel
+- [ ] Click Add — the form opens with Name already populated with "My Phone" (restored from Settings)
+- [ ] Save — device is re-added with its original name intact
 
 ## 6. Settings > Cameras
 
@@ -110,6 +146,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Screensaver shows actual state (not always "Google" — may show "Unknown" if disconnected)
 - [ ] Status messages appear and auto-dismiss after 5 seconds
 - [ ] Screen mirror iframe loads (if ws-scrcpy-web is configured)
+- [ ] ws-scrcpy-web toolbar inside the iframe defaults to **D-pad mode** (TV DeviceKind hint is being passed correctly)
 - [ ] **Mouse clicks in mirror control the TV** (left-click = tap, right-click = back, middle = home)
 - [ ] **Clicks continue working after quality protection stream refresh** (no dead clicks)
 - [ ] Navigate away and back — no console errors about disposed components
@@ -121,13 +158,11 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Connect/disconnect works
 - [ ] Screen mirror loads in portrait orientation
 - [ ] Mirror panel sizes dynamically from actual device screen dimensions (no black bars)
-- [ ] **USB Setup Wizard:** "Enable Wireless ADB" button opens wizard
-  - [ ] Step 1: "I've Connected" button, detects USB device
-  - [ ] Step 2: runs `adb tcpip`, shows spinner, then success
-  - [ ] Step 3: "Disconnect USB cable", resolves IP from MAC or shows manual IP field
-  - [ ] Step 3: "Connect Wirelessly" completes the setup
+- [ ] ws-scrcpy-web toolbar inside the iframe defaults to **Touch mode** (phone DeviceKind hint is being passed correctly)
 - [ ] **Phone Unlock:** If PIN configured, "Unlock" button sends PIN via ADB
 - [ ] **Phone Unlock:** If no PIN, shows "Set PIN in Settings" link
+
+> USB Setup Wizard was removed in favor of mDNS device discovery. Phones and tablets are expected to be pre-configured for wireless debugging; see Settings > Devices > Scan Network.
 
 ## 12. Cameras > Camera View
 
