@@ -1,8 +1,9 @@
+using System.Text.RegularExpressions;
 using ControlMenu.Services;
 
 namespace ControlMenu.Modules.AndroidDevices.Services;
 
-public class AdbService : IAdbService
+public partial class AdbService : IAdbService
 {
     private readonly ICommandExecutor _executor;
 
@@ -120,11 +121,6 @@ public class AdbService : IAdbService
             null, ct);
     }
 
-    public async Task ResetTcpPortAsync(int port, CancellationToken ct = default)
-    {
-        await _executor.ExecuteAsync("adb", $"tcpip {port}", null, ct);
-    }
-
     public async Task<IReadOnlyList<string>> GetConnectedDevicesAsync(CancellationToken ct = default)
     {
         var result = await _executor.ExecuteAsync("adb", "devices", null, ct);
@@ -136,11 +132,35 @@ public class AdbService : IAdbService
             .ToList();
     }
 
-    public async Task<IReadOnlyList<string>> GetUsbDevicesAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Discovers ADB-advertising devices on the local network via <c>adb mdns services</c>.
+    /// Output format (tab-separated, one device per line):
+    /// <code>
+    /// adb-&lt;serial&gt;    _adb._tcp           192.168.86.43:5555
+    /// adb-&lt;serial&gt;    _adb-tls-connect._tcp  192.168.86.169:43423
+    /// </code>
+    /// A "List of discovered mdns services" header line is silently skipped
+    /// (lacks three tab-separated columns).
+    /// </summary>
+    public async Task<IReadOnlyList<MdnsAdbDevice>> ScanMdnsAsync(CancellationToken ct = default)
     {
-        var devices = await GetConnectedDevicesAsync(ct);
-        // USB serials don't contain ':' (network devices look like 192.168.1.100:5555)
-        return devices.Where(d => !d.Contains(':')).ToList();
+        var result = await _executor.ExecuteAsync("adb", "mdns services", null, ct);
+        if (result.ExitCode != 0) return [];
+
+        var entries = new List<MdnsAdbDevice>();
+        foreach (var rawLine in result.StandardOutput.Split('\n'))
+        {
+            var parts = rawLine.Split('\t');
+            if (parts.Length < 3) continue;
+            var name = parts[0].Trim();
+            var addressPort = parts[2].Trim();
+            var colonIdx = addressPort.LastIndexOf(':');
+            if (colonIdx <= 0) continue;
+            var ip = addressPort[..colonIdx];
+            if (!int.TryParse(addressPort[(colonIdx + 1)..], out var port)) continue;
+            entries.Add(new MdnsAdbDevice(name, ip, port));
+        }
+        return entries;
     }
 
     public async Task<(int Width, int Height)?> GetScreenSizeAsync(string ip, int port, CancellationToken ct = default)
@@ -173,4 +193,75 @@ public class AdbService : IAdbService
         }
     }
 
+    /// <summary>
+    /// Port of ws-scrcpy-web's <c>classifyDeviceKind</c> (src/server/goog-device/deviceKind.ts),
+    /// extended with a watch probe. Five probes run in parallel. Watch wins over TV wins over
+    /// the tablet/phone smallestWidthDp split, so a Wear-on-TV (if that ever existed) would
+    /// classify as "watch" — the hardware feature declarations are the most specific signal.
+    /// </summary>
+    public async Task<string?> DetectDeviceKindAsync(string ip, int port, CancellationToken ct = default)
+    {
+        var dev = DeviceArg(ip, port);
+        var probes = await Task.WhenAll(
+            SafeShellAsync(dev, "getprop ro.build.characteristics", ct),
+            SafeShellAsync(dev, "pm has-feature android.software.leanback", ct),
+            SafeShellAsync(dev, "pm has-feature android.hardware.type.watch", ct),
+            SafeShellAsync(dev, "wm size", ct),
+            SafeShellAsync(dev, "wm density", ct));
+        var characteristics = probes[0];
+        var leanback = probes[1];
+        var watch = probes[2];
+        var wmSize = probes[3];
+        var wmDensity = probes[4];
+
+        if (WatchCharacteristicsRegex().IsMatch(characteristics) || watch.Trim() == "true")
+        {
+            return "watch";
+        }
+        if (TvCharacteristicsRegex().IsMatch(characteristics) || leanback.Trim() == "true")
+        {
+            return "tv";
+        }
+
+        var sizeMatch = WmSizeRegex().Match(wmSize);
+        var densityMatch = WmDensityRegex().Match(wmDensity);
+        if (!sizeMatch.Success || !densityMatch.Success) return null;
+
+        var width = int.Parse(sizeMatch.Groups[1].Value);
+        var height = int.Parse(sizeMatch.Groups[2].Value);
+        var density = int.Parse(densityMatch.Groups[1].Value);
+        var smallestDp = Math.Min(width, height) / (density / 160.0);
+        return smallestDp >= 600 ? "tablet" : "phone";
+    }
+
+    private async Task<string> SafeShellAsync(string deviceArg, string shellCmd, CancellationToken ct)
+    {
+        try
+        {
+            var r = await _executor.ExecuteAsync("adb", $"{deviceArg} shell {shellCmd}", null, ct);
+            return r.ExitCode == 0 ? r.StandardOutput : "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    public async Task<string> GetPropAsync(string ip, int port, string property, CancellationToken ct = default)
+    {
+        var raw = await SafeShellAsync(DeviceArg(ip, port), $"getprop {property}", ct);
+        return raw.Trim();
+    }
+
+    [GeneratedRegex(@"\btv\b", RegexOptions.IgnoreCase)]
+    private static partial Regex TvCharacteristicsRegex();
+
+    [GeneratedRegex(@"\bwatch\b", RegexOptions.IgnoreCase)]
+    private static partial Regex WatchCharacteristicsRegex();
+
+    [GeneratedRegex(@"(?:Override|Physical) size:\s*(\d+)x(\d+)")]
+    private static partial Regex WmSizeRegex();
+
+    [GeneratedRegex(@"(?:Override|Physical) density:\s*(\d+)")]
+    private static partial Regex WmDensityRegex();
 }

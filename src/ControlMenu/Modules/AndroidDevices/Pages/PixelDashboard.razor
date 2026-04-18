@@ -36,25 +36,6 @@ else
         <div class="controls-panel">
             <h3 class="panel-heading">Quick Actions</h3>
 
-            <!-- Enable Wireless ADB -->
-            <div class="action-row">
-                <div class="action-label">
-                    <i class="bi bi-usb-plug"></i> Enable Wireless ADB
-                </div>
-                <span class="action-status">Requires USB cable</span>
-                <div class="action-buttons">
-                    <button class="btn btn-sm btn-warning" @onclick="ToggleUsbWizard" disabled="@_busy">
-                        @(_showUsbWizard ? "Close" : "Setup")
-                    </button>
-                </div>
-            </div>
-
-            @if (_showUsbWizard)
-            {
-                <UsbSetupWizard Port="Port" Ip="@Ip" MacAddress="@_device.MacAddress"
-                                OnComplete="OnUsbSetupComplete" />
-            }
-
             <!-- ADB Connect -->
             <div class="action-row">
                 <div class="action-label">
@@ -88,7 +69,7 @@ else
         <div class="mirror-column">
             <span class="device-name">@_device.Name</span>
             <div class="mirror-panel" style="aspect-ratio: @MirrorAspectRatio;">
-                <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" />
+                <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" DeviceKind="phone" />
             </div>
         </div>
     </div>
@@ -104,7 +85,6 @@ else
     private Device? _device;
     private bool _connected;
     private bool _busy;
-    private bool _showUsbWizard;
     private bool _hasPin;
     private string? _pin;
     private int _screenW = 9;
@@ -167,11 +147,6 @@ else
         }
     }
 
-    private void ToggleUsbWizard()
-    {
-        _showUsbWizard = !_showUsbWizard;
-    }
-
     private async Task UnlockPhone()
     {
         if (_device is null || string.IsNullOrEmpty(Ip) || string.IsNullOrEmpty(_pin)) return;
@@ -179,27 +154,6 @@ else
         await AdbService.UnlockWithPinAsync(Ip, Port, _pin);
         SetStatus("Phone unlocked.", "status-success", "bi-unlock");
         _busy = false;
-    }
-
-    private async Task OnUsbSetupComplete(bool success)
-    {
-        _showUsbWizard = false;
-        if (success && _device is not null)
-        {
-            _connected = true;
-
-            // The wizard connected — find which IP it used from the connected devices list
-            var connected = await AdbService.GetConnectedDevicesAsync();
-            var match = connected.FirstOrDefault(d => d.EndsWith($":{Port}"));
-            if (match is not null)
-            {
-                var ip = match.Split(':')[0];
-                _device.LastKnownIp = ip;
-                await DeviceService.UpdateLastSeenAsync(_device.Id, ip);
-            }
-
-            SetStatus("Wireless ADB enabled and connected.", "status-success", "bi-check-circle");
-        }
     }
 
     private async Task ConnectDevice()

@@ -30,12 +30,30 @@
     [Parameter]
     public bool Inline { get; set; }
 
-    // ws-scrcpy-web shipped a new public library + embed wrapper in its 1.0.0 stream
-    // API rewrite (2026-04-17); the legacy #!action=stream hash routing is gone.
-    // /embed.html is always in embed mode (transparent bg, toolbar + mirror only)
-    // so Inline=true (iframe) and Inline=false (popup window) share the same URL.
-    private string StreamUrl =>
-        $"{WsScrcpy.BaseUrl}/embed.html?device={Uri.EscapeDataString(Udid)}";
+    /// <summary>
+    /// Optional hint to ws-scrcpy-web about the device's form factor.
+    /// Values: "phone", "tablet", "tv". When set, ws-scrcpy-web seeds the
+    /// stream toolbar's D-pad/Touch toggle appropriately (D-pad for TV,
+    /// Touch for phone/tablet). Omit to accept the upstream default.
+    /// </summary>
+    [Parameter]
+    public string? DeviceKind { get; set; }
+
+    // ws-scrcpy-web's /embed.html is always in embed mode (transparent bg,
+    // toolbar + mirror only). Inline=true (iframe) and Inline=false (popup
+    // window) share the same URL.
+    private string StreamUrl
+    {
+        get
+        {
+            var url = $"{WsScrcpy.BaseUrl}/embed.html?device={Uri.EscapeDataString(Udid)}";
+            if (!string.IsNullOrEmpty(DeviceKind))
+            {
+                url += $"&deviceKind={Uri.EscapeDataString(DeviceKind)}";
+            }
+            return url;
+        }
+    }
 
     private ElementReference _iframeRef;
 

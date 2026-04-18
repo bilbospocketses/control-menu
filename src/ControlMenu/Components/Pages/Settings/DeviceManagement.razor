@@ -1,5 +1,10 @@
+@using System.Text.RegularExpressions
+@using ControlMenu.Data.Entities
+@using ControlMenu.Data.Enums
+@using ControlMenu.Modules.AndroidDevices.Services
 @inject IDeviceService DeviceService
 @inject INetworkDiscoveryService NetworkDiscovery
+@inject IAdbService AdbService
 @inject IConfigurationService Config
 
 <div class="settings-section">
@@ -14,7 +19,7 @@
 
 <div class="settings-section">
     <h2>Device Management</h2>
-    <p>Register and manage Android devices. Use "Scan Network" to auto-discover IP addresses via ARP.</p>
+    <p>Register and manage Android devices. Use "Scan Network" to discover IP addresses and ADB ports via <code>adb mdns services</code>; falls back to ARP for devices that don't advertise over mDNS.</p>
 
     <div class="toolbar">
         <button class="btn btn-primary" @onclick="ShowAddForm">
@@ -66,21 +71,42 @@
     }
 </div>
 
+@if (_discovered.Count > 0)
+{
+    <div class="settings-section">
+        <h2>Discovered on Network</h2>
+        <p>ADB-advertising devices on the local network that aren't yet registered. Click Add — IP, port, MAC, suggested name, and device type are pre-filled from the scan and an ADB probe.</p>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>IP</th>
+                    <th>ADB Port</th>
+                    <th>MAC</th>
+                    <th style="text-align:right;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var d in _discovered)
+                {
+                    <tr>
+                        <td><code>@d.ServiceName</code></td>
+                        <td>@d.Ip</td>
+                        <td>@d.Port</td>
+                        <td><code>@(d.Mac ?? "—")</code></td>
+                        <td class="actions">
+                            <button class="btn btn-primary btn-sm" @onclick="() => AddFromDiscovery(d)" disabled="@(d.Mac is null)">Add</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
 @if (_showForm)
 {
     <DeviceForm Model="_formDevice" IsEdit="_isEditing" @bind-Pin="_formPin" OnSave="SaveDevice" OnCancel="CloseForm" />
-}
-
-@if (_showUsbWizard && _wizardDevice is not null)
-{
-    <div class="dialog-overlay" @onclick="CloseUsbWizard">
-        <div class="dialog" @onclick:stopPropagation="true">
-            <UsbSetupWizard Port="_wizardDevice.AdbPort"
-                            Ip="@_wizardDevice.LastKnownIp"
-                            MacAddress="@_wizardDevice.MacAddress"
-                            OnComplete="OnUsbSetupComplete" />
-        </div>
-    </div>
 }
 
 @if (_showDeleteConfirm)
@@ -116,9 +142,13 @@
     private bool _showDeleteConfirm;
     private ControlMenu.Data.Entities.Device? _deleteTarget;
     private bool _scanning;
-    private bool _showUsbWizard;
-    private ControlMenu.Data.Entities.Device? _wizardDevice;
+    private List<DiscoveredDevice> _discovered = [];
     private string? _message;
+
+    // Entries shown in the "Discovered on Network" panel. Devices already in the
+    // registered-devices table are filtered out and their IP/port are updated in
+    // the DB directly by ScanNetwork.
+    private record DiscoveredDevice(string ServiceName, string Ip, int Port, string? Mac);
     private bool _messageIsError;
     private int _discoveryInterval = 300;
 
@@ -189,7 +219,6 @@
         {
             _formDevice.MacAddress = NetworkDiscoveryService.NormalizeMac(_formDevice.MacAddress);
             var isEdit = _isEditing;
-            var isPhone = _formDevice.Type == ControlMenu.Data.Enums.DeviceType.AndroidPhone;
             _showForm = false;
 
             if (isEdit)
@@ -206,14 +235,17 @@
             else if (savedDevice is not null && string.IsNullOrEmpty(_formPin))
                 await Config.SetSettingAsync($"device-pin-{savedDevice.Id}", "");
 
-            await ShowMessage($"Device {(isEdit ? "updated" : "added")} successfully.");
-
-            // Prompt USB setup wizard for newly added phones
-            if (!isEdit && isPhone)
+            // A newly added device claims its MAC from the discovery panel —
+            // drop the matching row so the user doesn't see the same device
+            // offered for adding a second time.
+            if (!isEdit && !string.IsNullOrEmpty(_formDevice.MacAddress))
             {
-                _wizardDevice = _devices.FirstOrDefault(d => d.MacAddress == _formDevice.MacAddress);
-                _showUsbWizard = _wizardDevice is not null;
+                _discovered = _discovered
+                    .Where(disc => !string.Equals(disc.Mac, _formDevice.MacAddress, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
             }
+
+            await ShowMessage($"Device {(isEdit ? "updated" : "added")} successfully.");
         }
         catch (Exception ex)
         {
@@ -239,6 +271,14 @@
     {
         if (_deleteTarget is not null)
         {
+            // Remember the user-assigned name keyed by MAC. If the same device
+            // is later rediscovered via mDNS and re-added, AddFromDiscovery
+            // restores this name instead of falling back to the ADB product
+            // model (which would read e.g. "Pixel 9" instead of "Jamie's phone").
+            if (!string.IsNullOrEmpty(_deleteTarget.MacAddress))
+            {
+                await Config.SetSettingAsync($"device-name-{_deleteTarget.MacAddress}", _deleteTarget.Name);
+            }
             await DeviceService.DeleteDeviceAsync(_deleteTarget.Id);
             _showDeleteConfirm = false;
             _deleteTarget = null;
@@ -247,30 +287,55 @@
         }
     }
 
-    private void CloseUsbWizard()
-    {
-        _showUsbWizard = false;
-        _wizardDevice = null;
-    }
-
-    private async Task OnUsbSetupComplete(bool success)
-    {
-        _showUsbWizard = false;
-        if (success && _wizardDevice is not null)
-        {
-            await LoadDevices();
-            await ShowMessage($"Wireless ADB enabled for {_wizardDevice.Name}.");
-        }
-        _wizardDevice = null;
-    }
-
     private async Task ScanNetwork()
     {
         _scanning = true;
         StateHasChanged();
 
+        // 1. Query mDNS — each hit gives us IP + advertised ADB port + service name.
+        var mdnsResults = await AdbService.ScanMdnsAsync();
+
+        // 2. Build IP→MAC map from ARP. If any mDNS IPs aren't in ARP yet, ping them
+        //    in parallel to force the OS to resolve them, then re-read ARP.
+        var arpMap = await BuildArpMapAsync();
+        var missing = mdnsResults.Where(m => !arpMap.ContainsKey(m.IpAddress)).Select(m => m.IpAddress).ToList();
+        if (missing.Count > 0)
+        {
+            await Task.WhenAll(missing.Select(ip => NetworkDiscovery.PingAsync(ip)));
+            arpMap = await BuildArpMapAsync();
+        }
+
+        // 3. Walk the mDNS hits. Registered devices: update IP/port in-place in the DB
+        //    (no entry in the Discovered panel). Unregistered devices: add to the panel
+        //    for one-click adding.
+        var devicesByMac = _devices.ToDictionary(d => d.MacAddress, d => d, StringComparer.OrdinalIgnoreCase);
+        var discovered = new List<DiscoveredDevice>();
+        var coveredRegistered = new HashSet<Guid>();
         int updated = 0;
-        foreach (var device in _devices)
+        int portUpdated = 0;
+        foreach (var m in mdnsResults)
+        {
+            var mac = arpMap.TryGetValue(m.IpAddress, out var x) ? x : null;
+            if (mac is not null && devicesByMac.TryGetValue(mac, out var registered))
+            {
+                await DeviceService.UpdateLastSeenAsync(registered.Id, m.IpAddress);
+                if (registered.AdbPort != m.Port)
+                {
+                    registered.AdbPort = m.Port;
+                    await DeviceService.UpdateDeviceAsync(registered);
+                    portUpdated++;
+                }
+                coveredRegistered.Add(registered.Id);
+                updated++;
+            }
+            else
+            {
+                discovered.Add(new DiscoveredDevice(m.ServiceName, m.IpAddress, m.Port, mac));
+            }
+        }
+
+        // 4. For registered devices not seen via mDNS, fall back to ARP-only IP refresh.
+        foreach (var device in _devices.Where(d => !coveredRegistered.Contains(d.Id)))
         {
             var ip = await NetworkDiscovery.ResolveIpFromMacAsync(device.MacAddress);
             if (ip is not null)
@@ -280,9 +345,87 @@
             }
         }
 
+        _discovered = discovered;
         await LoadDevices();
         _scanning = false;
-        await ShowMessage($"Scan complete. {updated} of {_devices.Count} device(s) found on network.");
+
+        var parts = new List<string> { $"{updated} of {_devices.Count} registered device(s) found" };
+        if (portUpdated > 0) parts.Add($"{portUpdated} ADB port(s) updated from mDNS");
+        if (discovered.Count > 0) parts.Add($"{discovered.Count} new device(s) on network");
+        await ShowMessage($"Scan complete. {string.Join("; ", parts)}.");
+    }
+
+    private async Task<Dictionary<string, string>> BuildArpMapAsync()
+    {
+        var entries = await NetworkDiscovery.GetArpTableAsync();
+        return entries
+            .GroupBy(e => e.IpAddress)
+            .ToDictionary(g => g.Key, g => g.First().MacAddress, StringComparer.OrdinalIgnoreCase);
+    }
+
+    // Opens the Add Device form pre-filled from a discovered mDNS entry: IP, port, MAC,
+    // and a suggested name (DB-registered name if the MAC is already known, otherwise
+    // parsed from the mDNS service label). Device type is an initial guess from the
+    // service name; an async ADB probe refines it to phone/tablet/tv after the form opens.
+    private async Task AddFromDiscovery(DiscoveredDevice d)
+    {
+        // If we previously had a device with this MAC (and then deleted it),
+        // DeleteDevice stashed the user-assigned name at device-name-<mac>.
+        // Restore it here so re-adding doesn't make the user re-type the name.
+        var rememberedName = string.IsNullOrEmpty(d.Mac)
+            ? null
+            : await Config.GetSettingAsync($"device-name-{d.Mac}");
+
+        _formDevice = new Device
+        {
+            Name = rememberedName ?? "",
+            MacAddress = d.Mac ?? "",
+            Type = DeviceType.AndroidPhone,  // harmless default; ADB probe + model-read below refine
+            AdbPort = d.Port,
+            LastKnownIp = d.Ip,
+            ModuleId = "android-devices"
+        };
+        _formPin = "";
+        _isEditing = false;
+        _showForm = true;
+        StateHasChanged();
+
+        // Best-effort refinement via ADB. Two probes in parallel: device kind
+        // (phone/tablet/tv/watch — five shell signals, same as ws-scrcpy-web
+        // plus a watch probe) and product model (for a friendlier default Name
+        // than the raw mDNS serial).
+        var connected = await AdbService.ConnectAsync(d.Ip, d.Port);
+        if (!connected) return;
+
+        var kindTask = AdbService.DetectDeviceKindAsync(d.Ip, d.Port);
+        var modelTask = AdbService.GetPropAsync(d.Ip, d.Port, "ro.product.model");
+        await Task.WhenAll(kindTask, modelTask);
+
+        var kind = await kindTask;
+        var model = await modelTask;
+
+        var mapped = kind switch
+        {
+            "tv" => DeviceType.GoogleTV,
+            "tablet" => DeviceType.AndroidTablet,
+            "watch" => DeviceType.AndroidWatch,
+            "phone" => DeviceType.AndroidPhone,
+            _ => _formDevice.Type,
+        };
+        var changed = false;
+        if (_formDevice.Type != mapped)
+        {
+            _formDevice.Type = mapped;
+            changed = true;
+        }
+        // Only auto-fill Name when we don't already have one from the DB.
+        // Empty name + model probe succeeded → prefill.
+        if (string.IsNullOrEmpty(_formDevice.Name) && !string.IsNullOrEmpty(model))
+        {
+            _formDevice.Name = model;
+            changed = true;
+        }
+        if (changed) StateHasChanged();
     }
 
     private static string GetStatusClass(ControlMenu.Data.Entities.Device device)
