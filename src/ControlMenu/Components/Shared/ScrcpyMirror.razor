@@ -30,8 +30,12 @@
     [Parameter]
     public bool Inline { get; set; }
 
+    // ws-scrcpy-web shipped a new public library + embed wrapper in its 1.0.0 stream
+    // API rewrite (2026-04-17); the legacy #!action=stream hash routing is gone.
+    // /embed.html is always in embed mode (transparent bg, toolbar + mirror only)
+    // so Inline=true (iframe) and Inline=false (popup window) share the same URL.
     private string StreamUrl =>
-        $"{WsScrcpy.BaseUrl}/#!action=stream&udid={Uri.EscapeDataString(Udid)}&player=webcodecs&embed={Inline.ToString().ToLower()}";
+        $"{WsScrcpy.BaseUrl}/embed.html?device={Uri.EscapeDataString(Udid)}";
 
     private ElementReference _iframeRef;
 

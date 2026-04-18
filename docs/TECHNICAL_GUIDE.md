@@ -294,10 +294,12 @@ public bool Inline { get; set; }  // true = embedded iframe, false = popup butto
 
 The iframe source URL follows this pattern:
 ```
-{BaseUrl}/#!action=stream&udid={Udid}&player=webcodecs&embed={Inline}
+{BaseUrl}/embed.html?device={Udid}
 ```
 
-The `embed=true` parameter tells ws-scrcpy-web to hide its own toolbar and use a transparent background (no black bars).
+`embed.html` is ws-scrcpy-web's dedicated iframe-friendly wrapper (shipped with the 1.0.0 stream API rewrite, April 2026). It renders the stream plus toolbar only, with a transparent background so iframe consumers can place any background behind the video. The legacy `#!action=stream&udid=...&embed=true` hash-routing URL was removed in the same release.
+
+Additional URL parameters supported by `embed.html` — `host`, `port`, `secure`, `pathname`, `codec`, `encoder`, `bitrate`, `maxFps`, `maxSize`, `audio`, `keyboard` — all optional. See the ws-scrcpy-web TECHNICAL_GUIDE for the complete reference.
 
 ### Display Modes
 
