@@ -164,6 +164,20 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 
 > USB Setup Wizard was removed in favor of mDNS device discovery. Phones and tablets are expected to be pre-configured for wireless debugging; see Settings > Devices > Scan Network.
 
+## 11b. Android Power Tools (iframe of ws-scrcpy-web home page)
+
+- [ ] Sidebar shows an "Android Power Tools" group between Android Devices and Jellyfin
+- [ ] Clicking "Power Tools" navigates to `/android-power-tools`
+- [ ] Breadcrumb in TopBar reads **"Android Power Tools"** (not "Android Devices" — page-title switch has a specific case above the `android` fallback)
+- [ ] Full ws-scrcpy-web home page loads inside an iframe: device cards, Available Network Devices / Scan Network / Manually Add Device panel, Dependencies panel
+- [ ] Iframe fills the content area below TopBar without introducing its own scrollbar (body scroll is locked, page-level scroll lives inside the iframe only when content actually overflows)
+- [ ] If ws-scrcpy-web is not running: a "ws-scrcpy-web isn't running" warning alert is shown instead of a broken iframe
+- [ ] Clicking `shell` on a device card opens the xterm modal inside the iframe; terminal is interactive (typing reaches the device, output renders)
+- [ ] Clicking `list files` opens the file browser modal inside the iframe; sticky header stays pinned on scroll; hover icons scale with the size picker
+- [ ] Clicking `config stream` opens ConfigureScrcpy; codec / encoder dropdowns filter correctly; Connect opens ConnectModal and the stream plays inside the iframe
+- [ ] All modals' backdrops cover only the iframe viewport (not Control Menu's TopBar / sidebar — they remain usable)
+- [ ] ws-scrcpy-web's own theme toggle is independent of Control Menu's (iframe has its own localStorage origin). Not a bug; just worth noting
+
 ## 12. Cameras > Camera View
 
 - [ ] Navigate to `/cameras/1` with unconfigured camera — "Camera 1 not configured" message with link to settings

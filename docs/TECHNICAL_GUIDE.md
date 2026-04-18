@@ -180,9 +180,10 @@ public record ConfigRequirement(
 | Module | Id | SortOrder | Dependencies | Nav Entries |
 |--------|----|-----------|--------------|-------------|
 | Android Devices | `android-devices` | 1 | adb, scrcpy, node, ws-scrcpy-web | Device List, Google TV, Android Phone |
-| Jellyfin | `jellyfin` | 2 | docker, sqlite3 | DB Date Update, Cast & Crew |
-| Utilities | `utilities` | 3 | (none) | Icon Converter, File Unblocker |
-| Cameras | `cameras` | 4 | (none) | Dynamic: one entry per configured camera |
+| Android Power Tools | `android-power-tools` | 2 | (none — shares ws-scrcpy-web with Android Devices) | Power Tools |
+| Jellyfin | `jellyfin` | 3 | docker, sqlite3 | DB Date Update, Cast & Crew |
+| Utilities | `utilities` | 4 | (none) | Icon Converter, File Unblocker |
+| Cameras | `cameras` | 5 | (none) | Dynamic: one entry per configured camera |
 
 ### Sidebar Integration
 
@@ -313,6 +314,16 @@ The phone mirror panel required explicit sizing for iframe click handling to wor
 ### Fallback Behavior
 
 When `WsScrcpy.IsRunning` is false, the component renders a warning alert instead of the iframe. When `Inline` is false, it renders a "Screen Mirror" button that opens a popup window (`window.open` with specific dimensions and no browser chrome).
+
+### Android Power Tools Module
+
+Peer of Android Devices (sort order 2), added April 2026. Host for ws-scrcpy-web's full home page via iframe at `/android-power-tools`. Gives the user direct access to power-user workflows that aren't replicated in Control Menu's Android Devices UI: one-click shell (xterm modal), file browser (ListFilesModal with sticky header, reserved actions column, bulk selection, drag-and-drop upload, filter), ConfigureScrcpy stream parameters, network scan panel with mDNS + manual-add, and dependency updater.
+
+Strictly additive — Android Devices module remains the primary device-management surface (registered-devices list, PIN unlock, power state, sleep/wake, screensaver, Projectivy backups). The Power Tools module is a thin wrapper: `AndroidPowerToolsPage.razor` is an iframe sourced at `{WsScrcpyService.BaseUrl}/` with `WsScrcpy.IsRunning` guard, and the module class itself declares no dependencies (they're already declared by AndroidDevices).
+
+`MainLayout.razor`'s page-title switch needs a specific case for `/android-power-tools` that sits **above** the generic `path.StartsWith("android")` fallback — otherwise the breadcrumb shows "Android Devices" for what should be "Android Power Tools" (the prefix-match order is load-bearing).
+
+All four ws-scrcpy-web modals — shell, list files, configure stream, connect — render inside the iframe's own document, so `showModal()`'s top-layer and backdrop are scoped to the iframe viewport. No JS-interop wiring; no library-bundle injection into Blazor; no cross-origin CORS concerns (ws-scrcpy-web serves both the bundle and the embedded page itself, same origin).
 
 ---
 

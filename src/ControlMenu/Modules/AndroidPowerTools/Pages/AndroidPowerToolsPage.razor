@@ -1,0 +1,21 @@
+@page "/android-power-tools"
+@using ControlMenu.Services
+@inject WsScrcpyService WsScrcpy
+
+<PageTitle>Android Power Tools</PageTitle>
+
+<div class="power-tools-page">
+    @if (!WsScrcpy.IsRunning)
+    {
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle"></i>
+            ws-scrcpy-web isn't running. Configure its path in Settings &gt; Dependencies and restart the app.
+        </div>
+    }
+    else
+    {
+        <iframe src="@WsScrcpy.BaseUrl/" class="power-tools-iframe"
+                allow="autoplay; fullscreen; clipboard-read; clipboard-write"
+                title="ws-scrcpy-web"></iframe>
+    }
+</div>
