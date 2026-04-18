@@ -20,7 +20,8 @@
 
 Control Menu replaces a collection of PowerShell scripts with a cross-platform web UI. It manages:
 
-- **Android Devices** &mdash; Connect, reboot, toggle power/screensaver, manage ADB settings, and screen mirror Google TVs and Android phones via [ws-scrcpy-web](https://github.com/ANG-DEVELOPERS/ws-scrcpy-web)
+- **Android Devices** &mdash; Connect, reboot, toggle power/screensaver, manage ADB settings, and screen mirror Google TVs and Android phones via [ws-scrcpy-web](https://github.com/bilbospocketses/ws-scrcpy-web). mDNS-based network discovery with one-click Add for unregistered devices and auto-classification (phone / tablet / TV / watch) via an ADB shell probe.
+- **Android Power Tools** &mdash; ws-scrcpy-web's full home page embedded in an iframe at `/android-power-tools`. Direct access to the power-user workflows not duplicated in the Devices module: shell (xterm), file browser, stream configuration, network scan + manual-add, and dependency updater.
 - **Cameras** &mdash; View LTS/Hikvision CCTV cameras via [go2rtc](https://github.com/AlexxIT/go2rtc) RTSP-to-browser streaming. Configurable camera count with encrypted credential storage. go2rtc is auto-installed and updated via the dependency manager.
 - **Jellyfin Media Server** &mdash; Database date updates, cast & crew image refresh (background worker with resume support), Docker container management, automated backups with configurable retention
 - **Utilities** &mdash; Image-to-ICO icon conversion (PNG, JPG, BMP, GIF, WEBP, TIFF via SkiaSharp) with native file picker, Windows Zone.Identifier file unblocker
@@ -75,6 +76,7 @@ src/ControlMenu/
   Data/                 # EF Core entities, enums, migrations
   Modules/              # Pluggable tool modules
     AndroidDevices/     #   ADB service, Google TV & Android Phone dashboards
+    AndroidPowerTools/  #   ws-scrcpy-web home page iframe (shell, files, configure)
     Cameras/            #   CCTV camera streaming via go2rtc
     Jellyfin/           #   Docker ops, DB updates, Cast/Crew worker
     Utilities/          #   Icon converter, File unblocker
