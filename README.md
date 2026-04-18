@@ -139,4 +139,8 @@ Modules must have parameterless constructors for auto-discovery.
 
 ## License
 
-Private project.
+[GPL-3.0-only](LICENSE). See `LICENSE` for full terms. By contributing you agree your contributions are licensed under the same terms — see `CONTRIBUTING.md` for details.
+
+## Security
+
+For vulnerability reports, see `SECURITY.md`. Do not open public issues for security problems.

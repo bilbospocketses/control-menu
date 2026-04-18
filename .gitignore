@@ -54,10 +54,17 @@ src/ControlMenu/dependencies/platform-tools/*
 src/ControlMenu/dependencies/scrcpy/*
 src/ControlMenu/dependencies/node/*
 src/ControlMenu/dependencies/sqlite3/*
+src/ControlMenu/dependencies/go2rtc/*
 !src/ControlMenu/dependencies/*/.gitkeep
+
+# Runtime-generated go2rtc config (rebuilt on startup from cameras table)
+src/ControlMenu/go2rtc.yaml
 
 # Temp files from icon conversion
 src/ControlMenu/wwwroot/temp/
+
+# Claude Code session artifacts (user-local)
+.claude/
 
 # Keep these directories
 !src/
