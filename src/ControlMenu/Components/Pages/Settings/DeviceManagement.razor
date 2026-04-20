@@ -399,7 +399,7 @@
 
         var kindTask = AdbService.DetectDeviceKindAsync(d.Ip, d.Port);
         var modelTask = AdbService.GetPropAsync(d.Ip, d.Port, "ro.product.model");
-        await Task.WhenAll(kindTask, modelTask);
+        await Task.WhenAll(new Task[] { kindTask, modelTask });
 
         var kind = await kindTask;
         var model = await modelTask;
