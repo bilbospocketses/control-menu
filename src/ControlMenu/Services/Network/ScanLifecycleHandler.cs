@@ -49,11 +49,16 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
         return err;
     }
 
-    public Task StartFullScanAsync(IReadOnlyList<ParsedSubnet> subnets) =>
-        throw new NotImplementedException("Task 6");
+    public async Task StartFullScanAsync(IReadOnlyList<ParsedSubnet> subnets)
+    {
+        _discovered.Clear();
+        _dismissedAddresses.Clear();
+        _stashedNamesByMac.Clear();
+        RaiseStateChanged();
+        await _scan.StartScanAsync(subnets);
+    }
 
-    public Task CancelScanAsync() =>
-        throw new NotImplementedException("Task 6");
+    public Task CancelScanAsync() => _scan.CancelAsync();
 
     public void Dismiss(DiscoveredDevice d)
     {

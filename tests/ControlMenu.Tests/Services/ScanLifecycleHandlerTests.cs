@@ -108,4 +108,31 @@ public class ScanLifecycleHandlerTests
         var second = handler.ConsumeLastError();
         Assert.Null(second);
     }
+
+    [Fact]
+    public async Task StartFullScanAsync_ClearsState_AndDelegatesToScanService()
+    {
+        using var handler = CreateHandler();
+        // Seed all three state sets.
+        _scan.Emit(new ScanHitEvent(new ScanHit(
+            DiscoverySource.Mdns, "1.1.1.1:5555", "s", "n", "", null)));
+        handler.Dismiss(handler.Discovered[0]);
+        _scan.Emit(new ScanHitEvent(new ScanHit(
+            DiscoverySource.Mdns, "2.2.2.2:5555", "s", "n", "", null)));
+        Assert.Single(handler.Discovered);
+
+        IReadOnlyList<ParsedSubnet>? capturedSubnets = null;
+        _scan.StartScanHook = subnets => { capturedSubnets = subnets; return Task.CompletedTask; };
+
+        var input = new List<ParsedSubnet> { new("192.168.1.0/24", "192.168.1.0/24", 254) };
+        await handler.StartFullScanAsync(input);
+
+        Assert.Empty(handler.Discovered);
+        Assert.Same(input, capturedSubnets);
+
+        // Dismissed addresses cleared — the original 1.1.1.1:5555 would no longer be skipped.
+        _scan.Emit(new ScanHitEvent(new ScanHit(
+            DiscoverySource.Mdns, "1.1.1.1:5555", "s", "n", "", null)));
+        Assert.Single(handler.Discovered);
+    }
 }
