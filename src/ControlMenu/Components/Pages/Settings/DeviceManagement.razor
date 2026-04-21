@@ -1,7 +1,9 @@
 @using System.Text.RegularExpressions
+@using ControlMenu.Components.Shared.Scanner
 @using ControlMenu.Data.Entities
 @using ControlMenu.Data.Enums
 @using ControlMenu.Modules.AndroidDevices.Services
+@using ControlMenu.Services.Network
 @inject IDeviceService DeviceService
 @inject INetworkDiscoveryService NetworkDiscovery
 @inject IAdbService AdbService
@@ -19,14 +21,17 @@
 
 <div class="settings-section">
     <h2>Device Management</h2>
-    <p>Register and manage Android devices. Use "Scan Network" to discover IP addresses and ADB ports via <code>adb mdns services</code>; falls back to ARP for devices that don't advertise over mDNS.</p>
+    <p>Register and manage Android devices. <strong>Quick Refresh</strong> reconciles registered devices via <code>adb mdns services</code> + ARP; <strong>Scan Network…</strong> opens a full scanner (CIDR/IP/range subnets, TCP sweep + mDNS via ws-scrcpy-web).</p>
 
     <div class="toolbar">
         <button class="btn btn-primary" @onclick="ShowAddForm">
             <i class="bi bi-plus-lg"></i> Add Device
         </button>
-        <button class="btn btn-secondary" @onclick="ScanNetwork" disabled="@_scanning">
-            <i class="bi bi-broadcast"></i> @(_scanning ? "Scanning..." : "Scan Network")
+        <button class="btn btn-secondary" @onclick="QuickRefresh" disabled="@_scanning">
+            <i class="bi bi-arrow-clockwise"></i> @(_scanning ? "Refreshing..." : "Quick Refresh")
+        </button>
+        <button class="btn btn-secondary" @onclick="OpenScanModal">
+            <i class="bi bi-broadcast"></i> Scan Network…
         </button>
     </div>
 
@@ -109,6 +114,13 @@
     <DeviceForm Model="_formDevice" IsEdit="_isEditing" @bind-Pin="_formPin" OnSave="SaveDevice" OnCancel="CloseForm" />
 }
 
+@if (_showScanModal)
+{
+    <ScanNetworkModal OnAddHit="AddFromScan"
+                      OnScanComplete="OnFullScanComplete"
+                      OnClose="CloseScanModal" />
+}
+
 @if (_showDeleteConfirm)
 {
     <div class="dialog-overlay" @onclick="CloseDeleteConfirm">
@@ -142,6 +154,7 @@
     private bool _showDeleteConfirm;
     private ControlMenu.Data.Entities.Device? _deleteTarget;
     private bool _scanning;
+    private bool _showScanModal;
     private List<DiscoveredDevice> _discovered = [];
     private string? _message;
 
@@ -287,7 +300,7 @@
         }
     }
 
-    private async Task ScanNetwork()
+    private async Task QuickRefresh()
     {
         _scanning = true;
         StateHasChanged();
@@ -445,6 +458,41 @@
         if (age.TotalMinutes < 60) return $"{(int)age.TotalMinutes}m ago";
         if (age.TotalHours < 24) return $"{(int)age.TotalHours}h ago";
         return lastSeen.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+    }
+
+    private void OpenScanModal() => _showScanModal = true;
+    private void CloseScanModal() => _showScanModal = false;
+
+    private async Task AddFromScan(ScanHit hit)
+    {
+        _showScanModal = false;
+        var parts = hit.Address.Split(':');
+        var ip = parts[0];
+        var port = parts.Length > 1 && int.TryParse(parts[1], out var p) ? p : 5555;
+        await AddFromDiscovery(new DiscoveredDevice(hit.Name, ip, port, hit.Mac));
+    }
+
+    // Full Scan semantics: the "Discovered on Network" panel shows exactly the
+    // hits from this scan (minus already-registered devices), replacing whatever
+    // was there from a prior Quick Refresh. Quick Refresh continues to merge.
+    private async Task OnFullScanComplete(IReadOnlyList<ScanHit> hits)
+    {
+        var registeredMacs = _devices
+            .Where(d => !string.IsNullOrEmpty(d.MacAddress))
+            .Select(d => d.MacAddress)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        _discovered = hits
+            .Where(h => h.Mac is null || !registeredMacs.Contains(h.Mac))
+            .Select(h =>
+            {
+                var parts = h.Address.Split(':');
+                var ip = parts[0];
+                var port = parts.Length > 1 && int.TryParse(parts[1], out var p) ? p : 5555;
+                return new DiscoveredDevice(h.Name, ip, port, h.Mac);
+            })
+            .ToList();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ShowMessage(string message, bool isError = false)

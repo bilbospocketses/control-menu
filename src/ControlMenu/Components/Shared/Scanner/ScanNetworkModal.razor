@@ -102,6 +102,7 @@
 
 @code {
     [Parameter] public EventCallback<ScanHit> OnAddHit { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<ScanHit>> OnScanComplete { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
     private ScanPhase _phase = ScanPhase.Idle;
@@ -216,6 +217,9 @@
                     break;
                 case ScanHitEvent h:
                     _hits.Add(h.Hit);
+                    break;
+                case ScanCompleteEvent:
+                    OnScanComplete.InvokeAsync(HitDedupe.Collapse(_hits).ToList());
                     break;
                 case ScanErrorEvent:
                     // Surfaced via notification from parent page.
