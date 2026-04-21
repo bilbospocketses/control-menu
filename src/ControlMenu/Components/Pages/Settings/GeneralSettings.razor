@@ -109,6 +109,42 @@
     </div>
 </div>
 
+<div class="settings-section" style="margin-top:2rem;">
+    <h2>ws-scrcpy-web deployment</h2>
+    <div class="form-group">
+        <label>Deployment mode</label>
+        <div class="radio-group">
+            <label>
+                <input type="radio" name="wsscrcpyMode" value="managed"
+                       checked="@(_wsscrcpyMode == "managed")"
+                       @onchange="SetModeManaged" />
+                Managed — Control Menu spawns and watches the node process on port 8000.
+            </label>
+            <label>
+                <input type="radio" name="wsscrcpyMode" value="external"
+                       checked="@(_wsscrcpyMode == "external")"
+                       @onchange="SetModeExternal" />
+                External — connect to an already-running ws-scrcpy-web at the URL below (Docker, remote host).
+            </label>
+        </div>
+    </div>
+
+    @if (_wsscrcpyMode == "external")
+    {
+        <div class="form-group">
+            <label>ws-scrcpy-web URL</label>
+            <input class="form-control" style="max-width:400px;"
+                   @bind="_wsscrcpyUrl" @bind:event="onchange"
+                   @onblur="SaveUrl" />
+            <div class="form-hint">
+                e.g. <code>http://localhost:8000</code> or <code>http://ws-scrcpy:8000</code>.
+                If running in Docker and you want mDNS discovery to work, the container needs
+                <code>--network host</code> (Linux) or the TCP sweep will work but mDNS will return zero hits.
+            </div>
+        </div>
+    }
+</div>
+
 @if (!string.IsNullOrEmpty(_message))
 {
     <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
@@ -128,6 +164,8 @@
     private bool _sendingTest;
     private string? _message;
     private bool _messageIsError;
+    private string _wsscrcpyMode = "managed";
+    private string _wsscrcpyUrl = "http://localhost:8000";
 
     protected override async Task OnInitializedAsync()
     {
@@ -139,6 +177,8 @@
         _smtpPassword = await Config.GetSecretAsync("smtp-password") ?? "";
         _fromEmail = await Config.GetSettingAsync("smtp-from-email") ?? "";
         _notificationEmail = await Config.GetSettingAsync("notification-email") ?? "";
+        _wsscrcpyMode = await Config.GetSettingAsync("wsscrcpy-mode") ?? "managed";
+        _wsscrcpyUrl = await Config.GetSettingAsync("wsscrcpy-url") ?? "http://localhost:8000";
     }
 
     private async Task SetTheme(string theme)
@@ -231,5 +271,21 @@
     {
         await Config.SetSettingAsync("setup-completed", "false");
         Nav.NavigateTo("/", forceLoad: true);
+    }
+
+    private Task SetModeManaged() => SetWsScrcpyMode("managed");
+    private Task SetModeExternal() => SetWsScrcpyMode("external");
+
+    private async Task SetWsScrcpyMode(string mode)
+    {
+        _wsscrcpyMode = mode;
+        await Config.SetSettingAsync("wsscrcpy-mode", mode);
+        ShowMessage("Deploy mode saved. Restart to apply.", false);
+    }
+
+    private async Task SaveUrl()
+    {
+        await Config.SetSettingAsync("wsscrcpy-url", _wsscrcpyUrl);
+        ShowMessage("URL saved. Restart to apply.", false);
     }
 }
