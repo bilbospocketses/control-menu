@@ -192,6 +192,7 @@
     private ScanPhase _phase = ScanPhase.Idle;
     private ScanProgressEvent? _lastProgress;
     private readonly HashSet<string> _dismissedAddresses = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _stashedNamesByMac = new(StringComparer.OrdinalIgnoreCase);
     private IDisposable? _scanSubscription;
 
     protected override async Task OnInitializedAsync()
@@ -472,16 +473,19 @@
         if (changed) StateHasChanged();
     }
 
-    // MAC-based lookup against the registered device list. Discovered rows whose
-    // MAC matches a DB row show that device's user-assigned name; unmatched rows
-    // (including all MAC-less rows) show "Unknown" as a clear placeholder so the
-    // user sees at a glance which devices still need registering.
+    // MAC-based lookup. Priority:
+    //  1. Registered device in _devices — user has a live name.
+    //  2. Stashed name from DeleteDevice — user deleted the device but kept
+    //     the name for future rediscovery (populated in PopulateStashedNamesAsync).
+    //  3. "Unknown" as fallback.
     private string NameFor(DiscoveredDevice d)
     {
         if (string.IsNullOrEmpty(d.Mac)) return "Unknown";
         var match = _devices.FirstOrDefault(dev =>
             string.Equals(dev.MacAddress, d.Mac, StringComparison.OrdinalIgnoreCase));
-        return match?.Name ?? "Unknown";
+        if (match is not null) return match.Name;
+        if (_stashedNamesByMac.TryGetValue(d.Mac, out var stashed)) return stashed;
+        return "Unknown";
     }
 
     private static string GetStatusClass(ControlMenu.Data.Entities.Device device)
@@ -514,6 +518,7 @@
     {
         _discovered.Clear();
         _dismissedAddresses.Clear();
+        _stashedNamesByMac.Clear();
         await ScanService.StartScanAsync(subnets);
     }
 
@@ -541,6 +546,7 @@
                 case ScanCompleteEvent:
                     await EnrichDiscoveredMacsAsync();
                     await MergeAdbConnectedAsync();
+                    await PopulateStashedNamesAsync();
                     break;
                 case ScanCancelledEvent:
                     // Partial hits stay in place; no adb-merge on cancel.
@@ -592,6 +598,22 @@
         {
             var mac = arpMap.TryGetValue(x.Ip, out var m) ? m : null;
             _discovered.Add(new DiscoveredDevice($"{x.Ip}:{x.Port}", x.Ip, x.Port, mac, Source: "adb"));
+        }
+    }
+
+    // Populates _stashedNamesByMac from the Settings table. DeleteDevice stashes
+    // the user-assigned name under device-name-<mac> so re-adding restores it;
+    // this surfaces the stashed name in the Name column so users recognize
+    // devices they previously removed without having to click Add first.
+    private async Task PopulateStashedNamesAsync()
+    {
+        foreach (var d in _discovered)
+        {
+            if (string.IsNullOrEmpty(d.Mac)) continue;
+            if (_stashedNamesByMac.ContainsKey(d.Mac)) continue;
+            var stashed = await Config.GetSettingAsync($"device-name-{d.Mac}");
+            if (!string.IsNullOrEmpty(stashed))
+                _stashedNamesByMac[d.Mac] = stashed;
         }
     }
 
