@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using System.Net;
 
 namespace ControlMenu.Tests.Services;
 
@@ -18,15 +19,16 @@ public class DependencyManagerServiceTests : IDisposable
     private readonly Mock<ICommandExecutor> _mockExecutor = new();
     private readonly Mock<IHttpClientFactory> _mockHttpFactory = new();
     private readonly Mock<IConfigurationService> _mockConfig = new();
-    private readonly WsScrcpyService _wsScrcpy = new(
-        new Mock<IServiceScopeFactory>().Object,
-        new Mock<IConfigurationService>().Object,
-        NullLogger<WsScrcpyService>.Instance);
+    private readonly WsScrcpyService _wsScrcpy;
     private readonly Mock<IGo2RtcService> _mockGo2Rtc = new();
 
     public DependencyManagerServiceTests()
     {
         _dbFactory = TestDbContextFactory.CreateFactory();
+        _wsScrcpy = new WsScrcpyService(
+            new Mock<IServiceScopeFactory>().Object,
+            _mockConfig.Object,
+            NullLogger<WsScrcpyService>.Instance);
     }
 
     public void Dispose() => _dbFactory.Dispose();
@@ -312,6 +314,110 @@ public class DependencyManagerServiceTests : IDisposable
         Assert.Equal("27.1.0", result.InstalledVersion);
         Assert.Null(result.LatestVersion);
     }
+
+    // --- External-mode ws-scrcpy-web health check tests ---
+
+    private static HttpClient HttpClientReturning(HttpStatusCode status) =>
+        new(new MockHttpHandler("", status));
+
+    private static HttpClient HttpClientThatThrows() =>
+        new(new ThrowingHttpHandler());
+
+    private async Task<Dependency> SeedWsScrcpyWebDependencyAsync()
+    {
+        using var db = _dbFactory.CreateDbContext();
+        var dep = new Dependency
+        {
+            Id = Guid.NewGuid(),
+            Name = "ws-scrcpy-web",
+            ModuleId = "android-devices",
+            SourceType = UpdateSourceType.Manual,
+            Status = DependencyStatus.UpToDate
+        };
+        db.Dependencies.Add(dep);
+        await db.SaveChangesAsync();
+        return dep;
+    }
+
+    private static ModuleDependency WsScrcpyModuleDep() => new()
+    {
+        Name = "ws-scrcpy-web",
+        ExecutableName = "node",
+        VersionCommand = "node --version",
+        VersionPattern = @"v([\d.]+)",
+        SourceType = UpdateSourceType.Manual,
+        ProjectHomeUrl = "https://example.com"
+    };
+
+    [Fact]
+    public async Task CheckDependency_WsScrcpyWeb_ExternalMode_PingReturns200_UpToDate()
+    {
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-mode", It.IsAny<string?>())).ReturnsAsync("external");
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-url", It.IsAny<string?>())).ReturnsAsync("http://fake:8000");
+        _mockHttpFactory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(HttpClientReturning(HttpStatusCode.OK));
+
+        var module = new FakeModule("android-devices", "Android", [WsScrcpyModuleDep()]);
+        var dep = await SeedWsScrcpyWebDependencyAsync();
+
+        var service = CreateService(module);
+        var result = await service.CheckDependencyAsync(dep.Id);
+
+        Assert.Equal(DependencyStatus.UpToDate, result.Status);
+        Assert.Null(result.ErrorMessage);
+        Assert.Equal("external", result.InstalledVersion);
+    }
+
+    [Fact]
+    public async Task CheckDependency_WsScrcpyWeb_ExternalMode_PingReturns503_CheckFailed()
+    {
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-mode", It.IsAny<string?>())).ReturnsAsync("external");
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-url", It.IsAny<string?>())).ReturnsAsync("http://fake:8000");
+        _mockHttpFactory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(HttpClientReturning(HttpStatusCode.ServiceUnavailable));
+
+        var module = new FakeModule("android-devices", "Android", [WsScrcpyModuleDep()]);
+        var dep = await SeedWsScrcpyWebDependencyAsync();
+
+        var service = CreateService(module);
+        var result = await service.CheckDependencyAsync(dep.Id);
+
+        Assert.Equal(DependencyStatus.CheckFailed, result.Status);
+        Assert.Contains("503", result.ErrorMessage ?? "");
+    }
+
+    [Fact]
+    public async Task CheckDependency_WsScrcpyWeb_ExternalMode_Unreachable_CheckFailed()
+    {
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-mode", It.IsAny<string?>())).ReturnsAsync("external");
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-url", It.IsAny<string?>())).ReturnsAsync("http://fake:8000");
+        _mockHttpFactory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(HttpClientThatThrows());
+
+        var module = new FakeModule("android-devices", "Android", [WsScrcpyModuleDep()]);
+        var dep = await SeedWsScrcpyWebDependencyAsync();
+
+        var service = CreateService(module);
+        var result = await service.CheckDependencyAsync(dep.Id);
+
+        Assert.Equal(DependencyStatus.CheckFailed, result.Status);
+        Assert.Contains("unreachable", result.ErrorMessage ?? "");
+    }
+
+    [Fact]
+    public async Task CheckDependency_WsScrcpyWeb_ManagedMode_SkipsExternalBranch()
+    {
+        // Default mode = Managed (no stub for wsscrcpy-mode). External branch must not fire.
+        // Managed path calls GetInstalledVersionAsync which shells out via _executor.
+        // Verify HTTP factory was NOT called.
+        _mockExecutor.Setup(e => e.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CommandResult(1, "", "not found", false));
+
+        var module = new FakeModule("android-devices", "Android", [WsScrcpyModuleDep()]);
+        var dep = await SeedWsScrcpyWebDependencyAsync();
+
+        var service = CreateService(module);
+        await service.CheckDependencyAsync(dep.Id);
+
+        _mockHttpFactory.Verify(f => f.CreateClient(It.IsAny<string>()), Times.Never);
+    }
 }
 
 // Test helpers at bottom of file
@@ -339,4 +445,11 @@ internal class MockHttpHandler(string responseContent, System.Net.HttpStatusCode
             Content = new StringContent(responseContent)
         });
     }
+}
+
+internal class ThrowingHttpHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+        => Task.FromException<HttpResponseMessage>(new HttpRequestException("connection refused"));
 }

@@ -120,6 +120,40 @@ public class DependencyManagerService : IDependencyManagerService
             return new DependencyCheckResult(dependencyId, entity.Name, DependencyStatus.CheckFailed,
                 entity.InstalledVersion, null, "Module dependency declaration not found");
 
+        // External-mode ws-scrcpy-web: health = HTTP ping of configured URL.
+        // No install-path or version check makes sense when the node server lives elsewhere.
+        if (entity.Name == "ws-scrcpy-web" &&
+            await _wsScrcpy.GetDeployModeAsync() == WsScrcpyDeployMode.External)
+        {
+            var url = (await _config.GetSettingAsync("wsscrcpy-url")) ?? "http://localhost:8000";
+            try
+            {
+                using var http = _httpFactory.CreateClient();
+                http.Timeout = TimeSpan.FromSeconds(5);
+                var resp = await http.GetAsync(url);
+                entity.Status = resp.IsSuccessStatusCode ? DependencyStatus.UpToDate : DependencyStatus.CheckFailed;
+                entity.LastChecked = DateTime.UtcNow;
+                entity.InstalledVersion = resp.IsSuccessStatusCode ? "external" : null;
+                entity.LatestKnownVersion = null;
+                await db.SaveChangesAsync();
+                return new DependencyCheckResult(
+                    entity.Id, entity.Name, entity.Status,
+                    entity.InstalledVersion, entity.LatestKnownVersion,
+                    resp.IsSuccessStatusCode ? null : $"ws-scrcpy-web at {url} returned HTTP {(int)resp.StatusCode}");
+            }
+            catch (Exception ex)
+            {
+                entity.Status = DependencyStatus.CheckFailed;
+                entity.LastChecked = DateTime.UtcNow;
+                entity.InstalledVersion = null;
+                await db.SaveChangesAsync();
+                _logger.LogWarning(ex, "ws-scrcpy-web external URL unreachable: {Url}", url);
+                return new DependencyCheckResult(
+                    entity.Id, entity.Name, DependencyStatus.CheckFailed,
+                    null, null, $"ws-scrcpy-web at {url} unreachable: {ex.Message}");
+            }
+        }
+
         try
         {
             // Refresh installed version — check local install path first, then system PATH
