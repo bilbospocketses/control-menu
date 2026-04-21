@@ -1,0 +1,236 @@
+@using ControlMenu.Services
+@using ControlMenu.Services.Network
+@using System.Text.Json
+@inject INetworkScanService ScanService
+@inject IConfigurationService Config
+@inject SubnetDetectionClient DetectionClient
+@implements IAsyncDisposable
+
+<div class="dialog-overlay" @onclick="Close">
+    <div class="dialog dialog-large" @onclick:stopPropagation="true">
+        <div class="dialog-header">
+            <h3>Scan network</h3>
+            <ScanProgressChip Phase="_phase"
+                              Checked="_lastProgress?.Checked ?? 0"
+                              Total="_lastProgress?.Total ?? 0"
+                              FoundSoFar="_hits.Count" />
+            <button class="btn-close" @onclick="Close" aria-label="Close">×</button>
+        </div>
+        <div class="dialog-body">
+
+            <div class="subnet-list">
+                <label>Subnets to scan</label>
+                @if (_detected is not null && _subnets.Count == 0)
+                {
+                    <p class="form-hint">
+                        Detected: <code>@_detected.Cidr</code> (@_detected.HostCount hosts) —
+                        <button class="btn-link" @onclick="UseDetected">use this</button>
+                    </p>
+                }
+                @foreach (var s in _subnets)
+                {
+                    <div class="subnet-row">
+                        <code>@s.Normalized</code>
+                        <span class="form-hint">@s.HostCount host@(s.HostCount == 1 ? "" : "s")</span>
+                        <button class="btn btn-sm btn-danger" @onclick="() => RemoveSubnet(s)">Remove</button>
+                    </div>
+                }
+                <button class="btn btn-secondary" @onclick="ShowAddSubnet">+ Add subnet</button>
+            </div>
+
+            <div class="hits-area">
+                @if (_hits.Count == 0)
+                {
+                    <p class="form-hint">
+                        @(_phase == ScanPhase.Idle ? "Click Start to begin scanning." : "No hits yet.")
+                    </p>
+                }
+                else
+                {
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Source</th>
+                                <th>Name</th>
+                                <th>Address</th>
+                                <th>MAC</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var h in _hits)
+                            {
+                                <tr>
+                                    <td><span class="source-tag @h.Source.ToString().ToLowerInvariant()">@h.Source</span></td>
+                                    <td>@(string.IsNullOrEmpty(h.Label) ? h.Name : h.Label)</td>
+                                    <td><code>@h.Address</code></td>
+                                    <td><code>@(h.Mac ?? "—")</code></td>
+                                    <td><button class="btn btn-sm btn-primary" @onclick="() => AddHit(h)">Add</button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+        </div>
+        <div class="dialog-actions">
+            <button class="btn btn-secondary" @onclick="Close">Close</button>
+            @if (_phase is ScanPhase.Scanning or ScanPhase.Draining)
+            {
+                <button class="btn btn-warning" @onclick="Cancel">Cancel</button>
+            }
+            else
+            {
+                <button class="btn btn-primary" disabled="@(_subnets.Count == 0)" @onclick="StartClicked">Start</button>
+            }
+        </div>
+    </div>
+</div>
+
+@if (_showAddSubnet)
+{
+    <AddSubnetModal OnSave="AddSubnet" OnCancel="HideAddSubnet" />
+}
+@if (_showLargeWarn)
+{
+    <LargeSubnetWarningModal TotalHosts="_subnets.Sum(s => s.HostCount)"
+                             SubnetCount="_subnets.Count"
+                             OnConfirm="StartConfirmed"
+                             OnCancel="HideLargeWarn" />
+}
+
+@code {
+    [Parameter] public EventCallback<ScanHit> OnAddHit { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private ScanPhase _phase = ScanPhase.Idle;
+    private ScanProgressEvent? _lastProgress;
+    private readonly List<ScanHit> _hits = new();
+    private readonly List<ParsedSubnet> _subnets = new();
+    private DetectedSubnet? _detected;
+    private bool _showAddSubnet;
+    private bool _showLargeWarn;
+    private IDisposable? _subscription;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _subscription = ScanService.Subscribe(OnScanEvent);
+        _phase = ScanService.Phase;
+        _hits.AddRange(ScanService.Hits);
+
+        await LoadSubnetsAsync();
+        _detected = await DetectionClient.DetectAsync();
+    }
+
+    private async Task LoadSubnetsAsync()
+    {
+        var raw = await Config.GetSettingAsync("scan-subnets");
+        if (string.IsNullOrEmpty(raw)) return;
+        try
+        {
+            var strings = JsonSerializer.Deserialize<string[]>(raw) ?? Array.Empty<string>();
+            foreach (var s in strings)
+            {
+                var p = SubnetParser.Parse(s);
+                if (p.IsSuccess && p.Value is not null) _subnets.Add(p.Value);
+            }
+        }
+        catch (JsonException)
+        {
+            // Corrupt JSON — scan starts with an empty list.
+        }
+    }
+
+    private async Task SaveSubnetsAsync()
+    {
+        await Config.SetSettingAsync("scan-subnets",
+            JsonSerializer.Serialize(_subnets.Select(s => s.Raw).ToArray()));
+    }
+
+    private async Task AddSubnet(ParsedSubnet subnet)
+    {
+        _showAddSubnet = false;
+        _subnets.Add(subnet);
+        await SaveSubnetsAsync();
+    }
+
+    private async Task RemoveSubnet(ParsedSubnet subnet)
+    {
+        _subnets.Remove(subnet);
+        await SaveSubnetsAsync();
+    }
+
+    private async Task UseDetected()
+    {
+        if (_detected is null) return;
+        var p = SubnetParser.Parse(_detected.Cidr);
+        if (!p.IsSuccess || p.Value is null) return;
+        _subnets.Add(p.Value);
+        await SaveSubnetsAsync();
+    }
+
+    private void StartClicked()
+    {
+        var total = _subnets.Sum(s => s.HostCount);
+        if (total > 2048)
+        {
+            _showLargeWarn = true;
+        }
+        else
+        {
+            _ = ScanService.StartScanAsync(_subnets);
+        }
+    }
+
+    private Task StartConfirmed()
+    {
+        _showLargeWarn = false;
+        return ScanService.StartScanAsync(_subnets);
+    }
+
+    private Task Cancel() => ScanService.CancelAsync();
+
+    private async Task AddHit(ScanHit hit)
+    {
+        await OnAddHit.InvokeAsync(hit);
+        await Close();
+    }
+
+    private void ShowAddSubnet() => _showAddSubnet = true;
+    private void HideAddSubnet() => _showAddSubnet = false;
+    private void HideLargeWarn() => _showLargeWarn = false;
+
+    private void OnScanEvent(ScanEvent evt)
+    {
+        InvokeAsync(() =>
+        {
+            switch (evt)
+            {
+                case ScanStartedEvent:
+                    _hits.Clear();
+                    _lastProgress = null;
+                    break;
+                case ScanProgressEvent p:
+                    _lastProgress = p;
+                    break;
+                case ScanHitEvent h:
+                    _hits.Add(h.Hit);
+                    break;
+                case ScanErrorEvent:
+                    // Surfaced via notification from parent page.
+                    break;
+            }
+            _phase = ScanService.Phase;
+            StateHasChanged();
+        });
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    public ValueTask DisposeAsync()
+    {
+        _subscription?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}
