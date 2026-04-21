@@ -61,6 +61,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<WsScrcpyService>()
 
 // Network scanner — singleton holds the ws-scan WebSocket and fans events to subscribers
 builder.Services.AddSingleton<INetworkScanService, NetworkScanService>();
+builder.Services.AddScoped<SubnetDetectionClient>();
 
 // Jellyfin module services
 builder.Services.AddScoped<IJellyfinService, JellyfinService>();
@@ -78,6 +79,7 @@ builder.Services.AddSingleton<IGo2RtcService, Go2RtcService>();
 builder.Services.AddHostedService(sp => (Go2RtcService)sp.GetRequiredService<IGo2RtcService>());
 
 // Dependency management
+builder.Services.AddHttpClient();
 builder.Services.AddHttpClient("github-api");
 builder.Services.AddHttpClient("dependency-updates");
 builder.Services.AddScoped<IDependencyManagerService>(sp =>
