@@ -135,4 +135,34 @@ public class ScanLifecycleHandlerTests
             DiscoverySource.Mdns, "1.1.1.1:5555", "s", "n", "", null)));
         Assert.Single(handler.Discovered);
     }
+
+    [Fact]
+    public void ReplaceDiscovered_ReplacesList_LeavesOtherStateIntact()
+    {
+        using var handler = CreateHandler();
+        // Seed Discovered + Dismissed via live flow.
+        _scan.Emit(new ScanHitEvent(new ScanHit(
+            DiscoverySource.Mdns, "10.0.0.1:5555", "s", "pre", "", null)));
+        handler.Dismiss(handler.Discovered[0]);
+
+        var replacement = new[]
+        {
+            new DiscoveredDevice("fresh-1", "10.0.0.2", 5555, "aa:bb:cc:dd:ee:01"),
+            new DiscoveredDevice("fresh-2", "10.0.0.3", 5555, "aa:bb:cc:dd:ee:02"),
+        };
+
+        var stateChanges = 0;
+        handler.OnStateChanged += () => stateChanges++;
+
+        handler.ReplaceDiscovered(replacement);
+
+        Assert.Equal(2, handler.Discovered.Count);
+        Assert.Equal("fresh-1", handler.Discovered[0].ServiceName);
+        Assert.Equal(1, stateChanges);
+
+        // Dismissed set preserved — re-emitting the previously dismissed address is still skipped.
+        _scan.Emit(new ScanHitEvent(new ScanHit(
+            DiscoverySource.Mdns, "10.0.0.1:5555", "s", "after", "", null)));
+        Assert.Equal(2, handler.Discovered.Count);
+    }
 }

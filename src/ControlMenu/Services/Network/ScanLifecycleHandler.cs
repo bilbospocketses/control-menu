@@ -67,8 +67,12 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
         RaiseStateChanged();
     }
 
-    public void ReplaceDiscovered(IEnumerable<DiscoveredDevice> devices) =>
-        throw new NotImplementedException("Task 7");
+    public void ReplaceDiscovered(IEnumerable<DiscoveredDevice> devices)
+    {
+        _discovered.Clear();
+        _discovered.AddRange(devices);
+        RaiseStateChanged();
+    }
 
     public void Dispose() => _subscription.Dispose();
 
