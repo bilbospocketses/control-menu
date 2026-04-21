@@ -43,6 +43,9 @@ keys/
 # Superpowers brainstorm artifacts
 .superpowers/
 
+# Superpowers worktrees (isolated implementation workspaces)
+.worktrees/
+
 # ws-scrcpy-web (separate repo, linked at runtime)
 ws-scrcpy-web/
 
