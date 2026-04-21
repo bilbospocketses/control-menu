@@ -1,0 +1,56 @@
+@using ControlMenu.Services.Network
+@implements IDisposable
+
+@if (_visible)
+{
+    <div class="scan-chip @_stateClass">
+        <span class="scan-dot"></span>
+        <span class="scan-label">@_label</span>
+        @if (Phase is ScanPhase.Scanning or ScanPhase.Draining)
+        {
+            <span class="scan-counter">@_progress</span>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public ScanPhase Phase { get; set; }
+    [Parameter] public int Checked { get; set; }
+    [Parameter] public int Total { get; set; }
+    [Parameter] public int FoundSoFar { get; set; }
+
+    private bool _visible;
+    private string _stateClass = "";
+    private string _label = "";
+    private string _progress = "";
+    private CancellationTokenSource? _hideCts;
+
+    protected override void OnParametersSet()
+    {
+        (_stateClass, _label) = Phase switch
+        {
+            ScanPhase.Idle => ("idle", "idle"),
+            ScanPhase.Scanning => ("scanning", "scanning"),
+            ScanPhase.Draining => ("draining", "draining"),
+            ScanPhase.Complete => ("complete", $"complete — {FoundSoFar} found"),
+            ScanPhase.Cancelled => ("cancelled", $"cancelled — {FoundSoFar} found"),
+            _ => ("", ""),
+        };
+        _progress = Total > 0 ? $"{Checked} / {Total}" : "";
+        _visible = Phase != ScanPhase.Idle;
+
+        _hideCts?.Cancel();
+        if (Phase is ScanPhase.Complete or ScanPhase.Cancelled)
+        {
+            var timeout = Phase == ScanPhase.Complete ? 5000 : 10000;
+            _hideCts = new();
+            var token = _hideCts.Token;
+            _ = Task.Delay(timeout, token).ContinueWith(_ =>
+            {
+                InvokeAsync(() => { _visible = false; StateHasChanged(); });
+            }, TaskContinuationOptions.OnlyOnRanToCompletion);
+        }
+    }
+
+    public void Dispose() => _hideCts?.Cancel();
+}
