@@ -91,4 +91,60 @@ public class NetworkScanServiceTests
         svc.TestOnlyInject(new ScanStartedEvent(5, 1, 100));  // second scan starts
         Assert.Empty(svc.Hits);
     }
+
+    [Fact]
+    public void ErrorEvent_TransitionsPhaseToIdle_NoReplayForLateSubscribers()
+    {
+        // ScanErrorEvent is transient by design — start-time failures (e.g.
+        // ws-scrcpy-web unreachable) leave the phase Idle so a subsequent
+        // retry starts clean. The error surfaces via the at-the-moment
+        // subscriber callback; it does not replay.
+        var svc = CreateService();
+        var firstReceived = new List<ScanEvent>();
+        using var firstSub = svc.Subscribe(e => firstReceived.Add(e));
+        svc.TestOnlyInject(new ScanErrorEvent("connection refused"));
+
+        Assert.Equal(ScanPhase.Idle, svc.Phase);
+        Assert.Single(firstReceived);
+        Assert.IsType<ScanErrorEvent>(firstReceived[0]);
+
+        var lateReceived = new List<ScanEvent>();
+        using var lateSub = svc.Subscribe(e => lateReceived.Add(e));
+        Assert.Empty(lateReceived);
+    }
+
+    [Fact]
+    public void Subscribe_AfterComplete_ReplaysLastScan()
+    {
+        var svc = CreateService();
+        svc.TestOnlyInject(new ScanStartedEvent(3, 1, 0));
+        svc.TestOnlyInject(new ScanHitEvent(new ScanHit(DiscoverySource.Tcp, "10.0.0.5:5555", "", "", "", null)));
+        svc.TestOnlyInject(new ScanCompleteEvent(1));
+
+        var received = new List<ScanEvent>();
+        using var sub = svc.Subscribe(e => received.Add(e));
+        // Phase stays Complete so replay fires: Started, Hit. No progress event was ever sent.
+        Assert.Equal(2, received.Count);
+        Assert.IsType<ScanStartedEvent>(received[0]);
+        Assert.IsType<ScanHitEvent>(received[1]);
+    }
+
+    [Fact]
+    public void SnapshotReplay_PreservesHitInsertionOrder()
+    {
+        var svc = CreateService();
+        var first = new ScanHit(DiscoverySource.Tcp, "10.0.0.5:5555", "S1", "first", "", null);
+        var second = new ScanHit(DiscoverySource.Mdns, "10.0.0.6:5555", "S2", "second", "", null);
+        svc.TestOnlyInject(new ScanStartedEvent(2, 1, 0));
+        svc.TestOnlyInject(new ScanHitEvent(first));
+        svc.TestOnlyInject(new ScanHitEvent(second));
+
+        var received = new List<ScanEvent>();
+        using var sub = svc.Subscribe(e => received.Add(e));
+        // Expected: Started, Hit(first), Hit(second).
+        Assert.Equal(3, received.Count);
+        Assert.IsType<ScanStartedEvent>(received[0]);
+        Assert.Same(first, ((ScanHitEvent)received[1]).Hit);
+        Assert.Same(second, ((ScanHitEvent)received[2]).Hit);
+    }
 }

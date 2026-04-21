@@ -27,15 +27,31 @@ public sealed class NetworkScanService : INetworkScanService
     public IDisposable Subscribe(Action<ScanEvent> onEvent)
     {
         var sub = new Subscriber(onEvent, this);
-        lock (_lock) _subscribers.Add(sub);
 
-        // Snapshot replay: only emit if a scan is currently in a non-Idle phase
-        // OR we have buffered hits from a completed scan.
-        if (Phase != ScanPhase.Idle)
+        // Snapshot everything under the lock to avoid a race with Dispatch
+        // mutating _hits / _lastStarted / _lastProgress while we iterate.
+        // Callbacks fire OUTSIDE the lock so a slow subscriber can't block
+        // the producer. ScanErrorEvent is transient by design — it leaves
+        // Phase=Idle so later subscribers see a clean "ready" state; errors
+        // surface via at-the-moment notification, not replay.
+        ScanPhase phase;
+        ScanStartedEvent? started;
+        ScanProgressEvent? progress;
+        List<ScanHit> hitsSnapshot;
+        lock (_lock)
         {
-            if (_lastStarted is not null) onEvent(_lastStarted);
-            if (_lastProgress is not null) onEvent(_lastProgress);
-            foreach (var hit in _hits) onEvent(new ScanHitEvent(hit));
+            _subscribers.Add(sub);
+            phase = Phase;
+            started = _lastStarted;
+            progress = _lastProgress;
+            hitsSnapshot = _hits.ToList();
+        }
+
+        if (phase != ScanPhase.Idle)
+        {
+            if (started is not null) onEvent(started);
+            if (progress is not null) onEvent(progress);
+            foreach (var hit in hitsSnapshot) onEvent(new ScanHitEvent(hit));
         }
         return sub;
     }
