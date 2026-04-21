@@ -61,6 +61,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<WsScrcpyService>()
 
 // Network scanner — singleton holds the ws-scan WebSocket and fans events to subscribers
 builder.Services.AddSingleton<INetworkScanService, NetworkScanService>();
+builder.Services.AddScoped<IScanLifecycleHandler, ScanLifecycleHandler>();
 builder.Services.AddScoped<SubnetDetectionClient>();
 
 // Jellyfin module services
