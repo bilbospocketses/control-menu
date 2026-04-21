@@ -229,6 +229,17 @@ public class ScanLifecycleHandlerTests
         Assert.Empty(handler.Discovered);
     }
 
+    [Fact]
+    public void Dispose_Unsubscribes()
+    {
+        var handler = CreateHandler();
+        Assert.Equal(1, _scan.SubscriberCount);
+
+        handler.Dispose();
+
+        Assert.Equal(0, _scan.SubscriberCount);
+    }
+
     // Helper: yield control until all in-flight handler-triggered tasks have run.
     // Handler dispatches ScanComplete fire-and-forget; xUnit tests on the same
     // thread need to yield to let those continuations run.
