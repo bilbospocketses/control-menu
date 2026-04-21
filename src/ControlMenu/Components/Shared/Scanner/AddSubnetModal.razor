@@ -1,0 +1,68 @@
+@using ControlMenu.Services.Network
+
+<div class="dialog-overlay" @onclick="Cancel">
+    <div class="dialog" @onclick:stopPropagation="true">
+        <h3>Add subnet</h3>
+        <div class="form-group">
+            <input class="form-control @(_error is null ? "" : "is-invalid")"
+                   placeholder="192.168.1.0/24 or 192.168.1.10-50 or 192.168.1.5"
+                   @bind="Input" @bind:event="oninput" />
+            @if (_error is not null)
+            {
+                <div class="form-hint text-danger">@_error</div>
+            }
+            else if (_parsed is not null)
+            {
+                <div class="form-hint">
+                    @_parsed.Normalized — @_parsed.HostCount host@(_parsed.HostCount == 1 ? "" : "s")
+                </div>
+            }
+        </div>
+        <p class="form-hint">
+            <a href="/help/subnets.html" target="_blank" rel="noopener">Subnet syntax help ↗</a>
+        </p>
+        <div class="dialog-actions">
+            <button class="btn btn-secondary" @onclick="Cancel">Cancel</button>
+            <button class="btn btn-primary" disabled="@(_parsed is null)" @onclick="Save">Add</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback<ParsedSubnet> OnSave { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private string _inputValue = "";
+    private ParsedSubnet? _parsed;
+    private string? _error;
+
+    private string Input
+    {
+        get => _inputValue;
+        set { _inputValue = value; Validate(); }
+    }
+
+    private void Validate()
+    {
+        if (string.IsNullOrWhiteSpace(_inputValue))
+        {
+            _parsed = null;
+            _error = null;
+            return;
+        }
+        var r = SubnetParser.Parse(_inputValue);
+        if (r.IsSuccess)
+        {
+            _parsed = r.Value;
+            _error = null;
+        }
+        else
+        {
+            _parsed = null;
+            _error = r.Error;
+        }
+    }
+
+    private Task Save() => _parsed is null ? Task.CompletedTask : OnSave.InvokeAsync(_parsed);
+    private Task Cancel() => OnCancel.InvokeAsync();
+}

@@ -1,0 +1,26 @@
+@using ControlMenu.Services.Network
+
+<div class="dialog-overlay" @onclick="Cancel">
+    <div class="dialog" @onclick:stopPropagation="true">
+        <h3>Large subnet</h3>
+        <p>
+            This scan covers <strong>@TotalHosts.ToString("N0") hosts</strong> across @SubnetCount subnet@(SubnetCount == 1 ? "" : "s").
+            Scans larger than 2,048 hosts take noticeably longer and produce far more traffic.
+        </p>
+        <p>Continue anyway?</p>
+        <div class="dialog-actions">
+            <button class="btn btn-secondary" @onclick="Cancel">Cancel</button>
+            <button class="btn btn-warning" @onclick="Confirm">Scan anyway</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int TotalHosts { get; set; }
+    [Parameter] public int SubnetCount { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private Task Confirm() => OnConfirm.InvokeAsync();
+    private Task Cancel() => OnCancel.InvokeAsync();
+}
