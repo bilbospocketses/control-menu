@@ -162,6 +162,7 @@ select.form-control { appearance: auto; }
 .source-badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
     font-size: 0.7rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em;
     background: rgba(245, 159, 0, 0.15); color: #d97706; vertical-align: middle; }
+.scan-row { display: flex; align-items: center; gap: 12px; margin: 1rem 0; padding: 0.5rem 0; }
 
 /* ── Status indicators ── */
 .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }

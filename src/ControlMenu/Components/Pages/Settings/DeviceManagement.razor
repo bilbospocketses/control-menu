@@ -8,6 +8,8 @@
 @inject INetworkDiscoveryService NetworkDiscovery
 @inject IAdbService AdbService
 @inject IConfigurationService Config
+@inject INetworkScanService ScanService
+@implements IDisposable
 
 <div class="settings-section">
     <h2>Device Discovery</h2>
@@ -76,6 +78,20 @@
     }
 </div>
 
+@if (_phase is not ScanPhase.Idle)
+{
+    <div class="scan-row">
+        <ScanProgressChip Phase="_phase"
+                          Checked="_lastProgress?.Checked ?? 0"
+                          Total="_lastProgress?.Total ?? 0"
+                          FoundSoFar="_discovered.Count" />
+        @if (_phase is ScanPhase.Scanning or ScanPhase.Draining)
+        {
+            <button class="btn btn-warning btn-sm" @onclick="CancelScan">Cancel</button>
+        }
+    </div>
+}
+
 @if (_discovered.Count > 0)
 {
     <div class="settings-section">
@@ -109,6 +125,7 @@
                         <td><code>@(d.Mac ?? "—")</code></td>
                         <td class="actions">
                             <button class="btn btn-primary btn-sm" @onclick="() => AddFromDiscovery(d)" disabled="@(d.Mac is null)">Add</button>
+                            <button class="btn btn-secondary btn-sm" @onclick="() => DismissDiscovered(d)" title="Dismiss — remove from this list">×</button>
                         </td>
                     </tr>
                 }
@@ -124,9 +141,11 @@
 
 @if (_showScanModal)
 {
-    <ScanNetworkModal OnAddHit="AddFromScan"
+    <ScanNetworkModal OnStart="OnFullScanStart"
+                      OnAddHit="AddFromScan"
                       OnScanComplete="OnFullScanComplete"
-                      OnClose="CloseScanModal" />
+                      OnClose="CloseScanModal"
+                      ScanInProgress="@(_phase is ScanPhase.Scanning or ScanPhase.Draining)" />
 }
 
 @if (_showDeleteConfirm)
@@ -172,6 +191,10 @@
     private record DiscoveredDevice(string ServiceName, string Ip, int Port, string? Mac, string? Source = null);
     private bool _messageIsError;
     private int _discoveryInterval = 300;
+    private ScanPhase _phase = ScanPhase.Idle;
+    private ScanProgressEvent? _lastProgress;
+    private readonly HashSet<string> _dismissedAddresses = new(StringComparer.OrdinalIgnoreCase);
+    private IDisposable? _scanSubscription;
 
     protected override async Task OnInitializedAsync()
     {
@@ -179,6 +202,8 @@
         if (int.TryParse(interval, out var parsed))
             _discoveryInterval = parsed;
         await LoadDevices();
+        _scanSubscription = ScanService.Subscribe(OnScanEvent);
+        _phase = ScanService.Phase;
     }
 
     private async Task OnDiscoveryIntervalChanged(ChangeEventArgs e)
@@ -492,46 +517,82 @@
         await AddFromDiscovery(new DiscoveredDevice(hit.Name, ip, port, hit.Mac));
     }
 
-    // Full Scan semantics: the "Discovered on Network" panel shows exactly the
-    // hits from this scan (minus already-registered devices), replacing whatever
-    // was there from a prior Quick Refresh. Quick Refresh continues to merge.
-    //
-    // Plus the adb-connected merge: ws-scrcpy-web's NetworkScanner filters out
-    // IP:ports already in `adb devices` so the user only sees candidates for
-    // `adb connect`. That silently hides any device connected via ws-scrcpy-web
-    // or scrcpy but never registered in Control Menu. We add those back here.
-    private async Task OnFullScanComplete(IReadOnlyList<ScanHit> hits)
+    // Temporarily retained for the ScanNetworkModal callback. T4 removes this.
+    private Task OnFullScanComplete(IReadOnlyList<ScanHit> hits) => Task.CompletedTask;
+
+    // Modal fires this when the user clicks Start. Clears the Discovered panel
+    // (Full Scan replaces semantics), clears dismissed addresses (new scan =
+    // fresh intent), kicks off the scan. Events will flow back through
+    // OnScanEvent from the service singleton.
+    private async Task OnFullScanStart(IReadOnlyList<ParsedSubnet> subnets)
     {
-        var registeredMacs = _devices
-            .Where(d => !string.IsNullOrEmpty(d.MacAddress))
-            .Select(d => d.MacAddress)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _discovered.Clear();
+        _dismissedAddresses.Clear();
+        await ScanService.StartScanAsync(subnets);
+    }
+
+    private void OnScanEvent(ScanEvent evt)
+    {
+        InvokeAsync(async () =>
+        {
+            switch (evt)
+            {
+                case ScanStartedEvent:
+                    _lastProgress = null;
+                    break;
+                case ScanProgressEvent p:
+                    _lastProgress = p;
+                    break;
+                case ScanHitEvent h:
+                    if (!_dismissedAddresses.Contains(h.Hit.Address))
+                    {
+                        var parts = h.Hit.Address.Split(':');
+                        var ip = parts[0];
+                        var port = parts.Length > 1 && int.TryParse(parts[1], out var pr) ? pr : 5555;
+                        _discovered.Add(new DiscoveredDevice(h.Hit.Name, ip, port, h.Hit.Mac));
+                    }
+                    break;
+                case ScanCompleteEvent:
+                    await MergeAdbConnectedAsync();
+                    break;
+                case ScanCancelledEvent:
+                    // Partial hits stay in place; no adb-merge on cancel.
+                    break;
+                case ScanErrorEvent err:
+                    await ShowMessage($"Scan error: {err.Reason}", isError: true);
+                    break;
+            }
+            _phase = ScanService.Phase;
+            StateHasChanged();
+        });
+    }
+
+    // Called on ScanCompleteEvent. Runs adb devices locally, filters out:
+    //  • IP:ports already registered as devices
+    //  • IP:ports already present in _discovered (from live hits)
+    //  • IP:ports the user has dismissed this scan session
+    // Appends the survivors to _discovered with Source="adb".
+    //
+    // ws-scrcpy-web's NetworkScanner filters out adb-connected IP:ports from
+    // its scan output, so any device already in adb devices (e.g. connected
+    // via ws-scrcpy-web's own UI) is invisible to the scan. This merge
+    // surfaces them for Add.
+    private async Task MergeAdbConnectedAsync()
+    {
         var registeredIpPorts = _devices
             .Where(d => !string.IsNullOrEmpty(d.LastKnownIp))
             .Select(d => $"{d.LastKnownIp}:{d.AdbPort}")
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var fromScan = hits
-            .Where(h => h.Mac is null || !registeredMacs.Contains(h.Mac))
-            .Select(h =>
-            {
-                var parts = h.Address.Split(':');
-                var ip = parts[0];
-                var port = parts.Length > 1 && int.TryParse(parts[1], out var p) ? p : 5555;
-                return new DiscoveredDevice(h.Name, ip, port, h.Mac);
-            })
-            .ToList();
-
-        // Exclude registered devices and anything already in fromScan, by IP:port.
-        var excludeIpPorts = fromScan
+        var excludeIpPorts = _discovered
             .Select(d => $"{d.Ip}:{d.Port}")
-            .Concat(registeredIpPorts);
+            .Concat(registeredIpPorts)
+            .Concat(_dismissedAddresses);
 
         var adbConnected = await AdbService.GetConnectedDevicesAsync();
         var fromAdb = ScanMergeHelper.FindUnregisteredAdbConnected(adbConnected, excludeIpPorts);
 
-        // ARP-resolve MAC so the Add button isn't disabled. Pings missing IPs to
-        // force ARP to populate, mirrors Quick Refresh's approach.
+        // ARP-resolve MAC with ping fallback (mirrors Quick Refresh).
         var arpMap = await BuildArpMapAsync();
         var missing = fromAdb.Where(x => !arpMap.ContainsKey(x.Ip)).Select(x => x.Ip).ToList();
         if (missing.Count > 0)
@@ -540,14 +601,24 @@
             arpMap = await BuildArpMapAsync();
         }
 
-        var adbRows = fromAdb.Select(x =>
+        foreach (var x in fromAdb)
         {
             var mac = arpMap.TryGetValue(x.Ip, out var m) ? m : null;
-            return new DiscoveredDevice($"{x.Ip}:{x.Port}", x.Ip, x.Port, mac, Source: "adb");
-        });
+            _discovered.Add(new DiscoveredDevice($"{x.Ip}:{x.Port}", x.Ip, x.Port, mac, Source: "adb"));
+        }
+    }
 
-        _discovered = fromScan.Concat(adbRows).ToList();
-        await InvokeAsync(StateHasChanged);
+    private Task CancelScan() => ScanService.CancelAsync();
+
+    private void DismissDiscovered(DiscoveredDevice d)
+    {
+        _discovered.Remove(d);
+        _dismissedAddresses.Add($"{d.Ip}:{d.Port}");
+    }
+
+    public void Dispose()
+    {
+        _scanSubscription?.Dispose();
     }
 
     private async Task ShowMessage(string message, bool isError = false)
