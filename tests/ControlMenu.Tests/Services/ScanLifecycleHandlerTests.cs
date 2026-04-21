@@ -167,6 +167,32 @@ public class ScanLifecycleHandlerTests
     }
 
     [Fact]
+    public void ReplaceDiscovered_InputDerivedFromDiscovered_PreservesFilteredItems()
+    {
+        // Regression test for a lazy-enumeration aliasing bug caught in T10 manual QA.
+        // Before the fix, ReplaceDiscovered cleared _discovered BEFORE enumerating the
+        // input. Callers that passed a lazy sequence derived from Handler.Discovered
+        // (e.g., Handler.Discovered.Where(...)) ended up with an empty list because
+        // the Where clause referenced _discovered, which was already empty at enumeration.
+        using var handler = CreateHandler();
+        _scan.Emit(new ScanHitEvent(new ScanHit(
+            DiscoverySource.Mdns, "10.0.0.1:5555", "s", "a", "", "aa-aa-aa-aa-aa-aa")));
+        _scan.Emit(new ScanHitEvent(new ScanHit(
+            DiscoverySource.Mdns, "10.0.0.2:5555", "s", "b", "", "bb-bb-bb-bb-bb-bb")));
+        _scan.Emit(new ScanHitEvent(new ScanHit(
+            DiscoverySource.Mdns, "10.0.0.3:5555", "s", "c", "", "cc-cc-cc-cc-cc-cc")));
+
+        Assert.Equal(3, handler.Discovered.Count);
+
+        // Filter out the middle one — input is LAZY and derived from handler.Discovered.
+        handler.ReplaceDiscovered(handler.Discovered.Where(d => d.Mac != "bb-bb-bb-bb-bb-bb"));
+
+        Assert.Equal(2, handler.Discovered.Count);
+        Assert.Equal("a", handler.Discovered[0].ServiceName);
+        Assert.Equal("c", handler.Discovered[1].ServiceName);
+    }
+
+    [Fact]
     public async Task ScanComplete_EnrichesNullMacFromArp()
     {
         using var handler = CreateHandler();

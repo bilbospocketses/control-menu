@@ -70,8 +70,13 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
 
     public void ReplaceDiscovered(IEnumerable<DiscoveredDevice> devices)
     {
+        // Eagerly materialize before clearing — callers may pass a lazy sequence
+        // derived from Handler.Discovered (e.g., Handler.Discovered.Where(...)).
+        // If we cleared first, the lazy enumerable would evaluate over an empty
+        // _discovered and AddRange would copy nothing, silently wiping the list.
+        var materialized = devices.ToList();
         _discovered.Clear();
-        _discovered.AddRange(devices);
+        _discovered.AddRange(materialized);
         RaiseStateChanged();
     }
 
