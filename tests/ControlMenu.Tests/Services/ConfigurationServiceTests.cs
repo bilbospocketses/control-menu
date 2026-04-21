@@ -93,4 +93,30 @@ public class ConfigurationServiceTests : IDisposable
         Assert.Equal(2, settings.Count);
         Assert.All(settings, s => Assert.Equal("jellyfin", s.ModuleId));
     }
+
+    [Fact]
+    public async Task ScanSubnets_RoundTripsJsonArray()
+    {
+        var subnets = new[] { "192.168.1.0/24", "10.0.0.0/16" };
+        await _service.SetSettingAsync("scan-subnets", System.Text.Json.JsonSerializer.Serialize(subnets));
+        var raw = await _service.GetSettingAsync("scan-subnets");
+        var back = System.Text.Json.JsonSerializer.Deserialize<string[]>(raw!);
+        Assert.Equal(subnets, back);
+    }
+
+    [Theory]
+    [InlineData("managed")]
+    [InlineData("external")]
+    public async Task WsscrcpyMode_RoundTrips(string mode)
+    {
+        await _service.SetSettingAsync("wsscrcpy-mode", mode);
+        Assert.Equal(mode, await _service.GetSettingAsync("wsscrcpy-mode"));
+    }
+
+    [Fact]
+    public async Task WsscrcpyUrl_RoundTrips()
+    {
+        await _service.SetSettingAsync("wsscrcpy-url", "http://ws-scrcpy:8000");
+        Assert.Equal("http://ws-scrcpy:8000", await _service.GetSettingAsync("wsscrcpy-url"));
+    }
 }
