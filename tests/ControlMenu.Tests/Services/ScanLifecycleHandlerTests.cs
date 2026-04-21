@@ -165,4 +165,75 @@ public class ScanLifecycleHandlerTests
             DiscoverySource.Mdns, "10.0.0.1:5555", "s", "after", "", null)));
         Assert.Equal(2, handler.Discovered.Count);
     }
+
+    [Fact]
+    public async Task ScanComplete_EnrichesNullMacFromArp()
+    {
+        using var handler = CreateHandler();
+        _scan.Emit(new ScanHitEvent(new ScanHit(
+            DiscoverySource.Mdns, "192.168.1.50:5555", "s", "target", "", null)));
+
+        _net.Setup(n => n.GetArpTableAsync(default(CancellationToken)))
+            .ReturnsAsync(new[] { new ArpEntry("192.168.1.50", "aa:bb:cc:dd:ee:50", "dynamic") });
+        _adb.Setup(a => a.GetConnectedDevicesAsync(default(CancellationToken))).ReturnsAsync(Array.Empty<string>());
+        _devices.Setup(d => d.GetAllDevicesAsync()).ReturnsAsync(Array.Empty<Device>());
+
+        _scan.Emit(new ScanCompleteEvent(1));
+        await WaitForHandlerIdle();
+
+        Assert.Single(handler.Discovered);
+        Assert.Equal("aa:bb:cc:dd:ee:50", handler.Discovered[0].Mac);
+    }
+
+    [Fact]
+    public async Task ScanComplete_AppendsAdbMergeRows()
+    {
+        using var handler = CreateHandler();
+        _adb.Setup(a => a.GetConnectedDevicesAsync(default(CancellationToken)))
+            .ReturnsAsync(new[] { "192.168.1.100:5555", "192.168.1.101:5555" });
+        _net.Setup(n => n.GetArpTableAsync(default(CancellationToken)))
+            .ReturnsAsync(new[]
+            {
+                new ArpEntry("192.168.1.100", "aa:bb:cc:dd:ee:01", "dynamic"),
+                new ArpEntry("192.168.1.101", "aa:bb:cc:dd:ee:02", "dynamic"),
+            });
+        _devices.Setup(d => d.GetAllDevicesAsync()).ReturnsAsync(Array.Empty<Device>());
+
+        _scan.Emit(new ScanCompleteEvent(0));
+        await WaitForHandlerIdle();
+
+        Assert.Equal(2, handler.Discovered.Count);
+        Assert.All(handler.Discovered, d => Assert.Equal("adb", d.Source));
+    }
+
+    [Fact]
+    public async Task ScanComplete_AdbMergeRow_Dismissed_DuringArpWindow_IsSkipped()
+    {
+        using var handler = CreateHandler();
+        _adb.Setup(a => a.GetConnectedDevicesAsync(default(CancellationToken)))
+            .ReturnsAsync(new[] { "192.168.1.200:5555" });
+        _devices.Setup(d => d.GetAllDevicesAsync()).ReturnsAsync(Array.Empty<Device>());
+
+        // Gate the ARP call so we can dismiss in between.
+        var arpTcs = new TaskCompletionSource<IReadOnlyList<ArpEntry>>();
+        _net.Setup(n => n.GetArpTableAsync(default(CancellationToken))).Returns(arpTcs.Task);
+
+        _scan.Emit(new ScanCompleteEvent(0));
+        // Handler is now awaiting ARP. User dismisses the adb-merge candidate.
+        handler.Dismiss(new DiscoveredDevice("", "192.168.1.200", 5555, null));
+        // Release ARP; adb-merge should re-filter against the freshly updated
+        // _dismissedAddresses before appending.
+        arpTcs.SetResult(new[] { new ArpEntry("192.168.1.200", "aa:bb:cc:dd:ee:99", "dynamic") });
+        await WaitForHandlerIdle();
+
+        Assert.Empty(handler.Discovered);
+    }
+
+    // Helper: yield control until all in-flight handler-triggered tasks have run.
+    // Handler dispatches ScanComplete fire-and-forget; xUnit tests on the same
+    // thread need to yield to let those continuations run.
+    private static async Task WaitForHandlerIdle()
+    {
+        for (var i = 0; i < 10; i++) await Task.Yield();
+    }
 }

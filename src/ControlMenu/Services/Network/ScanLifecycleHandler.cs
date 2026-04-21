@@ -1,5 +1,6 @@
 using ControlMenu.Modules.AndroidDevices.Services;
 using ControlMenu.Services;
+using System.Linq;
 
 namespace ControlMenu.Services.Network;
 
@@ -90,9 +91,11 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
                 AppendHitIfNotDismissed(h.Hit);
                 break;
             case ScanDrainingEvent:
+                break;
             case ScanCompleteEvent:
+                _ = FinalizeScanAsync();
+                break;
             case ScanCancelledEvent:
-                // Completion handling lands in Task 8.
                 break;
             case ScanErrorEvent err:
                 _lastError = err.Reason;
@@ -110,6 +113,114 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
         if (_dismissedAddresses.Contains(ScanMergeHelper.AddressKey(ip, port)))
             return;
         _discovered.Add(new DiscoveredDevice(hit.Name, ip, port, hit.Mac));
+    }
+
+    private async Task FinalizeScanAsync()
+    {
+        try
+        {
+            var fromAdb = await DetermineAdbMergeCandidatesAsync();
+
+            var needMacIps = _discovered.Where(d => d.Mac is null).Select(d => d.Ip)
+                .Concat(fromAdb.Select(x => x.Ip))
+                .Distinct()
+                .ToList();
+
+            var arpMap = await BuildArpMapWithPingsAsync(needMacIps);
+
+            EnrichDiscoveredMacs(arpMap);
+            AppendAdbMergeRows(fromAdb, arpMap);
+            await PopulateStashedNamesAsync();
+        }
+        catch (Exception ex)
+        {
+            _lastError = $"Scan finalize failed: {ex.Message}";
+        }
+        finally
+        {
+            _phase = _scan.Phase;
+            RaiseStateChanged();
+        }
+    }
+
+    private async Task<IReadOnlyList<(string Ip, int Port)>> DetermineAdbMergeCandidatesAsync()
+    {
+        var devices = await _devices.GetAllDevicesAsync();
+        var registeredIpPorts = devices
+            .Where(d => !string.IsNullOrEmpty(d.LastKnownIp))
+            .Select(d => ScanMergeHelper.AddressKey(d.LastKnownIp!, d.AdbPort))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var excludeIpPorts = _discovered
+            .Select(d => ScanMergeHelper.AddressKey(d.Ip, d.Port))
+            .Concat(registeredIpPorts)
+            .Concat(_dismissedAddresses);
+
+        var adbConnected = await _adb.GetConnectedDevicesAsync();
+        return ScanMergeHelper.FindUnregisteredAdbConnected(adbConnected, excludeIpPorts);
+    }
+
+    private async Task<Dictionary<string, string>> BuildArpMapWithPingsAsync(IReadOnlyList<string> ipsToCover)
+    {
+        var arpMap = await BuildArpMapAsync();
+        if (ipsToCover.Count == 0) return arpMap;
+
+        var missing = ipsToCover.Where(ip => !arpMap.ContainsKey(ip)).ToList();
+        if (missing.Count > 0)
+        {
+            await Task.WhenAll(missing.Select(ip => _net.PingAsync(ip)));
+            arpMap = await BuildArpMapAsync();
+        }
+        return arpMap;
+    }
+
+    private async Task<Dictionary<string, string>> BuildArpMapAsync()
+    {
+        var entries = await _net.GetArpTableAsync();
+        return entries
+            .GroupBy(e => e.IpAddress)
+            .ToDictionary(g => g.Key, g => g.First().MacAddress, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private void EnrichDiscoveredMacs(IReadOnlyDictionary<string, string> arpMap)
+    {
+        for (var i = 0; i < _discovered.Count; i++)
+        {
+            if (_discovered[i].Mac is not null) continue;
+            if (arpMap.TryGetValue(_discovered[i].Ip, out var mac))
+                _discovered[i] = _discovered[i] with { Mac = mac };
+        }
+    }
+
+    private void AppendAdbMergeRows(
+        IReadOnlyList<(string Ip, int Port)> fromAdb,
+        IReadOnlyDictionary<string, string> arpMap)
+    {
+        foreach (var x in fromAdb)
+        {
+            // R2 race fix. Between DetermineAdbMergeCandidatesAsync (which
+            // captured _dismissedAddresses at t=0) and this loop, several
+            // seconds of ARP+ping awaits elapsed during which the user may
+            // have dismissed one of these addresses.
+            if (_dismissedAddresses.Contains(ScanMergeHelper.AddressKey(x.Ip, x.Port)))
+                continue;
+            var mac = arpMap.TryGetValue(x.Ip, out var m) ? m : null;
+            _discovered.Add(new DiscoveredDevice(
+                ScanMergeHelper.AddressKey(x.Ip, x.Port),
+                x.Ip, x.Port, mac, Source: "adb"));
+        }
+    }
+
+    private async Task PopulateStashedNamesAsync()
+    {
+        foreach (var d in _discovered)
+        {
+            if (string.IsNullOrEmpty(d.Mac)) continue;
+            if (_stashedNamesByMac.ContainsKey(d.Mac)) continue;
+            var stashed = await _config.GetSettingAsync($"device-name-{d.Mac}");
+            if (!string.IsNullOrEmpty(stashed))
+                _stashedNamesByMac[d.Mac] = stashed;
+        }
     }
 
     private void RaiseStateChanged() => OnStateChanged?.Invoke();
