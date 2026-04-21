@@ -95,7 +95,13 @@
                 @foreach (var d in _discovered)
                 {
                     <tr>
-                        <td><code>@d.ServiceName</code></td>
+                        <td>
+                            <code>@d.ServiceName</code>
+                            @if (!string.IsNullOrEmpty(d.Source))
+                            {
+                                <span class="source-badge" title="Discovery source">@d.Source</span>
+                            }
+                        </td>
                         <td>@d.Ip</td>
                         <td>@d.Port</td>
                         <td><code>@(d.Mac ?? "—")</code></td>
@@ -161,7 +167,7 @@
     // Entries shown in the "Discovered on Network" panel. Devices already in the
     // registered-devices table are filtered out and their IP/port are updated in
     // the DB directly by ScanNetwork.
-    private record DiscoveredDevice(string ServiceName, string Ip, int Port, string? Mac);
+    private record DiscoveredDevice(string ServiceName, string Ip, int Port, string? Mac, string? Source = null);
     private bool _messageIsError;
     private int _discoveryInterval = 300;
 
@@ -475,14 +481,23 @@
     // Full Scan semantics: the "Discovered on Network" panel shows exactly the
     // hits from this scan (minus already-registered devices), replacing whatever
     // was there from a prior Quick Refresh. Quick Refresh continues to merge.
+    //
+    // Plus the adb-connected merge: ws-scrcpy-web's NetworkScanner filters out
+    // IP:ports already in `adb devices` so the user only sees candidates for
+    // `adb connect`. That silently hides any device connected via ws-scrcpy-web
+    // or scrcpy but never registered in Control Menu. We add those back here.
     private async Task OnFullScanComplete(IReadOnlyList<ScanHit> hits)
     {
         var registeredMacs = _devices
             .Where(d => !string.IsNullOrEmpty(d.MacAddress))
             .Select(d => d.MacAddress)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var registeredIpPorts = _devices
+            .Where(d => !string.IsNullOrEmpty(d.LastKnownIp))
+            .Select(d => $"{d.LastKnownIp}:{d.AdbPort}")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        _discovered = hits
+        var fromScan = hits
             .Where(h => h.Mac is null || !registeredMacs.Contains(h.Mac))
             .Select(h =>
             {
@@ -492,6 +507,32 @@
                 return new DiscoveredDevice(h.Name, ip, port, h.Mac);
             })
             .ToList();
+
+        // Exclude registered devices and anything already in fromScan, by IP:port.
+        var excludeIpPorts = fromScan
+            .Select(d => $"{d.Ip}:{d.Port}")
+            .Concat(registeredIpPorts);
+
+        var adbConnected = await AdbService.GetConnectedDevicesAsync();
+        var fromAdb = ScanMergeHelper.FindUnregisteredAdbConnected(adbConnected, excludeIpPorts);
+
+        // ARP-resolve MAC so the Add button isn't disabled. Pings missing IPs to
+        // force ARP to populate, mirrors Quick Refresh's approach.
+        var arpMap = await BuildArpMapAsync();
+        var missing = fromAdb.Where(x => !arpMap.ContainsKey(x.Ip)).Select(x => x.Ip).ToList();
+        if (missing.Count > 0)
+        {
+            await Task.WhenAll(missing.Select(ip => NetworkDiscovery.PingAsync(ip)));
+            arpMap = await BuildArpMapAsync();
+        }
+
+        var adbRows = fromAdb.Select(x =>
+        {
+            var mac = arpMap.TryGetValue(x.Ip, out var m) ? m : null;
+            return new DiscoveredDevice($"{x.Ip}:{x.Port}", x.Ip, x.Port, mac, Source: "adb");
+        });
+
+        _discovered = fromScan.Concat(adbRows).ToList();
         await InvokeAsync(StateHasChanged);
     }
 

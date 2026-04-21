@@ -159,6 +159,9 @@ select.form-control { appearance: auto; }
 .data-table td.wrap { white-space: normal; }
 .data-table tr:hover td { background-color: var(--hover-bg); }
 .data-table .actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+.source-badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+    font-size: 0.7rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.03em;
+    background: rgba(245, 159, 0, 0.15); color: #d97706; vertical-align: middle; }
 
 /* ── Status indicators ── */
 .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }

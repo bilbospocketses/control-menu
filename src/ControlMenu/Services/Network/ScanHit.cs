@@ -1,6 +1,6 @@
 namespace ControlMenu.Services.Network;
 
-public enum DiscoverySource { Mdns, Tcp }
+public enum DiscoverySource { Mdns, Tcp, Adb }
 
 /// <summary>
 /// A device observed during a scan. <see cref="Address"/> is <c>"IP:port"</c>

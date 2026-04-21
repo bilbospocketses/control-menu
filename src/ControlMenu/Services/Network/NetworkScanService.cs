@@ -204,7 +204,7 @@ public sealed class NetworkScanService : INetworkScanService
                 // not tear down the whole scan. Log and keep receiving.
                 try
                 {
-                    _logger.LogDebug("ws-scan frame: {Json}", json);
+                    _logger.LogInformation("ws-scan frame: {Json}", json);
                     var evt = ParseServerMessage(json, _logger);
                     if (evt is not null) Dispatch(evt);
                 }
