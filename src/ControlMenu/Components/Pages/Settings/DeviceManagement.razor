@@ -8,8 +8,7 @@
 @inject INetworkDiscoveryService NetworkDiscovery
 @inject IAdbService AdbService
 @inject IConfigurationService Config
-@inject INetworkScanService ScanService
-@implements IDisposable
+@inject IScanLifecycleHandler Handler
 
 <div class="settings-section">
     <h2>Device Discovery</h2>
@@ -78,21 +77,21 @@
     }
 </div>
 
-@if (_phase is not ScanPhase.Idle)
+@if (Handler.Phase is not ScanPhase.Idle)
 {
     <div class="scan-row">
-        <ScanProgressChip Phase="_phase"
-                          Checked="_lastProgress?.Checked ?? 0"
-                          Total="_lastProgress?.Total ?? 0"
-                          FoundSoFar="_discovered.Count" />
-        @if (_phase is ScanPhase.Scanning or ScanPhase.Draining)
+        <ScanProgressChip Phase="Handler.Phase"
+                          Checked="Handler.LastProgress?.Checked ?? 0"
+                          Total="Handler.LastProgress?.Total ?? 0"
+                          FoundSoFar="Handler.Discovered.Count" />
+        @if (Handler.Phase is ScanPhase.Scanning or ScanPhase.Draining)
         {
-            <button class="btn btn-warning btn-sm" @onclick="CancelScan">Cancel</button>
+            <button class="btn btn-warning btn-sm" @onclick="Handler.CancelScanAsync">Cancel</button>
         }
     </div>
 }
 
-@if (_discovered.Count > 0)
+@if (Handler.Discovered.Count > 0)
 {
     <div class="settings-section">
         <h2>Discovered on Network</h2>
@@ -109,7 +108,7 @@
                 </tr>
             </thead>
             <tbody>
-                @foreach (var d in _discovered)
+                @foreach (var d in Handler.Discovered)
                 {
                     <tr>
                         <td>
@@ -125,7 +124,7 @@
                         <td><code>@(d.Mac ?? "—")</code></td>
                         <td class="actions">
                             <button class="btn btn-primary btn-sm" @onclick="() => AddFromDiscovery(d)" disabled="@(d.Mac is null)">Add</button>
-                            <button class="btn btn-secondary btn-sm" @onclick="() => DismissDiscovered(d)" title="Dismiss — remove from this list">×</button>
+                            <button class="btn btn-secondary btn-sm" @onclick="() => Handler.Dismiss(d)" title="Dismiss — remove from this list">×</button>
                         </td>
                     </tr>
                 }
@@ -143,7 +142,7 @@
 {
     <ScanNetworkModal OnStart="OnFullScanStart"
                       OnClose="CloseScanModal"
-                      ScanInProgress="@(_phase is ScanPhase.Scanning or ScanPhase.Draining)" />
+                      ScanInProgress="@(Handler.Phase is ScanPhase.Scanning or ScanPhase.Draining)" />
 }
 
 @if (_showDeleteConfirm)
@@ -180,16 +179,10 @@
     private ControlMenu.Data.Entities.Device? _deleteTarget;
     private bool _scanning;
     private bool _showScanModal;
-    private List<DiscoveredDevice> _discovered = [];
     private string? _message;
 
     private bool _messageIsError;
     private int _discoveryInterval = 300;
-    private ScanPhase _phase = ScanPhase.Idle;
-    private ScanProgressEvent? _lastProgress;
-    private readonly HashSet<string> _dismissedAddresses = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string> _stashedNamesByMac = new(StringComparer.OrdinalIgnoreCase);
-    private IDisposable? _scanSubscription;
 
     protected override async Task OnInitializedAsync()
     {
@@ -197,8 +190,18 @@
         if (int.TryParse(interval, out var parsed))
             _discoveryInterval = parsed;
         await LoadDevices();
-        _scanSubscription = ScanService.Subscribe(OnScanEvent);
-        _phase = ScanService.Phase;
+        Handler.OnStateChanged += HandleHandlerStateChanged;
+    }
+
+    private void HandleHandlerStateChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            var err = Handler.ConsumeLastError();
+            if (err is not null)
+                await ShowMessage(err, isError: true);
+            StateHasChanged();
+        });
     }
 
     private async Task OnDiscoveryIntervalChanged(ChangeEventArgs e)
@@ -281,9 +284,8 @@
             // offered for adding a second time.
             if (!isEdit && !string.IsNullOrEmpty(_formDevice.MacAddress))
             {
-                _discovered = _discovered
-                    .Where(disc => !string.Equals(disc.Mac, _formDevice.MacAddress, StringComparison.OrdinalIgnoreCase))
-                    .ToList();
+                Handler.ReplaceDiscovered(Handler.Discovered
+                    .Where(disc => !string.Equals(disc.Mac, _formDevice.MacAddress, StringComparison.OrdinalIgnoreCase)));
             }
 
             await ShowMessage($"Device {(isEdit ? "updated" : "added")} successfully.");
@@ -386,7 +388,7 @@
             }
         }
 
-        _discovered = discovered;
+        Handler.ReplaceDiscovered(discovered);
         await LoadDevices();
         _scanning = false;
 
@@ -480,7 +482,7 @@
         var match = _devices.FirstOrDefault(dev =>
             string.Equals(dev.MacAddress, d.Mac, StringComparison.OrdinalIgnoreCase));
         if (match is not null) return match.Name;
-        if (_stashedNamesByMac.TryGetValue(d.Mac, out var stashed)) return stashed;
+        if (Handler.StashedNamesByMac.TryGetValue(d.Mac, out var stashed)) return stashed;
         return "Unknown";
     }
 
@@ -506,183 +508,9 @@
     private void OpenScanModal() => _showScanModal = true;
     private void CloseScanModal() => _showScanModal = false;
 
-    // Modal fires this when the user clicks Start. Clears the Discovered panel
-    // (Full Scan replaces semantics), clears dismissed addresses (new scan =
-    // fresh intent), kicks off the scan. Events will flow back through
-    // OnScanEvent from the service singleton.
-    private async Task OnFullScanStart(IReadOnlyList<ParsedSubnet> subnets)
-    {
-        _discovered.Clear();
-        _dismissedAddresses.Clear();
-        _stashedNamesByMac.Clear();
-        await ScanService.StartScanAsync(subnets);
-    }
+    private Task OnFullScanStart(IReadOnlyList<ParsedSubnet> subnets)
+        => Handler.StartFullScanAsync(subnets);
 
-    private void OnScanEvent(ScanEvent evt)
-    {
-        InvokeAsync(async () =>
-        {
-            switch (evt)
-            {
-                case ScanStartedEvent:
-                    _lastProgress = null;
-                    break;
-                case ScanProgressEvent p:
-                    _lastProgress = p;
-                    break;
-                case ScanHitEvent h:
-                    var parts = h.Hit.Address.Split(':');
-                    var ip = parts[0];
-                    var port = parts.Length > 1 && int.TryParse(parts[1], out var pr) ? pr : 5555;
-                    if (!_dismissedAddresses.Contains(ScanMergeHelper.AddressKey(ip, port)))
-                    {
-                        _discovered.Add(new DiscoveredDevice(h.Hit.Name, ip, port, h.Hit.Mac));
-                    }
-                    break;
-                case ScanDrainingEvent:
-                    // No explicit work — chip reflects the Draining phase via
-                    // the post-switch _phase = ScanService.Phase update.
-                    break;
-                case ScanCompleteEvent:
-                    await FinalizeScanAsync();
-                    break;
-                case ScanCancelledEvent:
-                    // Partial hits stay in place; no adb-merge on cancel.
-                    break;
-                case ScanErrorEvent err:
-                    await ShowMessage($"Scan error: {err.Reason}", isError: true);
-                    break;
-            }
-            _phase = ScanService.Phase;
-            StateHasChanged();
-        });
-    }
-
-    // Orchestrates the work that runs on ScanCompleteEvent:
-    //   1. Determine adb-merge candidates (no ARP needed — just adb devices).
-    //   2. Collect every IP that still needs a MAC (null-MAC live hits + new
-    //      adb rows) and build one ARP snapshot covering all of them.
-    //   3. Apply the snapshot: enrich live hits in place, append adb rows.
-    //   4. Populate stashed-name cache from the Settings table.
-    //
-    // Collapsing step 2 into a single ARP pass replaces the prior three
-    // independent ARP builds (two initial, two rebuilds after pings) with
-    // one initial + one rebuild shared across both enrichment branches.
-    private async Task FinalizeScanAsync()
-    {
-        var fromAdb = await DetermineAdbMergeCandidatesAsync();
-
-        var needMacIps = _discovered.Where(d => d.Mac is null).Select(d => d.Ip)
-            .Concat(fromAdb.Select(x => x.Ip))
-            .Distinct()
-            .ToList();
-
-        var arpMap = await BuildArpMapWithPingsAsync(needMacIps);
-
-        EnrichDiscoveredMacs(arpMap);
-        AppendAdbMergeRows(fromAdb, arpMap);
-        await PopulateStashedNamesAsync();
-    }
-
-    // ws-scrcpy-web's NetworkScanner filters out adb-connected IP:ports from
-    // its scan output, so any device already in adb devices (e.g. connected
-    // via ws-scrcpy-web's own UI) is invisible to the scan. We run adb
-    // devices ourselves and surface the unregistered, undiscovered-so-far
-    // subset. MAC resolution happens later in FinalizeScanAsync's shared
-    // ARP pass.
-    private async Task<IReadOnlyList<(string Ip, int Port)>> DetermineAdbMergeCandidatesAsync()
-    {
-        var registeredIpPorts = _devices
-            .Where(d => !string.IsNullOrEmpty(d.LastKnownIp))
-            .Select(d => ScanMergeHelper.AddressKey(d.LastKnownIp!, d.AdbPort))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        var excludeIpPorts = _discovered
-            .Select(d => ScanMergeHelper.AddressKey(d.Ip, d.Port))
-            .Concat(registeredIpPorts)
-            .Concat(_dismissedAddresses);
-
-        var adbConnected = await AdbService.GetConnectedDevicesAsync();
-        return ScanMergeHelper.FindUnregisteredAdbConnected(adbConnected, excludeIpPorts);
-    }
-
-    // Builds an ARP snapshot covering the requested IPs. Any IP missing from
-    // the initial snapshot is pinged to force ARP population, then the table
-    // is rebuilt so the returned map is authoritative for the requested set.
-    // Mirrors the ARP+ping pattern Quick Refresh already uses.
-    private async Task<Dictionary<string, string>> BuildArpMapWithPingsAsync(IReadOnlyList<string> ipsToCover)
-    {
-        var arpMap = await BuildArpMapAsync();
-        if (ipsToCover.Count == 0) return arpMap;
-
-        var missing = ipsToCover.Where(ip => !arpMap.ContainsKey(ip)).ToList();
-        if (missing.Count > 0)
-        {
-            await Task.WhenAll(missing.Select(ip => NetworkDiscovery.PingAsync(ip)));
-            arpMap = await BuildArpMapAsync();
-        }
-        return arpMap;
-    }
-
-    // Live mDNS hits from ws-scan arrive with null MAC (ws-scrcpy-web's
-    // scanner only ARP-resolves for TCP-confirmed hits). Fills in MAC from
-    // the shared ARP snapshot so the Name column can match registered
-    // devices by MAC and the Add button isn't disabled on legitimate
-    // discoveries.
-    private void EnrichDiscoveredMacs(IReadOnlyDictionary<string, string> arpMap)
-    {
-        for (var i = 0; i < _discovered.Count; i++)
-        {
-            if (_discovered[i].Mac is not null) continue;
-            if (arpMap.TryGetValue(_discovered[i].Ip, out var mac))
-            {
-                _discovered[i] = _discovered[i] with { Mac = mac };
-            }
-        }
-    }
-
-    // Appends the adb-merge rows to _discovered, tagged Source="adb".
-    // MAC comes from the shared ARP snapshot; null if unresolvable (rare
-    // for adb-connected devices since the handshake already populated ARP).
-    private void AppendAdbMergeRows(
-        IReadOnlyList<(string Ip, int Port)> fromAdb,
-        IReadOnlyDictionary<string, string> arpMap)
-    {
-        foreach (var x in fromAdb)
-        {
-            var mac = arpMap.TryGetValue(x.Ip, out var m) ? m : null;
-            _discovered.Add(new DiscoveredDevice(ScanMergeHelper.AddressKey(x.Ip, x.Port), x.Ip, x.Port, mac, Source: "adb"));
-        }
-    }
-
-    // Populates _stashedNamesByMac from the Settings table. DeleteDevice stashes
-    // the user-assigned name under device-name-<mac> so re-adding restores it;
-    // this surfaces the stashed name in the Name column so users recognize
-    // devices they previously removed without having to click Add first.
-    private async Task PopulateStashedNamesAsync()
-    {
-        foreach (var d in _discovered)
-        {
-            if (string.IsNullOrEmpty(d.Mac)) continue;
-            if (_stashedNamesByMac.ContainsKey(d.Mac)) continue;
-            var stashed = await Config.GetSettingAsync($"device-name-{d.Mac}");
-            if (!string.IsNullOrEmpty(stashed))
-                _stashedNamesByMac[d.Mac] = stashed;
-        }
-    }
-
-    private Task CancelScan() => ScanService.CancelAsync();
-
-    private void DismissDiscovered(DiscoveredDevice d)
-    {
-        _discovered.Remove(d);
-        _dismissedAddresses.Add(ScanMergeHelper.AddressKey(d.Ip, d.Port));
-    }
-
-    public void Dispose()
-    {
-        _scanSubscription?.Dispose();
-    }
 
     private async Task ShowMessage(string message, bool isError = false)
     {
