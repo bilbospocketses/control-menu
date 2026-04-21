@@ -128,9 +128,9 @@ public class DependencyManagerService : IDependencyManagerService
             var url = (await _config.GetSettingAsync("wsscrcpy-url")) ?? "http://localhost:8000";
             try
             {
-                using var http = _httpFactory.CreateClient();
-                http.Timeout = TimeSpan.FromSeconds(5);
-                var resp = await http.GetAsync(url);
+                var http = _httpFactory.CreateClient();
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                var resp = await http.GetAsync(url, cts.Token);
                 entity.Status = resp.IsSuccessStatusCode ? DependencyStatus.UpToDate : DependencyStatus.CheckFailed;
                 entity.LastChecked = DateTime.UtcNow;
                 entity.InstalledVersion = resp.IsSuccessStatusCode ? "external" : null;
@@ -141,7 +141,7 @@ public class DependencyManagerService : IDependencyManagerService
                     entity.InstalledVersion, entity.LatestKnownVersion,
                     resp.IsSuccessStatusCode ? null : $"ws-scrcpy-web at {url} returned HTTP {(int)resp.StatusCode}");
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
             {
                 entity.Status = DependencyStatus.CheckFailed;
                 entity.LastChecked = DateTime.UtcNow;
