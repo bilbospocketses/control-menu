@@ -7,6 +7,7 @@ using ControlMenu.Modules.Cameras.Services;
 using ControlMenu.Modules.Jellyfin.Services;
 using ControlMenu.Modules.Utilities.Services;
 using ControlMenu.Services;
+using ControlMenu.Services.Network;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -57,6 +58,9 @@ builder.Services.AddSingleton<IAdbService, AdbService>();
 // ws-scrcpy-web process management
 builder.Services.AddSingleton<WsScrcpyService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<WsScrcpyService>());
+
+// Network scanner — singleton holds the ws-scan WebSocket and fans events to subscribers
+builder.Services.AddSingleton<INetworkScanService, NetworkScanService>();
 
 // Jellyfin module services
 builder.Services.AddScoped<IJellyfinService, JellyfinService>();
