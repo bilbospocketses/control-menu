@@ -539,6 +539,7 @@
                     }
                     break;
                 case ScanCompleteEvent:
+                    await EnrichDiscoveredMacsAsync();
                     await MergeAdbConnectedAsync();
                     break;
                 case ScanCancelledEvent:
@@ -591,6 +592,34 @@
         {
             var mac = arpMap.TryGetValue(x.Ip, out var m) ? m : null;
             _discovered.Add(new DiscoveredDevice($"{x.Ip}:{x.Port}", x.Ip, x.Port, mac, Source: "adb"));
+        }
+    }
+
+    // Live mDNS hits from ws-scan arrive with null MAC (ws-scrcpy-web's
+    // scanner only ARP-resolves for TCP-confirmed hits). We ARP-resolve
+    // here so the Name column can match registered devices by MAC and the
+    // Add button isn't disabled on legitimate discoveries. Mirrors the same
+    // ARP+ping pattern Quick Refresh and MergeAdbConnectedAsync already use.
+    private async Task EnrichDiscoveredMacsAsync()
+    {
+        var needMac = _discovered.Where(d => d.Mac is null).ToList();
+        if (needMac.Count == 0) return;
+
+        var arpMap = await BuildArpMapAsync();
+        var missing = needMac.Where(d => !arpMap.ContainsKey(d.Ip)).Select(d => d.Ip).Distinct().ToList();
+        if (missing.Count > 0)
+        {
+            await Task.WhenAll(missing.Select(ip => NetworkDiscovery.PingAsync(ip)));
+            arpMap = await BuildArpMapAsync();
+        }
+
+        for (var i = 0; i < _discovered.Count; i++)
+        {
+            if (_discovered[i].Mac is not null) continue;
+            if (arpMap.TryGetValue(_discovered[i].Ip, out var mac))
+            {
+                _discovered[i] = _discovered[i] with { Mac = mac };
+            }
         }
     }
 
