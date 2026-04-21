@@ -81,4 +81,31 @@ public class ScanLifecycleHandlerTests
             DiscoverySource.Mdns, "10.0.0.5:5555", "serial2", "foo2", "", null)));
         Assert.Empty(handler.Discovered);
     }
+
+    [Fact]
+    public void ScanProgressEvent_UpdatesLastProgress()
+    {
+        using var handler = CreateHandler();
+
+        _scan.Emit(new ScanProgressEvent(42, 256, 3));
+
+        Assert.NotNull(handler.LastProgress);
+        Assert.Equal(42, handler.LastProgress!.Checked);
+        Assert.Equal(256, handler.LastProgress.Total);
+        Assert.Equal(3, handler.LastProgress.FoundSoFar);
+    }
+
+    [Fact]
+    public void ScanErrorEvent_PopulatesConsumableError_OneShot()
+    {
+        using var handler = CreateHandler();
+
+        _scan.Emit(new ScanErrorEvent("ws-scan connection refused"));
+
+        var first = handler.ConsumeLastError();
+        Assert.Equal("ws-scan connection refused", first);
+
+        var second = handler.ConsumeLastError();
+        Assert.Null(second);
+    }
 }

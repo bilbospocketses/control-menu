@@ -71,8 +71,22 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
     {
         switch (evt)
         {
+            case ScanStartedEvent:
+                _lastProgress = null;
+                break;
+            case ScanProgressEvent p:
+                _lastProgress = p;
+                break;
             case ScanHitEvent h:
                 AppendHitIfNotDismissed(h.Hit);
+                break;
+            case ScanDrainingEvent:
+            case ScanCompleteEvent:
+            case ScanCancelledEvent:
+                // Completion handling lands in Task 8.
+                break;
+            case ScanErrorEvent err:
+                _lastError = err.Reason;
                 break;
         }
         _phase = _scan.Phase;
