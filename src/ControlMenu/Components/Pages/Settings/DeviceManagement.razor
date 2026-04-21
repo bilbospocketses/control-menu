@@ -548,9 +548,7 @@
                     // the post-switch _phase = ScanService.Phase update.
                     break;
                 case ScanCompleteEvent:
-                    await EnrichDiscoveredMacsAsync();
-                    await MergeAdbConnectedAsync();
-                    await PopulateStashedNamesAsync();
+                    await FinalizeScanAsync();
                     break;
                 case ScanCancelledEvent:
                     // Partial hits stay in place; no adb-merge on cancel.
@@ -564,17 +562,39 @@
         });
     }
 
-    // Called on ScanCompleteEvent. Runs adb devices locally, filters out:
-    //  • IP:ports already registered as devices
-    //  • IP:ports already present in _discovered (from live hits)
-    //  • IP:ports the user has dismissed this scan session
-    // Appends the survivors to _discovered with Source="adb".
+    // Orchestrates the work that runs on ScanCompleteEvent:
+    //   1. Determine adb-merge candidates (no ARP needed — just adb devices).
+    //   2. Collect every IP that still needs a MAC (null-MAC live hits + new
+    //      adb rows) and build one ARP snapshot covering all of them.
+    //   3. Apply the snapshot: enrich live hits in place, append adb rows.
+    //   4. Populate stashed-name cache from the Settings table.
     //
+    // Collapsing step 2 into a single ARP pass replaces the prior three
+    // independent ARP builds (two initial, two rebuilds after pings) with
+    // one initial + one rebuild shared across both enrichment branches.
+    private async Task FinalizeScanAsync()
+    {
+        var fromAdb = await DetermineAdbMergeCandidatesAsync();
+
+        var needMacIps = _discovered.Where(d => d.Mac is null).Select(d => d.Ip)
+            .Concat(fromAdb.Select(x => x.Ip))
+            .Distinct()
+            .ToList();
+
+        var arpMap = await BuildArpMapWithPingsAsync(needMacIps);
+
+        EnrichDiscoveredMacs(arpMap);
+        AppendAdbMergeRows(fromAdb, arpMap);
+        await PopulateStashedNamesAsync();
+    }
+
     // ws-scrcpy-web's NetworkScanner filters out adb-connected IP:ports from
     // its scan output, so any device already in adb devices (e.g. connected
-    // via ws-scrcpy-web's own UI) is invisible to the scan. This merge
-    // surfaces them for Add.
-    private async Task MergeAdbConnectedAsync()
+    // via ws-scrcpy-web's own UI) is invisible to the scan. We run adb
+    // devices ourselves and surface the unregistered, undiscovered-so-far
+    // subset. MAC resolution happens later in FinalizeScanAsync's shared
+    // ARP pass.
+    private async Task<IReadOnlyList<(string Ip, int Port)>> DetermineAdbMergeCandidatesAsync()
     {
         var registeredIpPorts = _devices
             .Where(d => !string.IsNullOrEmpty(d.LastKnownIp))
@@ -587,17 +607,51 @@
             .Concat(_dismissedAddresses);
 
         var adbConnected = await AdbService.GetConnectedDevicesAsync();
-        var fromAdb = ScanMergeHelper.FindUnregisteredAdbConnected(adbConnected, excludeIpPorts);
+        return ScanMergeHelper.FindUnregisteredAdbConnected(adbConnected, excludeIpPorts);
+    }
 
-        // ARP-resolve MAC with ping fallback (mirrors Quick Refresh).
+    // Builds an ARP snapshot covering the requested IPs. Any IP missing from
+    // the initial snapshot is pinged to force ARP population, then the table
+    // is rebuilt so the returned map is authoritative for the requested set.
+    // Mirrors the ARP+ping pattern Quick Refresh already uses.
+    private async Task<Dictionary<string, string>> BuildArpMapWithPingsAsync(IReadOnlyList<string> ipsToCover)
+    {
         var arpMap = await BuildArpMapAsync();
-        var missing = fromAdb.Where(x => !arpMap.ContainsKey(x.Ip)).Select(x => x.Ip).ToList();
+        if (ipsToCover.Count == 0) return arpMap;
+
+        var missing = ipsToCover.Where(ip => !arpMap.ContainsKey(ip)).ToList();
         if (missing.Count > 0)
         {
             await Task.WhenAll(missing.Select(ip => NetworkDiscovery.PingAsync(ip)));
             arpMap = await BuildArpMapAsync();
         }
+        return arpMap;
+    }
 
+    // Live mDNS hits from ws-scan arrive with null MAC (ws-scrcpy-web's
+    // scanner only ARP-resolves for TCP-confirmed hits). Fills in MAC from
+    // the shared ARP snapshot so the Name column can match registered
+    // devices by MAC and the Add button isn't disabled on legitimate
+    // discoveries.
+    private void EnrichDiscoveredMacs(IReadOnlyDictionary<string, string> arpMap)
+    {
+        for (var i = 0; i < _discovered.Count; i++)
+        {
+            if (_discovered[i].Mac is not null) continue;
+            if (arpMap.TryGetValue(_discovered[i].Ip, out var mac))
+            {
+                _discovered[i] = _discovered[i] with { Mac = mac };
+            }
+        }
+    }
+
+    // Appends the adb-merge rows to _discovered, tagged Source="adb".
+    // MAC comes from the shared ARP snapshot; null if unresolvable (rare
+    // for adb-connected devices since the handshake already populated ARP).
+    private void AppendAdbMergeRows(
+        IReadOnlyList<(string Ip, int Port)> fromAdb,
+        IReadOnlyDictionary<string, string> arpMap)
+    {
         foreach (var x in fromAdb)
         {
             var mac = arpMap.TryGetValue(x.Ip, out var m) ? m : null;
@@ -618,34 +672,6 @@
             var stashed = await Config.GetSettingAsync($"device-name-{d.Mac}");
             if (!string.IsNullOrEmpty(stashed))
                 _stashedNamesByMac[d.Mac] = stashed;
-        }
-    }
-
-    // Live mDNS hits from ws-scan arrive with null MAC (ws-scrcpy-web's
-    // scanner only ARP-resolves for TCP-confirmed hits). We ARP-resolve
-    // here so the Name column can match registered devices by MAC and the
-    // Add button isn't disabled on legitimate discoveries. Mirrors the same
-    // ARP+ping pattern Quick Refresh and MergeAdbConnectedAsync already use.
-    private async Task EnrichDiscoveredMacsAsync()
-    {
-        var needMac = _discovered.Where(d => d.Mac is null).ToList();
-        if (needMac.Count == 0) return;
-
-        var arpMap = await BuildArpMapAsync();
-        var missing = needMac.Where(d => !arpMap.ContainsKey(d.Ip)).Select(d => d.Ip).Distinct().ToList();
-        if (missing.Count > 0)
-        {
-            await Task.WhenAll(missing.Select(ip => NetworkDiscovery.PingAsync(ip)));
-            arpMap = await BuildArpMapAsync();
-        }
-
-        for (var i = 0; i < _discovered.Count; i++)
-        {
-            if (_discovered[i].Mac is not null) continue;
-            if (arpMap.TryGetValue(_discovered[i].Ip, out var mac))
-            {
-                _discovered[i] = _discovered[i] with { Mac = mac };
-            }
         }
     }
 
