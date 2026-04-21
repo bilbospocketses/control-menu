@@ -22,7 +22,8 @@ public class NetworkScanServiceTests
             NullLogger<WsScrcpyService>.Instance);
     }
 
-    private NetworkScanService CreateService() => new(_wsScrcpy);
+    private NetworkScanService CreateService() =>
+        new(_wsScrcpy, NullLogger<NetworkScanService>.Instance);
 
     [Fact]
     public void Initial_Phase_IsIdle()
@@ -159,6 +160,44 @@ public class NetworkScanServiceTests
         _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-mode", It.IsAny<string?>())).ReturnsAsync("external");
         _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-url", It.IsAny<string?>())).ReturnsAsync(baseUrl);
         await _wsScrcpy.StartAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task MalformedHit_DoesNotKillReceiveLoop()
+    {
+        // Regression for issue #9: a scan.hit missing required fields used to
+        // throw KeyNotFoundException inside ParseServerMessage, which bubbled up
+        // and tore down the whole receive loop. Every subsequent device was
+        // silently dropped. Now a bad frame logs and the loop keeps running.
+        await using var fakeServer = new FakeWsScanServer();
+        await ConfigureWsScrcpyForAsync(fakeServer.Url);
+        var svc = CreateService();
+
+        var received = new List<ScanEvent>();
+        using var sub = svc.Subscribe(e => received.Add(e));
+
+        var startTask = svc.StartScanAsync(new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) });
+        var serverSocket = await fakeServer.GetClientAsync(TimeSpan.FromSeconds(5));
+        await fakeServer.ReceiveAsync<System.Text.Json.JsonElement>(serverSocket);  // drain scan.start
+
+        await fakeServer.SendAsync(serverSocket, new { type = "scan.started", totalHosts = 6, totalSubnets = 1, startedAt = 0L });
+
+        // Hit 1 — missing serial + name entirely (TypeScript partial with undefined values).
+        await fakeServer.SendAsync(serverSocket, new { type = "scan.hit", source = "tcp", address = "10.0.0.5:5555" });
+
+        // Hit 2 — well-formed. MUST arrive: the whole point is the loop survives hit 1.
+        await fakeServer.SendAsync(serverSocket, new { type = "scan.hit", source = "mdns", address = "10.0.0.6:5555", serial = "abc", name = "adb-abc", label = "" });
+
+        await fakeServer.SendAsync(serverSocket, new { type = "scan.complete", found = 2 });
+
+        await startTask;
+        await Task.Delay(300);
+
+        var hits = received.OfType<ScanHitEvent>().Select(e => e.Hit).ToList();
+        Assert.Equal(2, hits.Count);
+        Assert.Contains(hits, h => h.Address == "10.0.0.5:5555" && h.Serial == "" && h.Name == "");
+        Assert.Contains(hits, h => h.Address == "10.0.0.6:5555" && h.Serial == "abc");
+        Assert.Contains(received, e => e is ScanCompleteEvent);
     }
 
     [Fact]

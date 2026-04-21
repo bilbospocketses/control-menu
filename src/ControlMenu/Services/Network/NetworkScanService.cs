@@ -2,6 +2,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using ControlMenu.Services;
+using Microsoft.Extensions.Logging;
 
 namespace ControlMenu.Services.Network;
 
@@ -14,13 +15,15 @@ public sealed class NetworkScanService : INetworkScanService
     private ScanProgressEvent? _lastProgress;
 
     private readonly WsScrcpyService _wsscrcpy;
+    private readonly ILogger<NetworkScanService> _logger;
 
     private ClientWebSocket? _ws;
     private CancellationTokenSource? _scanCts;
 
-    public NetworkScanService(WsScrcpyService wsscrcpy)
+    public NetworkScanService(WsScrcpyService wsscrcpy, ILogger<NetworkScanService> logger)
     {
         _wsscrcpy = wsscrcpy;
+        _logger = logger;
     }
 
     public ScanPhase Phase { get; private set; } = ScanPhase.Idle;
@@ -197,8 +200,18 @@ public sealed class NetworkScanService : INetworkScanService
                 if (ms.Length == 0) continue;
 
                 var json = Encoding.UTF8.GetString(ms.ToArray());
-                var evt = ParseServerMessage(json);
-                if (evt is not null) Dispatch(evt);
+                // Per-message try/catch: a malformed frame from ws-scrcpy-web must
+                // not tear down the whole scan. Log and keep receiving.
+                try
+                {
+                    _logger.LogDebug("ws-scan frame: {Json}", json);
+                    var evt = ParseServerMessage(json, _logger);
+                    if (evt is not null) Dispatch(evt);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "ws-scan: failed to process frame, skipping. Frame: {Json}", json);
+                }
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -220,36 +233,76 @@ public sealed class NetworkScanService : INetworkScanService
         }
     }
 
-    private static ScanEvent? ParseServerMessage(string json)
+    // Defensive parse: every field read is tolerant of missing / null / wrong-type
+    // values. ws-scrcpy-web's TypeScript interface declares all hit fields as
+    // required strings, but a JS emit with an undefined partial drops the key
+    // from the JSON payload entirely — which used to throw KeyNotFoundException
+    // and tear down the whole receive loop, silently dropping every subsequent
+    // device. Hard field reads were the root cause of issue #9.
+    private static ScanEvent? ParseServerMessage(string json, ILogger logger)
     {
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
         if (!root.TryGetProperty("type", out var typeProp)) return null;
         var type = typeProp.GetString();
-        return type switch
+        switch (type)
         {
-            "scan.started" => new ScanStartedEvent(
-                root.GetProperty("totalHosts").GetInt32(),
-                root.GetProperty("totalSubnets").GetInt32(),
-                root.GetProperty("startedAt").GetInt64()),
-            "scan.progress" => new ScanProgressEvent(
-                root.GetProperty("checked").GetInt32(),
-                root.GetProperty("total").GetInt32(),
-                root.GetProperty("foundSoFar").GetInt32()),
-            "scan.hit" => new ScanHitEvent(new ScanHit(
-                string.Equals(root.GetProperty("source").GetString(), "mdns", StringComparison.OrdinalIgnoreCase)
-                    ? DiscoverySource.Mdns : DiscoverySource.Tcp,
-                root.GetProperty("address").GetString() ?? "",
-                root.GetProperty("serial").GetString() ?? "",
-                root.GetProperty("name").GetString() ?? "",
-                root.TryGetProperty("label", out var labelProp) ? labelProp.GetString() ?? "" : "",
-                null)),
-            "scan.draining" => new ScanDrainingEvent(),
-            "scan.complete" => new ScanCompleteEvent(root.GetProperty("found").GetInt32()),
-            "scan.cancelled" => new ScanCancelledEvent(root.GetProperty("found").GetInt32()),
-            "scan.error" => new ScanErrorEvent(root.GetProperty("reason").GetString() ?? "unknown"),
-            _ => null,
-        };
+            case "scan.started":
+                return new ScanStartedEvent(
+                    GetIntOrDefault(root, "totalHosts"),
+                    GetIntOrDefault(root, "totalSubnets"),
+                    GetLongOrDefault(root, "startedAt"));
+            case "scan.progress":
+                return new ScanProgressEvent(
+                    GetIntOrDefault(root, "checked"),
+                    GetIntOrDefault(root, "total"),
+                    GetIntOrDefault(root, "foundSoFar"));
+            case "scan.hit":
+                var source = GetStringOrDefault(root, "source");
+                var address = GetStringOrDefault(root, "address");
+                var serial = GetStringOrDefault(root, "serial");
+                var name = GetStringOrDefault(root, "name");
+                var label = GetStringOrDefault(root, "label");
+                logger.LogInformation(
+                    "ws-scan hit: source={Source} address={Address} serial={Serial} name={Name} label={Label}",
+                    source, address, serial, name, label);
+                return new ScanHitEvent(new ScanHit(
+                    string.Equals(source, "mdns", StringComparison.OrdinalIgnoreCase)
+                        ? DiscoverySource.Mdns : DiscoverySource.Tcp,
+                    address, serial, name, label, null));
+            case "scan.draining":
+                return new ScanDrainingEvent();
+            case "scan.complete":
+                return new ScanCompleteEvent(GetIntOrDefault(root, "found"));
+            case "scan.cancelled":
+                return new ScanCancelledEvent(GetIntOrDefault(root, "found"));
+            case "scan.error":
+                return new ScanErrorEvent(GetStringOrDefault(root, "reason", "unknown"));
+            default:
+                return null;
+        }
+    }
+
+    private static string GetStringOrDefault(JsonElement root, string key, string fallback = "")
+    {
+        if (!root.TryGetProperty(key, out var prop)) return fallback;
+        if (prop.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return fallback;
+        if (prop.ValueKind != JsonValueKind.String) return fallback;
+        return prop.GetString() ?? fallback;
+    }
+
+    private static int GetIntOrDefault(JsonElement root, string key, int fallback = 0)
+    {
+        if (!root.TryGetProperty(key, out var prop)) return fallback;
+        if (prop.ValueKind != JsonValueKind.Number) return fallback;
+        return prop.TryGetInt32(out var v) ? v : fallback;
+    }
+
+    private static long GetLongOrDefault(JsonElement root, string key, long fallback = 0)
+    {
+        if (!root.TryGetProperty(key, out var prop)) return fallback;
+        if (prop.ValueKind != JsonValueKind.Number) return fallback;
+        return prop.TryGetInt64(out var v) ? v : fallback;
     }
 
     public async Task CancelAsync(CancellationToken ct = default)
