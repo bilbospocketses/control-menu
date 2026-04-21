@@ -142,8 +142,6 @@
 @if (_showScanModal)
 {
     <ScanNetworkModal OnStart="OnFullScanStart"
-                      OnAddHit="AddFromScan"
-                      OnScanComplete="OnFullScanComplete"
                       OnClose="CloseScanModal"
                       ScanInProgress="@(_phase is ScanPhase.Scanning or ScanPhase.Draining)" />
 }
@@ -507,18 +505,6 @@
 
     private void OpenScanModal() => _showScanModal = true;
     private void CloseScanModal() => _showScanModal = false;
-
-    private async Task AddFromScan(ScanHit hit)
-    {
-        _showScanModal = false;
-        var parts = hit.Address.Split(':');
-        var ip = parts[0];
-        var port = parts.Length > 1 && int.TryParse(parts[1], out var p) ? p : 5555;
-        await AddFromDiscovery(new DiscoveredDevice(hit.Name, ip, port, hit.Mac));
-    }
-
-    // Temporarily retained for the ScanNetworkModal callback. T4 removes this.
-    private Task OnFullScanComplete(IReadOnlyList<ScanHit> hits) => Task.CompletedTask;
 
     // Modal fires this when the user clicks Start. Clears the Discovered panel
     // (Full Scan replaces semantics), clears dismissed addresses (new scan =
