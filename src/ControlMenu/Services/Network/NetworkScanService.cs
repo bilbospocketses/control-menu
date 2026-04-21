@@ -221,9 +221,15 @@ public sealed class NetworkScanService : INetworkScanService
         catch (Exception ex)
         {
             // Unexpected drop (upstream crash, container restart). Force Cancelled
-            // so listeners can react; preserve buffered hits.
-            Dispatch(new ScanCancelledEvent(Hits.Count));
-            Dispatch(new ScanErrorEvent($"upstream disconnect: {ex.Message}"));
+            // so listeners can react; preserve buffered hits. But only if we haven't
+            // already reached a terminal state — ws-scrcpy-web sometimes closes the
+            // WS abruptly after emitting scan.complete (no proper close handshake);
+            // that's NOT an error the user needs to see.
+            if (Phase is not (ScanPhase.Complete or ScanPhase.Cancelled))
+            {
+                Dispatch(new ScanCancelledEvent(Hits.Count));
+                Dispatch(new ScanErrorEvent($"upstream disconnect: {ex.Message}"));
+            }
         }
         finally
         {

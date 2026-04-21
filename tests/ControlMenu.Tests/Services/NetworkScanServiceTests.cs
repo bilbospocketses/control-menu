@@ -368,4 +368,50 @@ public class NetworkScanServiceTests
         await cancelledTask.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(ScanPhase.Cancelled, svc.Phase);
     }
+
+    [Fact]
+    public async Task WsClosesAbnormallyAfterComplete_DoesNotDispatchExtraEvents()
+    {
+        // Regression: ws-scrcpy-web sometimes closes the WS abruptly after
+        // scan.complete (no proper close handshake). We must not dispatch
+        // spurious ScanCancelled / ScanError events that would overwrite the
+        // Complete phase and surface a misleading error toast.
+        await using var fakeServer = new FakeWsScanServer();
+        await ConfigureWsScrcpyForAsync(fakeServer.Url);
+        var svc = CreateService();
+
+        var (completeTask, completeSub) = WaitForEvent<ScanCompleteEvent>(svc);
+        using var completeSubDisposable = completeSub;
+
+        var startTask = svc.StartScanAsync(new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) });
+        var serverSocket = await fakeServer.GetClientAsync(TimeSpan.FromSeconds(5));
+        await fakeServer.ReceiveAsync<System.Text.Json.JsonElement>(serverSocket);  // drain scan.start
+
+        await fakeServer.SendAsync(serverSocket, new { type = "scan.started", totalHosts = 6, totalSubnets = 1, startedAt = 0L });
+        await fakeServer.SendAsync(serverSocket, new { type = "scan.complete", found = 0 });
+
+        await completeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ScanPhase.Complete, svc.Phase);
+
+        // Subscribe AFTER Complete fires to catch anything the receive loop might dispatch
+        // in response to the upcoming abnormal close.
+        var extraEvents = new List<ScanEvent>();
+        using var extraSub = svc.Subscribe(e =>
+        {
+            // Ignore the snapshot replay (ScanStarted already fired)
+            if (e is ScanStartedEvent or ScanHitEvent) return;
+            extraEvents.Add(e);
+        });
+
+        // Abort the server socket without a close frame — simulates the
+        // ws-scrcpy-web abrupt-close behavior.
+        serverSocket.Abort();
+
+        // Give the receive loop time to see the aborted socket.
+        await Task.Delay(300);
+
+        Assert.Equal(ScanPhase.Complete, svc.Phase);
+        Assert.DoesNotContain(extraEvents, e => e is ScanCancelledEvent);
+        Assert.DoesNotContain(extraEvents, e => e is ScanErrorEvent);
+    }
 }
