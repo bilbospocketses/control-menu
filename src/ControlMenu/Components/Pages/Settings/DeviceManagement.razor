@@ -85,6 +85,7 @@
             <thead>
                 <tr>
                     <th>Service</th>
+                    <th>Name</th>
                     <th>IP</th>
                     <th>ADB Port</th>
                     <th>MAC</th>
@@ -102,6 +103,7 @@
                                 <span class="source-badge" title="Discovery source">@d.Source</span>
                             }
                         </td>
+                        <td>@NameFor(d)</td>
                         <td>@d.Ip</td>
                         <td>@d.Port</td>
                         <td><code>@(d.Mac ?? "—")</code></td>
@@ -445,6 +447,18 @@
             changed = true;
         }
         if (changed) StateHasChanged();
+    }
+
+    // MAC-based lookup against the registered device list. Discovered rows whose
+    // MAC matches a DB row show that device's user-assigned name; unmatched rows
+    // (including all MAC-less rows) show "Unknown" as a clear placeholder so the
+    // user sees at a glance which devices still need registering.
+    private string NameFor(DiscoveredDevice d)
+    {
+        if (string.IsNullOrEmpty(d.Mac)) return "Unknown";
+        var match = _devices.FirstOrDefault(dev =>
+            string.Equals(dev.MacAddress, d.Mac, StringComparison.OrdinalIgnoreCase));
+        return match?.Name ?? "Unknown";
     }
 
     private static string GetStatusClass(ControlMenu.Data.Entities.Device device)
