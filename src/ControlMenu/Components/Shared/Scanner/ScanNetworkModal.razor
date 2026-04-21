@@ -82,7 +82,11 @@
             }
             else
             {
-                <button class="btn btn-primary" disabled="@(_subnets.Count == 0)" @onclick="StartClicked">Start</button>
+                <button class="btn btn-primary"
+                        disabled="@(_subnets.Count == 0 || ScanInProgress)"
+                        @onclick="StartClicked">
+                    @(ScanInProgress ? "Scan in Progress…" : "Start")
+                </button>
             }
         </div>
     </div>
@@ -104,6 +108,8 @@
     [Parameter] public EventCallback<ScanHit> OnAddHit { get; set; }
     [Parameter] public EventCallback<IReadOnlyList<ScanHit>> OnScanComplete { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<ParsedSubnet>> OnStart { get; set; }
+    [Parameter] public bool ScanInProgress { get; set; }
 
     private ScanPhase _phase = ScanPhase.Idle;
     private ScanProgressEvent? _lastProgress;
@@ -171,23 +177,23 @@
         await SaveSubnetsAsync();
     }
 
-    private void StartClicked()
+    private async Task StartClicked()
     {
         var total = _subnets.Sum(s => s.HostCount);
         if (total > 2048)
         {
             _showLargeWarn = true;
+            return;
         }
-        else
-        {
-            _ = ScanService.StartScanAsync(_subnets);
-        }
+        await OnStart.InvokeAsync(_subnets);
+        await Close();
     }
 
-    private Task StartConfirmed()
+    private async Task StartConfirmed()
     {
         _showLargeWarn = false;
-        return ScanService.StartScanAsync(_subnets);
+        await OnStart.InvokeAsync(_subnets);
+        await Close();
     }
 
     private Task Cancel() => ScanService.CancelAsync();
