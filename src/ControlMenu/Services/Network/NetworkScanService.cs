@@ -114,7 +114,12 @@ public sealed class NetworkScanService : INetworkScanService
         Uri wsUrl;
         try
         {
-            wsUrl = new Uri(baseUrl.Replace("http://", "ws://").Replace("https://", "wss://") + "/ws-scan");
+            // UriBuilder handles trailing slashes, case-insensitive schemes, and
+            // any query-string quirks that a raw string Replace would miss.
+            var builder = new UriBuilder(baseUrl);
+            builder.Scheme = builder.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase) ? "wss" : "ws";
+            builder.Path = builder.Path.TrimEnd('/') + "/ws-scan";
+            wsUrl = builder.Uri;
         }
         catch (Exception ex)
         {
@@ -165,10 +170,33 @@ public sealed class NetworkScanService : INetworkScanService
         {
             while (!ct.IsCancellationRequested && ws.State == WebSocketState.Open)
             {
-                var result = await ws.ReceiveAsync(buffer, ct);
-                if (result.MessageType == WebSocketMessageType.Close) break;
-                if (result.Count == 0) continue;
-                var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                // Loop until EndOfMessage — scan.error with many invalid-subnet
+                // details, or scan.hit with a long label, can exceed 8 KiB.
+                using var ms = new MemoryStream();
+                WebSocketReceiveResult result;
+                do
+                {
+                    result = await ws.ReceiveAsync(buffer, ct);
+                    if (result.MessageType == WebSocketMessageType.Close) break;
+                    ms.Write(buffer, 0, result.Count);
+                } while (!result.EndOfMessage);
+
+                if (result.MessageType == WebSocketMessageType.Close)
+                {
+                    // Server closed cleanly without dispatching scan.complete /
+                    // scan.cancelled (SIGTERM'd mid-scan, container restart).
+                    // Force Cancelled so subscribers unstick from Scanning.
+                    if (Phase is ScanPhase.Scanning or ScanPhase.Draining)
+                    {
+                        int count;
+                        lock (_lock) count = _hits.Count;
+                        Dispatch(new ScanCancelledEvent(count));
+                    }
+                    break;
+                }
+                if (ms.Length == 0) continue;
+
+                var json = Encoding.UTF8.GetString(ms.ToArray());
                 var evt = ParseServerMessage(json);
                 if (evt is not null) Dispatch(evt);
             }
