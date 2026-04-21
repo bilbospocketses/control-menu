@@ -12,7 +12,6 @@ public enum WsScrcpyDeployMode { Managed, External }
 public class WsScrcpyService : IHostedService, IDisposable
 {
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly IConfigurationService _config;
     private readonly ILogger<WsScrcpyService> _logger;
     private readonly object _lock = new();
     private Process? _process;
@@ -27,16 +26,17 @@ public class WsScrcpyService : IHostedService, IDisposable
     public string BaseUrl { get; private set; } = "http://localhost:8000";
     public bool IsRunning => _serviceReady && (_process is null || !_process.HasExited);
 
-    public WsScrcpyService(IServiceScopeFactory scopeFactory, IConfigurationService config, ILogger<WsScrcpyService> logger)
+    public WsScrcpyService(IServiceScopeFactory scopeFactory, ILogger<WsScrcpyService> logger)
     {
         _scopeFactory = scopeFactory;
-        _config = config;
         _logger = logger;
     }
 
     public async Task<WsScrcpyDeployMode> GetDeployModeAsync(CancellationToken ct = default)
     {
-        var raw = await _config.GetSettingAsync("wsscrcpy-mode");
+        using var scope = _scopeFactory.CreateScope();
+        var config = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
+        var raw = await config.GetSettingAsync("wsscrcpy-mode");
         return string.Equals(raw, "external", StringComparison.OrdinalIgnoreCase)
             ? WsScrcpyDeployMode.External
             : WsScrcpyDeployMode.Managed;
@@ -47,7 +47,9 @@ public class WsScrcpyService : IHostedService, IDisposable
         _resolvedMode = await GetDeployModeAsync(cancellationToken);
         if (_resolvedMode == WsScrcpyDeployMode.External)
         {
-            var url = (await _config.GetSettingAsync("wsscrcpy-url")) ?? "http://localhost:8000";
+            using var scope = _scopeFactory.CreateScope();
+            var config = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
+            var url = (await config.GetSettingAsync("wsscrcpy-url")) ?? "http://localhost:8000";
             BaseUrl = url;
             _serviceReady = true;
             _logger.LogInformation("ws-scrcpy-web external mode, using URL {Url}", url);

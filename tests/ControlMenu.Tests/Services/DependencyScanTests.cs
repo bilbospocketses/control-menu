@@ -17,15 +17,18 @@ public class DependencyScanTests : IDisposable
     private readonly Mock<ICommandExecutor> _mockExecutor = new();
     private readonly Mock<IHttpClientFactory> _mockHttpFactory = new();
     private readonly Mock<IConfigurationService> _mockConfig = new();
-    private readonly WsScrcpyService _wsScrcpy = new(
-        new Mock<IServiceScopeFactory>().Object,
-        new Mock<IConfigurationService>().Object,
-        NullLogger<WsScrcpyService>.Instance);
+    private readonly WsScrcpyService _wsScrcpy;
     private readonly Mock<IGo2RtcService> _mockGo2Rtc = new();
 
     public DependencyScanTests()
     {
         _dbFactory = TestDbContextFactory.CreateFactory();
+        var services = new ServiceCollection();
+        services.AddScoped<IConfigurationService>(_ => new Mock<IConfigurationService>().Object);
+        var provider = services.BuildServiceProvider();
+        _wsScrcpy = new WsScrcpyService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<WsScrcpyService>.Instance);
     }
 
     public void Dispose() => _dbFactory.Dispose();

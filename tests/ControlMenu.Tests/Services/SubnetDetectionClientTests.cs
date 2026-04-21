@@ -13,9 +13,11 @@ public class SubnetDetectionClientTests
 
     public SubnetDetectionClientTests()
     {
+        var services = new ServiceCollection();
+        services.AddScoped(_ => _mockConfig.Object);
+        var provider = services.BuildServiceProvider();
         _wsScrcpy = new WsScrcpyService(
-            new Mock<IServiceScopeFactory>().Object,
-            _mockConfig.Object,
+            provider.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<WsScrcpyService>.Instance);
     }
 

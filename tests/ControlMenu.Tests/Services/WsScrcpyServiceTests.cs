@@ -8,12 +8,18 @@ namespace ControlMenu.Tests.Services;
 
 public class WsScrcpyServiceTests
 {
-    private readonly Mock<IServiceScopeFactory> _mockScope = new();
     private readonly Mock<IConfigurationService> _mockConfig = new();
     private readonly Mock<ILogger<WsScrcpyService>> _mockLogger = new();
 
-    private WsScrcpyService CreateService() =>
-        new(_mockScope.Object, _mockConfig.Object, _mockLogger.Object);
+    private WsScrcpyService CreateService()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped(_ => _mockConfig.Object);
+        var provider = services.BuildServiceProvider();
+        return new WsScrcpyService(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            _mockLogger.Object);
+    }
 
     [Fact]
     public async Task GetDeployModeAsync_DefaultsToManaged_WhenSettingAbsent()
@@ -74,9 +80,7 @@ public class WsScrcpyServiceTests
         _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-url", It.IsAny<string?>())).ReturnsAsync("http://fake:8000");
         var svc = CreateService();
         await svc.StartAsync(CancellationToken.None);
-        // IsRunning true without a child process — confirmed by scope factory never being touched.
+        // External mode: no child process spawned; IsRunning flips true after the config read.
         Assert.True(svc.IsRunning);
-        // Scope factory should never be consulted in External mode (no DB path lookup needed).
-        _mockScope.Verify(s => s.CreateScope(), Times.Never);
     }
 }
