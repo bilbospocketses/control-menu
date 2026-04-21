@@ -11,6 +11,7 @@ public interface IScanLifecycleHandler : IDisposable
 {
     IReadOnlyList<DiscoveredDevice> Discovered { get; }
     IReadOnlyDictionary<string, string> StashedNamesByMac { get; }
+    IReadOnlySet<string> DismissedAddresses { get; }
     ScanPhase Phase { get; }
     ScanProgressEvent? LastProgress { get; }
 

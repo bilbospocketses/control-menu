@@ -38,6 +38,7 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
 
     public IReadOnlyList<DiscoveredDevice> Discovered => _discovered;
     public IReadOnlyDictionary<string, string> StashedNamesByMac => _stashedNamesByMac;
+    public IReadOnlySet<string> DismissedAddresses => _dismissedAddresses;
     public ScanPhase Phase => _phase;
     public ScanProgressEvent? LastProgress => _lastProgress;
 

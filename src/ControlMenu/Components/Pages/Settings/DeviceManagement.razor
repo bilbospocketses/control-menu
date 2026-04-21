@@ -313,13 +313,23 @@
         }
 
         // 3. Walk the mDNS hits. Registered devices: update IP/port in-place in the DB
-        //    (no entry in the Discovered panel). Unregistered devices: add to the panel
-        //    for one-click adding.
+        //    (no entry in the Discovered panel). Unregistered devices: merge into the panel
+        //    (preserving non-mDNS entries from a prior Full Scan and respecting dismissed).
         var devicesByMac = _devices.ToDictionary(d => d.MacAddress, d => d, StringComparer.OrdinalIgnoreCase);
-        var discovered = new List<DiscoveredDevice>();
+
+        // Merge semantics: start with the existing Discovered snapshot so non-mDNS
+        // entries (adb-merge rows, earlier Full Scan TCP hits) survive a Quick Refresh.
+        // Quick Refresh adds mDNS-visible devices that aren't already registered,
+        // aren't dismissed, and aren't duplicates by IP:port.
+        var merged = new List<DiscoveredDevice>(Handler.Discovered);
+        var mergedKeys = new HashSet<string>(
+            merged.Select(d => ScanMergeHelper.AddressKey(d.Ip, d.Port)),
+            StringComparer.OrdinalIgnoreCase);
+
         var coveredRegistered = new HashSet<Guid>();
         int updated = 0;
         int portUpdated = 0;
+        int newOnes = 0;
         foreach (var m in mdnsResults)
         {
             var mac = arpMap.TryGetValue(m.IpAddress, out var x) ? x : null;
@@ -334,11 +344,23 @@
                 }
                 coveredRegistered.Add(registered.Id);
                 updated++;
+                continue;
             }
-            else
-            {
-                discovered.Add(new DiscoveredDevice(m.ServiceName, m.IpAddress, m.Port, mac));
-            }
+
+            var key = ScanMergeHelper.AddressKey(m.IpAddress, m.Port);
+
+            // Respect dismissed set for the current scan session.
+            if (Handler.DismissedAddresses.Contains(key))
+                continue;
+
+            // Dedupe against existing Discovered entries (including anything carried
+            // over from a prior Full Scan).
+            if (mergedKeys.Contains(key))
+                continue;
+
+            merged.Add(new DiscoveredDevice(m.ServiceName, m.IpAddress, m.Port, mac));
+            mergedKeys.Add(key);
+            newOnes++;
         }
 
         // 4. For registered devices not seen via mDNS, fall back to ARP-only IP refresh.
@@ -352,13 +374,13 @@
             }
         }
 
-        Handler.ReplaceDiscovered(discovered);
+        Handler.ReplaceDiscovered(merged);
         await LoadDevices();
         _scanning = false;
 
         var parts = new List<string> { $"{updated} of {_devices.Count} registered device(s) found" };
         if (portUpdated > 0) parts.Add($"{portUpdated} ADB port(s) updated from mDNS");
-        if (discovered.Count > 0) parts.Add($"{discovered.Count} new device(s) on network");
+        if (newOnes > 0) parts.Add($"{newOnes} new device(s) on network");
         await ShowMessage($"Scan complete. {string.Join("; ", parts)}.");
     }
 

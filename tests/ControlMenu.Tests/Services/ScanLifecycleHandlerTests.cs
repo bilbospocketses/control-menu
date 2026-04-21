@@ -266,6 +266,21 @@ public class ScanLifecycleHandlerTests
         Assert.Equal(0, _scan.SubscriberCount);
     }
 
+    [Fact]
+    public void DismissedAddresses_ExposesDismissedSet_ReadOnly()
+    {
+        using var handler = CreateHandler();
+        _scan.Emit(new ScanHitEvent(new ScanHit(
+            DiscoverySource.Mdns, "192.168.1.42:5555", "s", "foo", "", null)));
+
+        Assert.Empty(handler.DismissedAddresses);
+
+        handler.Dismiss(handler.Discovered[0]);
+
+        Assert.Single(handler.DismissedAddresses);
+        Assert.Contains("192.168.1.42:5555", handler.DismissedAddresses);
+    }
+
     // Helper: yield control until all in-flight handler-triggered tasks have run.
     // Handler dispatches ScanComplete fire-and-forget; xUnit tests on the same
     // thread need to yield to let those continuations run.
