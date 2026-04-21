@@ -65,4 +65,42 @@ public class ScanMergeHelperTests
             Array.Empty<string>(), Array.Empty<string>());
         Assert.Empty(result);
     }
+
+    [Fact]
+    public void FilterDismissed_RemovesHitsWithMatchingAddress()
+    {
+        var hits = new[]
+        {
+            new ScanHit(DiscoverySource.Mdns, "192.168.1.10:5555", "s1", "n1", "", null),
+            new ScanHit(DiscoverySource.Tcp,  "192.168.1.20:5555", "s2", "n2", "", null),
+            new ScanHit(DiscoverySource.Mdns, "192.168.1.30:5555", "s3", "n3", "", null),
+        };
+        var dismissed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "192.168.1.20:5555" };
+        var result = ScanMergeHelper.FilterDismissed(hits, dismissed);
+        Assert.Equal(2, result.Count);
+        Assert.DoesNotContain(result, h => h.Address == "192.168.1.20:5555");
+    }
+
+    [Fact]
+    public void FilterDismissed_CaseInsensitiveAddressMatch()
+    {
+        // Addresses are ip:port strings — numeric — so mixed case doesn't occur
+        // naturally, but the set uses OrdinalIgnoreCase defensively. Verify.
+        var hits = new[] { new ScanHit(DiscoverySource.Mdns, "192.168.1.10:5555", "", "", "", null) };
+        var dismissed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "192.168.1.10:5555" };
+        var result = ScanMergeHelper.FilterDismissed(hits, dismissed);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void FilterDismissed_EmptyDismissed_ReturnsAllHits()
+    {
+        var hits = new[]
+        {
+            new ScanHit(DiscoverySource.Mdns, "192.168.1.10:5555", "", "", "", null),
+            new ScanHit(DiscoverySource.Tcp,  "192.168.1.20:5555", "", "", "", null),
+        };
+        var result = ScanMergeHelper.FilterDismissed(hits, new HashSet<string>());
+        Assert.Equal(2, result.Count);
+    }
 }
