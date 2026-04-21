@@ -18,6 +18,7 @@
     --danger-color: #dc3545;
     --success-color: #198754;
     --warning-color: #ffc107;
+    --info-color: #2563eb;
 }
 
 /* Dark theme — OAO grey palette */
@@ -40,4 +41,5 @@
     --danger-color: #f06c75;
     --success-color: #50c878;
     --warning-color: #ffd866;
+    --info-color: #60a5fa;
 }
