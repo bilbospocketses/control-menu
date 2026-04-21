@@ -252,8 +252,27 @@ public sealed class NetworkScanService : INetworkScanService
         };
     }
 
-    public Task CancelAsync(CancellationToken ct = default) =>
-        throw new NotImplementedException("Task 9");
+    public async Task CancelAsync(CancellationToken ct = default)
+    {
+        ClientWebSocket? ws;
+        lock (_lock)
+        {
+            ws = _ws;
+        }
+        if (ws is null || ws.State != WebSocketState.Open) return;
+
+        var msg = Encoding.UTF8.GetBytes("{\"type\":\"scan.cancel\"}");
+        try
+        {
+            await ws.SendAsync(msg, WebSocketMessageType.Text, true, ct);
+        }
+        catch
+        {
+            // Server may already be tearing down — cancellation is idempotent and
+            // best-effort. The receive loop will dispatch ScanCancelled on its
+            // eventual close/drop regardless.
+        }
+    }
 
     private sealed class Subscriber : IDisposable
     {
