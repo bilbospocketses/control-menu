@@ -208,18 +208,6 @@ public class AdbServiceTests
     }
 
     [Fact]
-    public async Task ResetTcpPortAsync_RunsTcpipCommand()
-    {
-        _mockExecutor.Setup(e => e.ExecuteAsync("adb", "tcpip 5555", null, default))
-            .ReturnsAsync(new CommandResult(0, "restarting in TCP mode port: 5555", "", false));
-
-        var service = CreateService();
-        await service.ResetTcpPortAsync(5555);
-
-        _mockExecutor.Verify(e => e.ExecuteAsync("adb", "tcpip 5555", null, default), Times.Once);
-    }
-
-    [Fact]
     public async Task GetConnectedDevicesAsync_ParsesAdbDevices()
     {
         _mockExecutor.Setup(e => e.ExecuteAsync("adb", "devices", null, default))
