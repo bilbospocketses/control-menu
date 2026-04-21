@@ -21,6 +21,8 @@ public class WsScrcpyService : IHostedService, IDisposable
     private DateTime _lastCrash = DateTime.MinValue;
     private bool _serviceReady;
     private bool _disposed;
+    // Mode resolved at Start time; mode changes require full app restart.
+    private WsScrcpyDeployMode _resolvedMode = WsScrcpyDeployMode.Managed;
 
     public string BaseUrl { get; private set; } = "http://localhost:8000";
     public bool IsRunning => _serviceReady && (_process is null || !_process.HasExited);
@@ -42,8 +44,8 @@ public class WsScrcpyService : IHostedService, IDisposable
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var mode = await GetDeployModeAsync(cancellationToken);
-        if (mode == WsScrcpyDeployMode.External)
+        _resolvedMode = await GetDeployModeAsync(cancellationToken);
+        if (_resolvedMode == WsScrcpyDeployMode.External)
         {
             var url = (await _config.GetSettingAsync("wsscrcpy-url")) ?? "http://localhost:8000";
             BaseUrl = url;
@@ -180,7 +182,7 @@ public class WsScrcpyService : IHostedService, IDisposable
     public void Restart()
     {
         // Managed mode only — External mode has nothing to restart.
-        if (_config.GetSettingAsync("wsscrcpy-mode").Result?.ToLowerInvariant() == "external") return;
+        if (_resolvedMode == WsScrcpyDeployMode.External) return;
         _disposed = false;
         _crashCount = 0;
         _serviceReady = false;
