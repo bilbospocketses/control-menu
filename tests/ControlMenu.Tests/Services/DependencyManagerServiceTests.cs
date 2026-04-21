@@ -20,6 +20,7 @@ public class DependencyManagerServiceTests : IDisposable
     private readonly Mock<IConfigurationService> _mockConfig = new();
     private readonly WsScrcpyService _wsScrcpy = new(
         new Mock<IServiceScopeFactory>().Object,
+        new Mock<IConfigurationService>().Object,
         NullLogger<WsScrcpyService>.Instance);
     private readonly Mock<IGo2RtcService> _mockGo2Rtc = new();
 

@@ -7,9 +7,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ControlMenu.Services;
 
+public enum WsScrcpyDeployMode { Managed, External }
+
 public class WsScrcpyService : IHostedService, IDisposable
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IConfigurationService _config;
     private readonly ILogger<WsScrcpyService> _logger;
     private readonly object _lock = new();
     private Process? _process;
@@ -20,16 +23,35 @@ public class WsScrcpyService : IHostedService, IDisposable
     private bool _disposed;
 
     public string BaseUrl { get; private set; } = "http://localhost:8000";
-    public bool IsRunning => _serviceReady && _process is { HasExited: false };
+    public bool IsRunning => _serviceReady && (_process is null || !_process.HasExited);
 
-    public WsScrcpyService(IServiceScopeFactory scopeFactory, ILogger<WsScrcpyService> logger)
+    public WsScrcpyService(IServiceScopeFactory scopeFactory, IConfigurationService config, ILogger<WsScrcpyService> logger)
     {
         _scopeFactory = scopeFactory;
+        _config = config;
         _logger = logger;
+    }
+
+    public async Task<WsScrcpyDeployMode> GetDeployModeAsync(CancellationToken ct = default)
+    {
+        var raw = await _config.GetSettingAsync("wsscrcpy-mode");
+        return string.Equals(raw, "external", StringComparison.OrdinalIgnoreCase)
+            ? WsScrcpyDeployMode.External
+            : WsScrcpyDeployMode.Managed;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        var mode = await GetDeployModeAsync(cancellationToken);
+        if (mode == WsScrcpyDeployMode.External)
+        {
+            var url = (await _config.GetSettingAsync("wsscrcpy-url")) ?? "http://localhost:8000";
+            BaseUrl = url;
+            _serviceReady = true;
+            _logger.LogInformation("ws-scrcpy-web external mode, using URL {Url}", url);
+            return;
+        }
+
         var path = await GetWsScrcpyPathAsync();
         if (string.IsNullOrEmpty(path))
         {
@@ -157,6 +179,8 @@ public class WsScrcpyService : IHostedService, IDisposable
 
     public void Restart()
     {
+        // Managed mode only — External mode has nothing to restart.
+        if (_config.GetSettingAsync("wsscrcpy-mode").Result?.ToLowerInvariant() == "external") return;
         _disposed = false;
         _crashCount = 0;
         _serviceReady = false;
