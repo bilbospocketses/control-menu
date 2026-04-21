@@ -183,10 +183,6 @@
     private List<DiscoveredDevice> _discovered = [];
     private string? _message;
 
-    // Entries shown in the "Discovered on Network" panel. Devices already in the
-    // registered-devices table are filtered out and their IP/port are updated in
-    // the DB directly by ScanNetwork.
-    private record DiscoveredDevice(string ServiceName, string Ip, int Port, string? Mac, string? Source = null);
     private bool _messageIsError;
     private int _discoveryInterval = 300;
     private ScanPhase _phase = ScanPhase.Idle;
