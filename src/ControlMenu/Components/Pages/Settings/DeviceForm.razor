@@ -38,7 +38,7 @@
             <input class="form-control" @bind="Model.SerialNumber" placeholder="47121FDAQ000WC" />
         </div>
 
-        @if (Model.Type == DeviceType.AndroidPhone)
+        @if (Model.Type is DeviceType.AndroidPhone or DeviceType.AndroidTablet)
         {
             <div class="form-group">
                 <label>Screen Lock PIN (optional)</label>

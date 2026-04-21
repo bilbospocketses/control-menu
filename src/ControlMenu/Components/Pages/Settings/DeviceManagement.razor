@@ -1,4 +1,3 @@
-@using System.Text.RegularExpressions
 @using ControlMenu.Components.Shared.Scanner
 @using ControlMenu.Data.Entities
 @using ControlMenu.Data.Enums
@@ -9,6 +8,7 @@
 @inject IAdbService AdbService
 @inject IConfigurationService Config
 @inject IScanLifecycleHandler Handler
+@implements IDisposable
 
 <div class="settings-section">
     <h2>Device Discovery</h2>
@@ -492,5 +492,10 @@
         await Task.Delay(isError ? 10000 : 5000);
         _message = null;
         StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        Handler.OnStateChanged -= HandleHandlerStateChanged;
     }
 }
