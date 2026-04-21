@@ -1,6 +1,7 @@
 @using ControlMenu.Data.Entities
 @using ControlMenu.Data.Enums
 @inject IDependencyManagerService DepManager
+@inject IConfigurationService Config
 @inject NavigationManager Nav
 
 <div class="settings-section">
@@ -49,57 +50,67 @@
                 @foreach (var dep in _sortedDependencies)
                 {
                     var isConfigurable = DepManager.IsConfigurable(dep.Name, dep.ModuleId);
+                    var isExternalWsScrcpy = dep.Name == "ws-scrcpy-web" && _wsscrcpyMode == "external";
                     <tr>
                         <td><strong>@dep.Name</strong></td>
                         <td>@dep.ModuleId</td>
-                        <td><code>@(dep.InstalledVersion ?? "—")</code></td>
-                        <td><code>@(dep.LatestKnownVersion ?? "—")</code></td>
-                        <td><span class="status-badge @GetStatusClass(dep.Status)">@FormatStatus(dep.Status)</span></td>
-                        <td>
-                            @if (isConfigurable)
-                            {
-                                <div style="display:flex; gap:0.4rem; align-items:center;">
-                                    <input class="form-control" style="min-width:200px; font-size:0.85rem;"
-                                           value="@(_installPaths.GetValueOrDefault(dep.Name, ""))"
-                                           @onchange="e => OnPathChanged(dep.Name, dep.ModuleId, e)" />
-                                    <button class="btn btn-secondary btn-sm" title="Reset to default"
-                                            @onclick="() => ResetPath(dep.Name, dep.ModuleId)">
-                                        <i class="bi bi-arrow-counterclockwise"></i>
+                        @if (isExternalWsScrcpy)
+                        {
+                            <td colspan="5">
+                                <span class="form-hint">External: <code>@_wsscrcpyUrl</code></span>
+                            </td>
+                        }
+                        else
+                        {
+                            <td><code>@(dep.InstalledVersion ?? "—")</code></td>
+                            <td><code>@(dep.LatestKnownVersion ?? "—")</code></td>
+                            <td><span class="status-badge @GetStatusClass(dep.Status)">@FormatStatus(dep.Status)</span></td>
+                            <td>
+                                @if (isConfigurable)
+                                {
+                                    <div style="display:flex; gap:0.4rem; align-items:center;">
+                                        <input class="form-control" style="min-width:200px; font-size:0.85rem;"
+                                               value="@(_installPaths.GetValueOrDefault(dep.Name, ""))"
+                                               @onchange="e => OnPathChanged(dep.Name, dep.ModuleId, e)" />
+                                        <button class="btn btn-secondary btn-sm" title="Reset to default"
+                                                @onclick="() => ResetPath(dep.Name, dep.ModuleId)">
+                                            <i class="bi bi-arrow-counterclockwise"></i>
+                                        </button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span style="color:var(--text-muted); font-size:0.85rem;">External</span>
+                                }
+                            </td>
+                            <td class="actions">
+                                @if (dep.Status == DependencyStatus.UpdateAvailable && _hasInstallPath.Contains(dep.Name))
+                                {
+                                    <button class="btn btn-primary btn-sm" @onclick="() => StartUpdate(dep)"
+                                            disabled="@(_updatingId == dep.Id)">
+                                        @(_updatingId == dep.Id ? "Updating..." : "Update")
                                     </button>
-                                </div>
-                            }
-                            else
-                            {
-                                <span style="color:var(--text-muted); font-size:0.85rem;">External</span>
-                            }
-                        </td>
-                        <td class="actions">
-                            @if (dep.Status == DependencyStatus.UpdateAvailable && _hasInstallPath.Contains(dep.Name))
-                            {
-                                <button class="btn btn-primary btn-sm" @onclick="() => StartUpdate(dep)"
-                                        disabled="@(_updatingId == dep.Id)">
-                                    @(_updatingId == dep.Id ? "Updating..." : "Update")
+                                }
+                                else if (dep.InstalledVersion is null && DepManager.CanAutoInstall(dep.Name, dep.ModuleId))
+                                {
+                                    <button class="btn btn-primary btn-sm" @onclick="() => StartUpdate(dep)"
+                                            disabled="@(_updatingId == dep.Id)">
+                                        @(_updatingId == dep.Id ? "Installing..." : "Install")
+                                    </button>
+                                }
+                                <button class="btn btn-secondary btn-sm" @onclick="() => CheckOne(dep.Id)"
+                                        disabled="@(_checkingId == dep.Id)">
+                                    @(_checkingId == dep.Id ? "..." : "Check")
                                 </button>
-                            }
-                            else if (dep.InstalledVersion is null && DepManager.CanAutoInstall(dep.Name, dep.ModuleId))
-                            {
-                                <button class="btn btn-primary btn-sm" @onclick="() => StartUpdate(dep)"
-                                        disabled="@(_updatingId == dep.Id)">
-                                    @(_updatingId == dep.Id ? "Installing..." : "Install")
-                                </button>
-                            }
-                            <button class="btn btn-secondary btn-sm" @onclick="() => CheckOne(dep.Id)"
-                                    disabled="@(_checkingId == dep.Id)">
-                                @(_checkingId == dep.Id ? "..." : "Check")
-                            </button>
-                            @if (dep.ProjectHomeUrl is not null)
-                            {
-                                <a class="btn btn-secondary btn-sm" href="@dep.ProjectHomeUrl"
-                                   target="_blank" rel="noopener">
-                                    <i class="bi bi-box-arrow-up-right"></i>
-                                </a>
-                            }
-                        </td>
+                                @if (dep.ProjectHomeUrl is not null)
+                                {
+                                    <a class="btn btn-secondary btn-sm" href="@dep.ProjectHomeUrl"
+                                       target="_blank" rel="noopener">
+                                        <i class="bi bi-box-arrow-up-right"></i>
+                                    </a>
+                                }
+                            </td>
+                        }
                     </tr>
                 }
             </tbody>
@@ -151,11 +162,15 @@
     private int _updatableCount;
     private bool _updatingAll;
     private int _updateProgress;
+    private string _wsscrcpyMode = "managed";
+    private string _wsscrcpyUrl = "http://localhost:8000";
 
     [Inject] private ModuleDiscoveryService ModuleDiscovery { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
+        _wsscrcpyMode = (await Config.GetSettingAsync("wsscrcpy-mode")) ?? "managed";
+        _wsscrcpyUrl  = (await Config.GetSettingAsync("wsscrcpy-url"))  ?? "http://localhost:8000";
         await LoadDependencies();
     }
 
