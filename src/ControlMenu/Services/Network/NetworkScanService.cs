@@ -1,3 +1,6 @@
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
 using ControlMenu.Services;
 
 namespace ControlMenu.Services.Network;
@@ -11,6 +14,9 @@ public sealed class NetworkScanService : INetworkScanService
     private ScanProgressEvent? _lastProgress;
 
     private readonly WsScrcpyService _wsscrcpy;
+
+    private ClientWebSocket? _ws;
+    private CancellationTokenSource? _scanCts;
 
     public NetworkScanService(WsScrcpyService wsscrcpy)
     {
@@ -96,8 +102,127 @@ public sealed class NetworkScanService : INetworkScanService
         foreach (var s in snapshot) s.Invoke(evt);
     }
 
-    public Task StartScanAsync(IReadOnlyList<ParsedSubnet> subnets, CancellationToken ct = default) =>
-        throw new NotImplementedException("Task 8");
+    public async Task StartScanAsync(IReadOnlyList<ParsedSubnet> subnets, CancellationToken ct = default)
+    {
+        lock (_lock)
+        {
+            if (Phase is ScanPhase.Scanning or ScanPhase.Draining)
+                throw new InvalidOperationException("scan already in progress");
+        }
+
+        var baseUrl = _wsscrcpy.BaseUrl;
+        Uri wsUrl;
+        try
+        {
+            wsUrl = new Uri(baseUrl.Replace("http://", "ws://").Replace("https://", "wss://") + "/ws-scan");
+        }
+        catch (Exception ex)
+        {
+            Dispatch(new ScanErrorEvent($"invalid ws-scrcpy-web BaseUrl '{baseUrl}': {ex.Message}"));
+            return;
+        }
+
+        var ws = new ClientWebSocket();
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+        try
+        {
+            await ws.ConnectAsync(wsUrl, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            ws.Dispose();
+            cts.Dispose();
+            Dispatch(new ScanErrorEvent($"ws-scrcpy-web unreachable at {baseUrl} — {ex.Message}"));
+            return;
+        }
+
+        // Stash before sending scan.start — cancellation path in Task 9 will need them.
+        lock (_lock)
+        {
+            _ws?.Dispose();
+            _scanCts?.Dispose();
+            _ws = ws;
+            _scanCts = cts;
+        }
+
+        var startJson = JsonSerializer.Serialize(new
+        {
+            type = "scan.start",
+            subnets = subnets.Select(s => s.Raw).ToArray(),
+        });
+        await ws.SendAsync(Encoding.UTF8.GetBytes(startJson), WebSocketMessageType.Text, true, cts.Token);
+
+        // Fire-and-forget receive loop. The loop dispatches events to subscribers
+        // and cleans up when the server closes the socket or an exception fires.
+        _ = Task.Run(() => ReceiveLoopAsync(ws, cts.Token));
+    }
+
+    private async Task ReceiveLoopAsync(ClientWebSocket ws, CancellationToken ct)
+    {
+        var buffer = new byte[8192];
+        try
+        {
+            while (!ct.IsCancellationRequested && ws.State == WebSocketState.Open)
+            {
+                var result = await ws.ReceiveAsync(buffer, ct);
+                if (result.MessageType == WebSocketMessageType.Close) break;
+                if (result.Count == 0) continue;
+                var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                var evt = ParseServerMessage(json);
+                if (evt is not null) Dispatch(evt);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Expected on cancel — Task 9 will send scan.cancel and close; no-op here.
+        }
+        catch (Exception ex)
+        {
+            // Unexpected drop (upstream crash, container restart). Force Cancelled
+            // so listeners can react; preserve buffered hits.
+            Dispatch(new ScanCancelledEvent(Hits.Count));
+            Dispatch(new ScanErrorEvent($"upstream disconnect: {ex.Message}"));
+        }
+        finally
+        {
+            try { if (ws.State == WebSocketState.Open) await ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "done", CancellationToken.None); }
+            catch { /* best-effort close */ }
+            ws.Dispose();
+        }
+    }
+
+    private static ScanEvent? ParseServerMessage(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("type", out var typeProp)) return null;
+        var type = typeProp.GetString();
+        return type switch
+        {
+            "scan.started" => new ScanStartedEvent(
+                root.GetProperty("totalHosts").GetInt32(),
+                root.GetProperty("totalSubnets").GetInt32(),
+                root.GetProperty("startedAt").GetInt64()),
+            "scan.progress" => new ScanProgressEvent(
+                root.GetProperty("checked").GetInt32(),
+                root.GetProperty("total").GetInt32(),
+                root.GetProperty("foundSoFar").GetInt32()),
+            "scan.hit" => new ScanHitEvent(new ScanHit(
+                string.Equals(root.GetProperty("source").GetString(), "mdns", StringComparison.OrdinalIgnoreCase)
+                    ? DiscoverySource.Mdns : DiscoverySource.Tcp,
+                root.GetProperty("address").GetString() ?? "",
+                root.GetProperty("serial").GetString() ?? "",
+                root.GetProperty("name").GetString() ?? "",
+                root.TryGetProperty("label", out var labelProp) ? labelProp.GetString() ?? "" : "",
+                null)),
+            "scan.draining" => new ScanDrainingEvent(),
+            "scan.complete" => new ScanCompleteEvent(root.GetProperty("found").GetInt32()),
+            "scan.cancelled" => new ScanCancelledEvent(root.GetProperty("found").GetInt32()),
+            "scan.error" => new ScanErrorEvent(root.GetProperty("reason").GetString() ?? "unknown"),
+            _ => null,
+        };
+    }
 
     public Task CancelAsync(CancellationToken ct = default) =>
         throw new NotImplementedException("Task 9");

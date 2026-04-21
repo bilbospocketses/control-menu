@@ -147,4 +147,92 @@ public class NetworkScanServiceTests
         Assert.Same(first, ((ScanHitEvent)received[1]).Hit);
         Assert.Same(second, ((ScanHitEvent)received[2]).Hit);
     }
+
+    // -------------------------------------------------------------------------
+    // Integration tests — require FakeWsScanServer (Task 8)
+    // -------------------------------------------------------------------------
+
+    private async Task ConfigureWsScrcpyForAsync(string baseUrl)
+    {
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-mode", It.IsAny<string?>())).ReturnsAsync("external");
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-url", It.IsAny<string?>())).ReturnsAsync(baseUrl);
+        await _wsScrcpy.StartAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task StartScan_HappyPath_StreamsEvents()
+    {
+        await using var fakeServer = new FakeWsScanServer();
+        await ConfigureWsScrcpyForAsync(fakeServer.Url);
+        var svc = CreateService();
+
+        var received = new List<ScanEvent>();
+        using var sub = svc.Subscribe(e => received.Add(e));
+
+        var subnets = new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) };
+        var startTask = svc.StartScanAsync(subnets);
+
+        var serverSocket = await fakeServer.GetClientAsync(TimeSpan.FromSeconds(5));
+
+        // Verify the client sent scan.start with the raw subnet string.
+        var clientMsg = await fakeServer.ReceiveAsync<System.Text.Json.JsonElement>(serverSocket);
+        Assert.Equal("scan.start", clientMsg.GetProperty("type").GetString());
+        var sentSubnets = clientMsg.GetProperty("subnets");
+        Assert.Equal(1, sentSubnets.GetArrayLength());
+        Assert.Equal("10.0.0.0/29", sentSubnets[0].GetString());
+
+        // Server scripts the reply sequence.
+        await fakeServer.SendAsync(serverSocket, new { type = "scan.started", totalHosts = 6, totalSubnets = 1, startedAt = 0L });
+        await fakeServer.SendAsync(serverSocket, new { type = "scan.progress", @checked = 3, total = 6, foundSoFar = 0 });
+        await fakeServer.SendAsync(serverSocket, new { type = "scan.hit", source = "tcp", address = "10.0.0.5:5555", serial = "xyz", name = "adb-xyz", label = "" });
+        await fakeServer.SendAsync(serverSocket, new { type = "scan.complete", found = 1 });
+
+        await startTask;
+        // Allow the receive loop to drain.
+        await Task.Delay(300);
+
+        Assert.Contains(received, e => e is ScanStartedEvent started && started.TotalHosts == 6);
+        Assert.Contains(received, e => e is ScanProgressEvent p && p.Checked == 3);
+        Assert.Contains(received, e => e is ScanHitEvent h && h.Hit.Address == "10.0.0.5:5555" && h.Hit.Source == DiscoverySource.Tcp);
+        Assert.Contains(received, e => e is ScanCompleteEvent c && c.Found == 1);
+        Assert.Equal(ScanPhase.Complete, svc.Phase);
+    }
+
+    [Fact]
+    public async Task StartScan_WhenUnreachable_EmitsScanError()
+    {
+        // Configure a URL that isn't listening (random free port, no server).
+        var unreachablePort = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        unreachablePort.Start();
+        var port = ((System.Net.IPEndPoint)unreachablePort.LocalEndpoint).Port;
+        unreachablePort.Stop();
+        await ConfigureWsScrcpyForAsync($"http://localhost:{port}");
+
+        var svc = CreateService();
+        var received = new List<ScanEvent>();
+        using var sub = svc.Subscribe(e => received.Add(e));
+
+        await svc.StartScanAsync(new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) });
+
+        Assert.Contains(received, e => e is ScanErrorEvent err && err.Reason.Contains("unreachable"));
+        Assert.Equal(ScanPhase.Idle, svc.Phase);  // error does NOT transition to Scanning
+    }
+
+    [Fact]
+    public async Task StartScan_WhileScanning_Throws()
+    {
+        await using var fakeServer = new FakeWsScanServer();
+        await ConfigureWsScrcpyForAsync(fakeServer.Url);
+        var svc = CreateService();
+        using var sub = svc.Subscribe(_ => { });
+
+        var subnets = new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) };
+        var first = svc.StartScanAsync(subnets);
+        var serverSocket = await fakeServer.GetClientAsync(TimeSpan.FromSeconds(5));
+        await fakeServer.ReceiveAsync<object>(serverSocket);
+        await fakeServer.SendAsync(serverSocket, new { type = "scan.started", totalHosts = 6, totalSubnets = 1, startedAt = 0L });
+        await Task.Delay(100);  // let scan.started flow through Dispatch
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => svc.StartScanAsync(subnets));
+    }
 }
