@@ -36,21 +36,4 @@ public static class ScanMergeHelper
         return result;
     }
 
-    /// <summary>
-    /// Returns hits whose <c>Address</c> is not in <paramref name="dismissedAddresses"/>.
-    /// Used by the Discovered panel to honor per-row dismissals for the remainder
-    /// of a scan session (live stream + adb-merge).
-    /// </summary>
-    public static IReadOnlyList<ScanHit> FilterDismissed(
-        IEnumerable<ScanHit> hits,
-        ISet<string> dismissedAddresses)
-    {
-        var result = new List<ScanHit>();
-        foreach (var hit in hits)
-        {
-            if (!dismissedAddresses.Contains(hit.Address))
-                result.Add(hit);
-        }
-        return result;
-    }
 }

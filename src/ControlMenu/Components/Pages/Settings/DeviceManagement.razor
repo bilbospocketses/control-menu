@@ -543,6 +543,10 @@
                         _discovered.Add(new DiscoveredDevice(h.Hit.Name, ip, port, h.Hit.Mac));
                     }
                     break;
+                case ScanDrainingEvent:
+                    // No explicit work — chip reflects the Draining phase via
+                    // the post-switch _phase = ScanService.Phase update.
+                    break;
                 case ScanCompleteEvent:
                     await EnrichDiscoveredMacsAsync();
                     await MergeAdbConnectedAsync();
