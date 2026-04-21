@@ -55,8 +55,12 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
     public Task CancelScanAsync() =>
         throw new NotImplementedException("Task 6");
 
-    public void Dismiss(DiscoveredDevice d) =>
-        throw new NotImplementedException("Task 4");
+    public void Dismiss(DiscoveredDevice d)
+    {
+        _discovered.Remove(d);
+        _dismissedAddresses.Add(ScanMergeHelper.AddressKey(d.Ip, d.Port));
+        RaiseStateChanged();
+    }
 
     public void ReplaceDiscovered(IEnumerable<DiscoveredDevice> devices) =>
         throw new NotImplementedException("Task 7");
@@ -65,7 +69,24 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
 
     private void OnScanEvent(ScanEvent evt)
     {
-        // Populated in Tasks 4, 5, 6, 8.
+        switch (evt)
+        {
+            case ScanHitEvent h:
+                AppendHitIfNotDismissed(h.Hit);
+                break;
+        }
+        _phase = _scan.Phase;
+        RaiseStateChanged();
+    }
+
+    private void AppendHitIfNotDismissed(ScanHit hit)
+    {
+        var parts = hit.Address.Split(':');
+        var ip = parts[0];
+        var port = parts.Length > 1 && int.TryParse(parts[1], out var p) ? p : 5555;
+        if (_dismissedAddresses.Contains(ScanMergeHelper.AddressKey(ip, port)))
+            return;
+        _discovered.Add(new DiscoveredDevice(hit.Name, ip, port, hit.Mac));
     }
 
     private void RaiseStateChanged() => OnStateChanged?.Invoke();
