@@ -66,4 +66,10 @@ public class ScanMergeHelperTests
         Assert.Empty(result);
     }
 
+    [Fact]
+    public void AddressKey_BuildsIpPortString()
+    {
+        Assert.Equal("192.168.1.10:5555", ScanMergeHelper.AddressKey("192.168.1.10", 5555));
+        Assert.Equal("10.0.0.5:42391", ScanMergeHelper.AddressKey("10.0.0.5", 42391));
+    }
 }

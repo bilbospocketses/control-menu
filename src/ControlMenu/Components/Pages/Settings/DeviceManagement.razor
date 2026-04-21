@@ -535,11 +535,11 @@
                     _lastProgress = p;
                     break;
                 case ScanHitEvent h:
-                    if (!_dismissedAddresses.Contains(h.Hit.Address))
+                    var parts = h.Hit.Address.Split(':');
+                    var ip = parts[0];
+                    var port = parts.Length > 1 && int.TryParse(parts[1], out var pr) ? pr : 5555;
+                    if (!_dismissedAddresses.Contains(ScanMergeHelper.AddressKey(ip, port)))
                     {
-                        var parts = h.Hit.Address.Split(':');
-                        var ip = parts[0];
-                        var port = parts.Length > 1 && int.TryParse(parts[1], out var pr) ? pr : 5555;
                         _discovered.Add(new DiscoveredDevice(h.Hit.Name, ip, port, h.Hit.Mac));
                     }
                     break;
@@ -578,11 +578,11 @@
     {
         var registeredIpPorts = _devices
             .Where(d => !string.IsNullOrEmpty(d.LastKnownIp))
-            .Select(d => $"{d.LastKnownIp}:{d.AdbPort}")
+            .Select(d => ScanMergeHelper.AddressKey(d.LastKnownIp!, d.AdbPort))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var excludeIpPorts = _discovered
-            .Select(d => $"{d.Ip}:{d.Port}")
+            .Select(d => ScanMergeHelper.AddressKey(d.Ip, d.Port))
             .Concat(registeredIpPorts)
             .Concat(_dismissedAddresses);
 
@@ -601,7 +601,7 @@
         foreach (var x in fromAdb)
         {
             var mac = arpMap.TryGetValue(x.Ip, out var m) ? m : null;
-            _discovered.Add(new DiscoveredDevice($"{x.Ip}:{x.Port}", x.Ip, x.Port, mac, Source: "adb"));
+            _discovered.Add(new DiscoveredDevice(ScanMergeHelper.AddressKey(x.Ip, x.Port), x.Ip, x.Port, mac, Source: "adb"));
         }
     }
 
@@ -654,7 +654,7 @@
     private void DismissDiscovered(DiscoveredDevice d)
     {
         _discovered.Remove(d);
-        _dismissedAddresses.Add($"{d.Ip}:{d.Port}");
+        _dismissedAddresses.Add(ScanMergeHelper.AddressKey(d.Ip, d.Port));
     }
 
     public void Dispose()

@@ -11,6 +11,14 @@ namespace ControlMenu.Services.Network;
 public static class ScanMergeHelper
 {
     /// <summary>
+    /// Canonical string form of an (ip, port) pair used as the dismiss key and
+    /// the dedupe key across the Discovered panel. Every producer of a dismiss
+    /// key (live hit, adb-merge, dismiss click) uses this helper so the key
+    /// format stays symmetric even if upstream ws-scan emission ever drifts.
+    /// </summary>
+    public static string AddressKey(string ip, int port) => $"{ip}:{port}";
+
+    /// <summary>
     /// Returns <c>(ip, port)</c> pairs from <paramref name="adbConnected"/> that
     /// are not present in <paramref name="excludeIpPorts"/>. Entries that don't
     /// look like <c>ip:port</c> (USB serials, empty lines) are ignored.
