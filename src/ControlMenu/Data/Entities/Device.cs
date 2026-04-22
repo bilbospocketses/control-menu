@@ -10,8 +10,9 @@ public class Device
     public required string MacAddress { get; set; }
     /// <summary>
     /// Canonical ADB serial number for this device (value of <c>ro.serialno</c>).
-    /// Populated automatically during <c>AddFromDiscovery</c> via a live ADB
-    /// probe; can also be set manually via the Add/Edit form.
+    /// Populated automatically when adding a discovered device (live ADB probe
+    /// in <c>DiscoveredPanelRow.RunProbesAsync</c>); can also be set manually
+    /// via the Add/Edit form.
     /// </summary>
     /// <remarks>
     /// Same concept as <see cref="Services.Network.ScanHit.Serial"/> but

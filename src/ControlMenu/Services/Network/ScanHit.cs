@@ -13,7 +13,7 @@ public enum DiscoverySource { Mdns, Tcp, Adb }
 /// ADB serial as advertised in the mDNS service name (the
 /// <c>adb-&lt;serial&gt;._adb-tls-connect._tcp.local.</c> form). Used for scan-result
 /// dedupe (see <see cref="HitDedupe"/>) and logging only. For persisting to a
-/// registered device, a live <c>ro.serialno</c> probe in <c>AddFromDiscovery</c>
+/// registered device, a live <c>ro.serialno</c> probe in <c>DiscoveredPanelRow.RunProbesAsync</c>
 /// is authoritative — see <see cref="Data.Entities.Device.SerialNumber"/>.
 /// </param>
 /// <param name="Name">The raw mDNS service label, e.g. <c>adb-ABC123._adb-tls-connect._tcp.local.</c>.</param>
