@@ -153,6 +153,8 @@ select.form-control { appearance: auto; }
 
 .btn-success { background-color: var(--success-color); color: #fff; }
 .btn-success:hover { opacity: 0.9; }
+.required-asterisk { color: var(--danger-color); font-weight: bold; margin-left: 2px; }
+.required-legend { font-size: 0.85em; color: var(--text-muted); margin-top: 0.5rem; margin-bottom: 0; }
 .btn-sm { padding: 4px 10px; font-size: 0.8rem; }
 
 /* ── Tables ── */
