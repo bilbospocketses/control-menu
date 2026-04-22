@@ -94,7 +94,7 @@
 <DiscoveredPanel Discovered="Handler.Discovered"
                  StashedNamesByMac="Handler.StashedNamesByMac"
                  Registered="_devices"
-                 OnAdd="AddFromDiscovery"
+                 OnAdd="HandleInlineAdd"
                  OnDismiss="Handler.Dismiss" />
 
 @if (_showForm)
@@ -281,7 +281,7 @@
         if (_deleteTarget is not null)
         {
             // Remember the user-assigned name keyed by MAC. If the same device
-            // is later rediscovered via mDNS and re-added, AddFromDiscovery
+            // is later rediscovered via mDNS and re-added, DiscoveredPanelRow
             // restores this name instead of falling back to the ADB product
             // model (which would read e.g. "Pixel 9" instead of "Jamie's phone").
             if (!string.IsNullOrEmpty(_deleteTarget.MacAddress))
@@ -394,81 +394,18 @@
             .ToDictionary(g => g.Key, g => g.First().MacAddress, StringComparer.OrdinalIgnoreCase);
     }
 
-    // Opens the Add Device form pre-filled from a discovered mDNS entry: IP, port, MAC,
-    // and a suggested name (DB-registered name if the MAC is already known, otherwise
-    // parsed from the mDNS service label). Device type is an initial guess from the
-    // service name; an async ADB probe refines it to phone/tablet/tv after the form opens.
-    private async Task AddFromDiscovery(DiscoveredDevice d)
+    // Called when a DiscoveredPanelRow fires its OnAdd after the user clicks
+    // the row's inline Add button. Unpacks the payload into _formDevice/_formPin
+    // and delegates to the existing SaveDevice path — which handles MAC
+    // normalization, AddDeviceAsync persistence, PIN secret-storage, and the
+    // "drop added MAC from Handler.Discovered" filter.
+    private async Task HandleInlineAdd(InlineAddPayload payload)
     {
-        // If we previously had a device with this MAC (and then deleted it),
-        // DeleteDevice stashed the user-assigned name at device-name-<mac>.
-        // Restore it here so re-adding doesn't make the user re-type the name.
-        var rememberedName = string.IsNullOrEmpty(d.Mac)
-            ? null
-            : await Config.GetSettingAsync($"device-name-{d.Mac}");
-
-        _formDevice = new Device
-        {
-            Name = rememberedName ?? "",
-            MacAddress = d.Mac ?? "",
-            Type = DeviceType.AndroidPhone,  // harmless default; ADB probe + model-read below refine
-            AdbPort = d.Port,
-            LastKnownIp = d.Ip,
-            ModuleId = "android-devices"
-        };
-        _formPin = "";
+        _formDevice = payload.Device;
+        _formPin = payload.Pin;
         _isEditing = false;
-        _showForm = true;
-        StateHasChanged();
-
-        // Best-effort refinement via ADB. Three probes in parallel: device kind
-        // (phone/tablet/tv/watch — five shell signals, same as ws-scrcpy-web
-        // plus a watch probe), product model (for a friendlier default Name
-        // than the raw mDNS serial), and ro.serialno (for Device.SerialNumber
-        // auto-fill; user may still override via the form input).
-        var connected = await AdbService.ConnectAsync(d.Ip, d.Port);
-        if (!connected) return;
-
-        var kindTask = AdbService.DetectDeviceKindAsync(d.Ip, d.Port);
-        var modelTask = AdbService.GetPropAsync(d.Ip, d.Port, "ro.product.model");
-        var serialTask = AdbService.GetPropAsync(d.Ip, d.Port, "ro.serialno");
-        await Task.WhenAll(new Task[] { kindTask, modelTask, serialTask });
-
-        var kind = await kindTask;
-        var model = await modelTask;
-        var serial = await serialTask;
-
-        var mapped = kind switch
-        {
-            "tv" => DeviceType.GoogleTV,
-            "tablet" => DeviceType.AndroidTablet,
-            "watch" => DeviceType.AndroidWatch,
-            "phone" => DeviceType.AndroidPhone,
-            _ => _formDevice.Type,
-        };
-        var changed = false;
-        if (_formDevice.Type != mapped)
-        {
-            _formDevice.Type = mapped;
-            changed = true;
-        }
-        // Only auto-fill Name when we don't already have one from the DB.
-        // Empty name + model probe succeeded → prefill.
-        if (string.IsNullOrEmpty(_formDevice.Name) && !string.IsNullOrEmpty(model))
-        {
-            _formDevice.Name = model;
-            changed = true;
-        }
-        // Same pattern for SerialNumber — fill only if the user hasn't typed
-        // something into the form field during the ~1-second probe window.
-        if (string.IsNullOrEmpty(_formDevice.SerialNumber) && !string.IsNullOrEmpty(serial))
-        {
-            _formDevice.SerialNumber = serial;
-            changed = true;
-        }
-        if (changed) StateHasChanged();
+        await SaveDevice();
     }
-
 
     private static string GetStatusClass(ControlMenu.Data.Entities.Device device)
     {

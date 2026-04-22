@@ -5,38 +5,30 @@
 {
     <div class="settings-section">
         <h2>Discovered on Network</h2>
-        <p>ADB-advertising devices on the local network that aren't yet registered. Click Add — IP, port, MAC, suggested name, and device type are pre-filled from the scan and an ADB probe.</p>
+        <p>ADB-advertising devices on the local network that aren't yet registered. Adjust any pre-filled field (from mDNS + ADB probe) and click Add to register. × dismisses the row for this scan session.</p>
         <table class="data-table">
             <thead>
                 <tr>
                     <th>Service</th>
                     <th>Name</th>
+                    <th>Type</th>
                     <th>IP</th>
                     <th>ADB Port</th>
                     <th>MAC</th>
+                    <th>Serial</th>
+                    <th>PIN</th>
                     <th style="text-align:right;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach (var d in Discovered)
                 {
-                    <tr>
-                        <td>
-                            <code>@d.ServiceName</code>
-                            @if (!string.IsNullOrEmpty(d.Source))
-                            {
-                                <span class="source-badge" title="Discovery source">@d.Source</span>
-                            }
-                        </td>
-                        <td>@NameFor(d)</td>
-                        <td>@d.Ip</td>
-                        <td>@d.Port</td>
-                        <td><code>@(d.Mac ?? "—")</code></td>
-                        <td class="actions">
-                            <button class="btn btn-primary btn-sm" @onclick="() => OnAdd.InvokeAsync(d)" disabled="@(d.Mac is null)">Add</button>
-                            <button class="btn btn-secondary btn-sm" @onclick="() => OnDismiss.InvokeAsync(d)" title="Dismiss — remove from this list">×</button>
-                        </td>
-                    </tr>
+                    <DiscoveredPanelRow @key="@($"{d.Ip}:{d.Port}")"
+                                        Source="d"
+                                        StashedNamesByMac="StashedNamesByMac"
+                                        Registered="Registered"
+                                        OnAdd="OnAdd"
+                                        OnDismiss="OnDismiss" />
                 }
             </tbody>
         </table>
@@ -47,21 +39,6 @@
     [Parameter, EditorRequired] public IReadOnlyList<DiscoveredDevice> Discovered { get; set; } = default!;
     [Parameter, EditorRequired] public IReadOnlyDictionary<string, string> StashedNamesByMac { get; set; } = default!;
     [Parameter, EditorRequired] public IReadOnlyList<Device> Registered { get; set; } = default!;
-    [Parameter] public EventCallback<DiscoveredDevice> OnAdd { get; set; }
+    [Parameter] public EventCallback<InlineAddPayload> OnAdd { get; set; }
     [Parameter] public EventCallback<DiscoveredDevice> OnDismiss { get; set; }
-
-    // MAC-based lookup. Priority:
-    //  1. Registered device — user has a live name.
-    //  2. Stashed name — user deleted the device but kept the name for future rediscovery
-    //     (the handler populates StashedNamesByMac during scan finalization).
-    //  3. "Unknown".
-    private string NameFor(DiscoveredDevice d)
-    {
-        if (string.IsNullOrEmpty(d.Mac)) return "Unknown";
-        var match = Registered.FirstOrDefault(dev =>
-            string.Equals(dev.MacAddress, d.Mac, StringComparison.OrdinalIgnoreCase));
-        if (match is not null) return match.Name;
-        if (StashedNamesByMac.TryGetValue(d.Mac, out var stashed)) return stashed;
-        return "Unknown";
-    }
 }
