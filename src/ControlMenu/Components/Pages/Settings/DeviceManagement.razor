@@ -360,7 +360,7 @@
             if (mergedKeys.Contains(key))
                 continue;
 
-            merged.Add(new DiscoveredDevice(m.ServiceName, m.IpAddress, m.Port, mac));
+            merged.Add(new DiscoveredDevice(m.ServiceName, m.IpAddress, m.Port, mac, Source: "mdns"));
             mergedKeys.Add(key);
             newOnes++;
         }

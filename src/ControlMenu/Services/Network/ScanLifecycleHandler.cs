@@ -118,7 +118,16 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
         var port = parts.Length > 1 && int.TryParse(parts[1], out var p) ? p : 5555;
         if (_dismissedAddresses.Contains(ScanMergeHelper.AddressKey(ip, port)))
             return;
-        _discovered.Add(new DiscoveredDevice(hit.Name, ip, port, hit.Mac));
+        // Map the DiscoverySource enum to the DiscoveredDevice.Source string
+        // so every row in the Discovered panel has a meaningful source badge.
+        var sourceLabel = hit.Source switch
+        {
+            DiscoverySource.Mdns => "mdns",
+            DiscoverySource.Tcp => "tcp",
+            DiscoverySource.Adb => "adb",
+            _ => null,
+        };
+        _discovered.Add(new DiscoveredDevice(hit.Name, ip, port, hit.Mac, sourceLabel));
     }
 
     private async Task FinalizeScanAsync()

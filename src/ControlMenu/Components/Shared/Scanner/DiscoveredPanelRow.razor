@@ -1,16 +1,21 @@
 @using ControlMenu.Data.Entities
 @using ControlMenu.Data.Enums
 @using ControlMenu.Modules.AndroidDevices.Services
+@using ControlMenu.Services
 @using ControlMenu.Services.Network
 @inject IAdbService Adb
+@inject IConfigurationService Config
 @inject ILogger<DiscoveredPanelRow> Logger
 
 <tr>
     <td>
-        <code>@Source.ServiceName</code>
         @if (!string.IsNullOrEmpty(Source.Source))
         {
             <span class="source-badge" title="Discovery source">@Source.Source</span>
+        }
+        else
+        {
+            <span style="color: var(--text-muted);">—</span>
         }
     </td>
     <td>
@@ -91,10 +96,25 @@
 
     private async Task RunProbesAsync()
     {
+        // Stashed-name lookup is independent of ADB reachability — fire immediately
+        // so it applies even if the device is offline (user's remembered name still
+        // restores). Reads the same `device-name-<mac>` settings that DeleteDevice
+        // stashes, bypassing any timing dependency on the handler's cached dictionary.
+        var stashedTask = !string.IsNullOrEmpty(Source.Mac)
+            ? Config.GetSettingAsync($"device-name-{Source.Mac}")
+            : Task.FromResult<string?>(null);
+
         var connected = await Adb.ConnectAsync(Source.Ip, Source.Port);
         if (!connected)
         {
             Logger.LogDebug("Row probe skipped — ConnectAsync false for {Ip}:{Port}", Source.Ip, Source.Port);
+            // Still apply the stashed name so offline devices restore their user-assigned name.
+            var offlineStashed = await stashedTask;
+            if (string.IsNullOrEmpty(_name) && !string.IsNullOrEmpty(offlineStashed))
+            {
+                _name = offlineStashed;
+                await InvokeAsync(StateHasChanged);
+            }
             return;
         }
 
@@ -115,8 +135,16 @@
         // Only overwrite the default seeding value, not a user-edited type.
         if (_type == DeviceType.AndroidPhone) _type = mapped;
 
+        // Name priority: user edit > stashed name (device-name-<mac>) > probe model.
+        // The stashed-name lookup is authoritative for a previously-registered-then-
+        // deleted device; falls through to the probe's model if no stashed value exists.
+        var stashed = await stashedTask;
         var model = await modelTask;
-        if (string.IsNullOrEmpty(_name) && !string.IsNullOrEmpty(model)) _name = model;
+        if (string.IsNullOrEmpty(_name))
+        {
+            if (!string.IsNullOrEmpty(stashed)) _name = stashed;
+            else if (!string.IsNullOrEmpty(model)) _name = model;
+        }
 
         var serial = await serialTask;
         if (string.IsNullOrEmpty(_serial) && !string.IsNullOrEmpty(serial)) _serial = serial;
