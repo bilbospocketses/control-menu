@@ -1,0 +1,146 @@
+@using ControlMenu.Data.Entities
+@using ControlMenu.Data.Enums
+@using ControlMenu.Modules.AndroidDevices.Services
+@using ControlMenu.Services.Network
+@inject IAdbService Adb
+@inject ILogger<DiscoveredPanelRow> Logger
+
+<tr>
+    <td>
+        <code>@Source.ServiceName</code>
+        @if (!string.IsNullOrEmpty(Source.Source))
+        {
+            <span class="source-badge" title="Discovery source">@Source.Source</span>
+        }
+    </td>
+    <td>
+        <input class="form-control form-control-sm" @bind="_name" placeholder="Device name" />
+    </td>
+    <td>
+        <select class="form-control form-control-sm" @bind="_type">
+            @foreach (var t in Enum.GetValues<DeviceType>())
+            {
+                <option value="@t">@t</option>
+            }
+        </select>
+    </td>
+    <td>@Source.Ip</td>
+    <td>
+        <input type="number" class="form-control form-control-sm" min="1" max="65535" @bind="_port" />
+    </td>
+    <td>
+        <input class="form-control form-control-sm" @bind="_mac" placeholder="aa-bb-cc-dd-ee-ff" />
+    </td>
+    <td>
+        <input class="form-control form-control-sm" @bind="_serial" placeholder="serial" />
+    </td>
+    <td>
+        <input type="password" class="form-control form-control-sm" value="@_pin" @oninput="OnPinInput" placeholder="PIN" />
+    </td>
+    <td class="actions">
+        <button class="btn btn-success btn-sm" @onclick="HandleAdd" disabled="@(!IsValid)">Add</button>
+        <button class="btn btn-danger btn-sm" @onclick="HandleDismiss" title="Dismiss — remove from this list">×</button>
+    </td>
+</tr>
+
+@code {
+    [Parameter, EditorRequired] public DiscoveredDevice Source { get; set; } = default!;
+    [Parameter, EditorRequired] public IReadOnlyDictionary<string, string> StashedNamesByMac { get; set; } = default!;
+    [Parameter, EditorRequired] public IReadOnlyList<Device> Registered { get; set; } = default!;
+    [Parameter] public EventCallback<InlineAddPayload> OnAdd { get; set; }
+    [Parameter] public EventCallback<DiscoveredDevice> OnDismiss { get; set; }
+
+    private string _name = "";
+    private DeviceType _type = DeviceType.AndroidPhone;
+    private int _port = 5555;
+    private string _mac = "";
+    private string _serial = "";
+    private string _pin = "";
+    private bool _probeRan;
+
+    private bool IsValid =>
+        !string.IsNullOrWhiteSpace(_name) && !string.IsNullOrWhiteSpace(_mac);
+
+    protected override Task OnInitializedAsync()
+    {
+        _port = Source.Port;
+        _mac = Source.Mac ?? "";
+        _name = ResolveInitialName();
+
+        if (!string.IsNullOrEmpty(Source.Ip) && !_probeRan)
+        {
+            _probeRan = true;
+            _ = RunProbesAsync();
+        }
+        return Task.CompletedTask;
+    }
+
+    // MAC-based initial name lookup. Priority:
+    //   1. Registered device with the same MAC — restore the user's current name (edge case; Discovered typically excludes already-registered)
+    //   2. Stashed name cache — restore the last user-assigned name for a re-added device
+    //   3. "" — will be filled by ro.product.model probe (or user types)
+    private string ResolveInitialName()
+    {
+        if (string.IsNullOrEmpty(Source.Mac)) return "";
+        var match = Registered.FirstOrDefault(d =>
+            string.Equals(d.MacAddress, Source.Mac, StringComparison.OrdinalIgnoreCase));
+        if (match is not null) return match.Name;
+        if (StashedNamesByMac.TryGetValue(Source.Mac, out var stashed)) return stashed;
+        return "";
+    }
+
+    private async Task RunProbesAsync()
+    {
+        var connected = await Adb.ConnectAsync(Source.Ip, Source.Port);
+        if (!connected)
+        {
+            Logger.LogDebug("Row probe skipped — ConnectAsync false for {Ip}:{Port}", Source.Ip, Source.Port);
+            return;
+        }
+
+        var kindTask   = Adb.DetectDeviceKindAsync(Source.Ip, Source.Port);
+        var modelTask  = Adb.GetPropAsync(Source.Ip, Source.Port, "ro.product.model");
+        var serialTask = Adb.GetPropAsync(Source.Ip, Source.Port, "ro.serialno");
+        await Task.WhenAll(new Task[] { kindTask, modelTask, serialTask });
+
+        var kind = await kindTask;
+        var mapped = kind switch
+        {
+            "tv" => DeviceType.GoogleTV,
+            "tablet" => DeviceType.AndroidTablet,
+            "watch" => DeviceType.AndroidWatch,
+            "phone" => DeviceType.AndroidPhone,
+            _ => _type,
+        };
+        // Only overwrite the default seeding value, not a user-edited type.
+        if (_type == DeviceType.AndroidPhone) _type = mapped;
+
+        var model = await modelTask;
+        if (string.IsNullOrEmpty(_name) && !string.IsNullOrEmpty(model)) _name = model;
+
+        var serial = await serialTask;
+        if (string.IsNullOrEmpty(_serial) && !string.IsNullOrEmpty(serial)) _serial = serial;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnPinInput(ChangeEventArgs e) => _pin = e.Value?.ToString() ?? "";
+
+    private async Task HandleAdd()
+    {
+        var device = new Device
+        {
+            Name = _name,
+            Type = _type,
+            AdbPort = _port,
+            MacAddress = _mac,
+            SerialNumber = string.IsNullOrWhiteSpace(_serial) ? null : _serial,
+            LastKnownIp = Source.Ip,
+            ModuleId = "android-devices"
+        };
+        var payload = new InlineAddPayload(Source, device, _pin);
+        await OnAdd.InvokeAsync(payload);
+    }
+
+    private Task HandleDismiss() => OnDismiss.InvokeAsync(Source);
+}
