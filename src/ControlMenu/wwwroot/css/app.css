@@ -150,6 +150,9 @@ select.form-control { appearance: auto; }
 .btn-secondary:hover { background-color: var(--hover-bg); }
 .btn-danger { background-color: var(--danger-color); color: #fff; }
 .btn-danger:hover { opacity: 0.9; }
+
+.btn-success { background-color: var(--success-color); color: #fff; }
+.btn-success:hover { opacity: 0.9; }
 .btn-sm { padding: 4px 10px; font-size: 0.8rem; }
 
 /* ── Tables ── */
