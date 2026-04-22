@@ -8,6 +8,17 @@ public class Device
     public required string Name { get; set; }
     public DeviceType Type { get; set; }
     public required string MacAddress { get; set; }
+    /// <summary>
+    /// Canonical ADB serial number for this device (value of <c>ro.serialno</c>).
+    /// Populated automatically during <c>AddFromDiscovery</c> via a live ADB
+    /// probe; can also be set manually via the Add/Edit form.
+    /// </summary>
+    /// <remarks>
+    /// Same concept as <see cref="Services.Network.ScanHit.Serial"/> but
+    /// authoritative — sourced from a connected ADB session rather than the
+    /// mDNS service-name string. When both exist for the same device they
+    /// should agree; this field is the persistent truth.
+    /// </remarks>
     public string? SerialNumber { get; set; }
     public string? LastKnownIp { get; set; }
     public int AdbPort { get; set; } = 5555;
