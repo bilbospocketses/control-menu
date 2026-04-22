@@ -419,19 +419,22 @@
         _showForm = true;
         StateHasChanged();
 
-        // Best-effort refinement via ADB. Two probes in parallel: device kind
+        // Best-effort refinement via ADB. Three probes in parallel: device kind
         // (phone/tablet/tv/watch — five shell signals, same as ws-scrcpy-web
-        // plus a watch probe) and product model (for a friendlier default Name
-        // than the raw mDNS serial).
+        // plus a watch probe), product model (for a friendlier default Name
+        // than the raw mDNS serial), and ro.serialno (for Device.SerialNumber
+        // auto-fill; user may still override via the form input).
         var connected = await AdbService.ConnectAsync(d.Ip, d.Port);
         if (!connected) return;
 
         var kindTask = AdbService.DetectDeviceKindAsync(d.Ip, d.Port);
         var modelTask = AdbService.GetPropAsync(d.Ip, d.Port, "ro.product.model");
-        await Task.WhenAll(new Task[] { kindTask, modelTask });
+        var serialTask = AdbService.GetPropAsync(d.Ip, d.Port, "ro.serialno");
+        await Task.WhenAll(new Task[] { kindTask, modelTask, serialTask });
 
         var kind = await kindTask;
         var model = await modelTask;
+        var serial = await serialTask;
 
         var mapped = kind switch
         {
@@ -452,6 +455,13 @@
         if (string.IsNullOrEmpty(_formDevice.Name) && !string.IsNullOrEmpty(model))
         {
             _formDevice.Name = model;
+            changed = true;
+        }
+        // Same pattern for SerialNumber — fill only if the user hasn't typed
+        // something into the form field during the ~1-second probe window.
+        if (string.IsNullOrEmpty(_formDevice.SerialNumber) && !string.IsNullOrEmpty(serial))
+        {
+            _formDevice.SerialNumber = serial;
             changed = true;
         }
         if (changed) StateHasChanged();
