@@ -38,15 +38,12 @@
             <input class="form-control" @bind="Model.SerialNumber" placeholder="47121FDAQ000WC" />
         </div>
 
-        @if (Model.Type is DeviceType.AndroidPhone or DeviceType.AndroidTablet)
-        {
-            <div class="form-group">
-                <label>Screen Lock PIN (optional)</label>
-                <input type="password" class="form-control" value="@Pin"
-                       @oninput="OnPinInput" placeholder="PIN" />
-                <div class="form-hint">Stored encrypted. Used to unlock the phone remotely via ADB.</div>
-            </div>
-        }
+        <div class="form-group">
+            <label>Screen Lock PIN (optional)</label>
+            <input type="password" class="form-control" value="@Pin"
+                   @oninput="OnPinInput" placeholder="PIN" />
+            <div class="form-hint">Stored encrypted. Used to unlock the device remotely via ADB.</div>
+        </div>
 
         <div class="dialog-actions">
             <button class="btn btn-secondary" @onclick="OnCancel">Cancel</button>
