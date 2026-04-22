@@ -25,6 +25,7 @@ and this project will adhere to [Semantic Versioning](https://semver.org/spec/v2
 - **ws-scrcpy-web deployment mode** — General Settings gained a Managed / External toggle. Managed keeps today's auto-spawn behaviour; External lets Control Menu point at a Docker container or remote host via URL. Dependency management respects mode: Install/Update hidden in External mode.
 - **`NetworkScanService` (singleton)** — holds a `ClientWebSocket` to ws-scrcpy-web's `/ws-scan` endpoint, fans scan events to every Blazor circuit spectating a scan. Two browser tabs attaching mid-scan share one scan session with snapshot replay.
 - **`SubnetParser`** — CIDR / IP / range parser mirroring ws-scrcpy-web's behaviour byte-for-byte, error verbiage included.
+- **Device SerialNumber auto-fill** — when a user adds a device from the Discovered panel, `AddFromDiscovery` now probes `ro.serialno` alongside the existing kind and model probes and pre-fills the Serial Number form field. Users who type a value during the probe window keep their entry (empty-check guard, same pattern as the existing Name auto-fill). Existing registered devices without a serial stay unchanged — backfill is intentionally out of scope.
 
 ### Changed
 - `MainLayout.razor` page-title switch gained a specific case for `/android-power-tools` that sits above the generic `path.StartsWith("android")` fallback. Without this the breadcrumb rendered "Android Devices" for the new route because the prefix match order is load-bearing.
