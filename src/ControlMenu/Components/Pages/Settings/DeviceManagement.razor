@@ -207,9 +207,11 @@
             Type = device.Type,
             AdbPort = device.AdbPort,
             MacAddress = device.MacAddress,
+            SerialNumber = device.SerialNumber,
             ModuleId = device.ModuleId,
             LastKnownIp = device.LastKnownIp,
-            LastSeen = device.LastSeen
+            LastSeen = device.LastSeen,
+            Metadata = device.Metadata
         };
         _formPin = await Config.GetSecretAsync($"device-pin-{device.Id}") ?? "";
         _isEditing = true;
