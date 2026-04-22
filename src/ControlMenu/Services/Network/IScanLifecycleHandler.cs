@@ -10,7 +10,6 @@ namespace ControlMenu.Services.Network;
 public interface IScanLifecycleHandler : IDisposable
 {
     IReadOnlyList<DiscoveredDevice> Discovered { get; }
-    IReadOnlyDictionary<string, string> StashedNamesByMac { get; }
     IReadOnlySet<string> DismissedAddresses { get; }
     ScanPhase Phase { get; }
     ScanProgressEvent? LastProgress { get; }
@@ -29,8 +28,8 @@ public interface IScanLifecycleHandler : IDisposable
     string? ConsumeLastError();
 
     /// <summary>
-    /// Clears Discovered, DismissedAddresses, and StashedNamesByMac, then starts
-    /// a new scan. Events flow back through the internal subscription.
+    /// Clears Discovered and DismissedAddresses, then starts a new scan.
+    /// Events flow back through the internal subscription.
     /// </summary>
     Task StartFullScanAsync(IReadOnlyList<ParsedSubnet> subnets);
 
@@ -46,8 +45,8 @@ public interface IScanLifecycleHandler : IDisposable
 
     /// <summary>
     /// Replace the Discovered list wholesale. Used by Quick Refresh, which builds
-    /// its own mDNS-derived list. Does NOT touch DismissedAddresses or
-    /// StashedNamesByMac (Quick Refresh is a separate flow from Full Scan).
+    /// its own mDNS-derived list. Does NOT touch DismissedAddresses (Quick Refresh
+    /// is a separate flow from Full Scan).
     /// </summary>
     void ReplaceDiscovered(IEnumerable<DiscoveredDevice> devices);
 }

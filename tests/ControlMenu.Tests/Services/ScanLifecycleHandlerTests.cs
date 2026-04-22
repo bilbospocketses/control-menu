@@ -11,11 +11,10 @@ public class ScanLifecycleHandlerTests
     private readonly FakeNetworkScanService _scan = new();
     private readonly Mock<IAdbService> _adb = new();
     private readonly Mock<INetworkDiscoveryService> _net = new();
-    private readonly Mock<IConfigurationService> _config = new();
     private readonly Mock<IDeviceService> _devices = new();
 
     private ScanLifecycleHandler CreateHandler() =>
-        new(_scan, _adb.Object, _net.Object, _config.Object, _devices.Object);
+        new(_scan, _adb.Object, _net.Object, _devices.Object);
 
     [Fact]
     public void Constructor_SubscribesToScanService_AndSeedsPhase()

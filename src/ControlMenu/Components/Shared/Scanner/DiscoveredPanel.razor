@@ -26,7 +26,6 @@
                 {
                     <DiscoveredPanelRow @key="@($"{d.Ip}:{d.Port}")"
                                         Source="d"
-                                        StashedNamesByMac="StashedNamesByMac"
                                         Registered="Registered"
                                         OnAdd="OnAdd"
                                         OnDismiss="OnDismiss" />
@@ -39,7 +38,6 @@
 
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<DiscoveredDevice> Discovered { get; set; } = default!;
-    [Parameter, EditorRequired] public IReadOnlyDictionary<string, string> StashedNamesByMac { get; set; } = default!;
     [Parameter, EditorRequired] public IReadOnlyList<Device> Registered { get; set; } = default!;
     [Parameter] public EventCallback<InlineAddPayload> OnAdd { get; set; }
     [Parameter] public EventCallback<DiscoveredDevice> OnDismiss { get; set; }

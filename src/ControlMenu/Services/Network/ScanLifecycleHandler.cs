@@ -9,13 +9,11 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
     private readonly INetworkScanService _scan;
     private readonly IAdbService _adb;
     private readonly INetworkDiscoveryService _net;
-    private readonly IConfigurationService _config;
     private readonly IDeviceService _devices;
     private readonly IDisposable _subscription;
 
     private readonly List<DiscoveredDevice> _discovered = new();
     private readonly HashSet<string> _dismissedAddresses = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, string> _stashedNamesByMac = new(StringComparer.OrdinalIgnoreCase);
     private ScanPhase _phase;
     private ScanProgressEvent? _lastProgress;
     private string? _lastError;
@@ -24,20 +22,17 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
         INetworkScanService scan,
         IAdbService adb,
         INetworkDiscoveryService net,
-        IConfigurationService config,
         IDeviceService devices)
     {
         _scan = scan;
         _adb = adb;
         _net = net;
-        _config = config;
         _devices = devices;
         _subscription = _scan.Subscribe(OnScanEvent);
         _phase = _scan.Phase;
     }
 
     public IReadOnlyList<DiscoveredDevice> Discovered => _discovered;
-    public IReadOnlyDictionary<string, string> StashedNamesByMac => _stashedNamesByMac;
     public IReadOnlySet<string> DismissedAddresses => _dismissedAddresses;
     public ScanPhase Phase => _phase;
     public ScanProgressEvent? LastProgress => _lastProgress;
@@ -55,7 +50,6 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
     {
         _discovered.Clear();
         _dismissedAddresses.Clear();
-        _stashedNamesByMac.Clear();
         RaiseStateChanged();
         await _scan.StartScanAsync(subnets);
     }
@@ -145,7 +139,6 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
 
             EnrichDiscoveredMacs(arpMap);
             AppendAdbMergeRows(fromAdb, arpMap);
-            await PopulateStashedNamesAsync();
         }
         catch (Exception ex)
         {
@@ -223,18 +216,6 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
             _discovered.Add(new DiscoveredDevice(
                 ScanMergeHelper.AddressKey(x.Ip, x.Port),
                 x.Ip, x.Port, mac, Source: "adb"));
-        }
-    }
-
-    private async Task PopulateStashedNamesAsync()
-    {
-        foreach (var d in _discovered)
-        {
-            if (string.IsNullOrEmpty(d.Mac)) continue;
-            if (_stashedNamesByMac.ContainsKey(d.Mac)) continue;
-            var stashed = await _config.GetSettingAsync($"device-name-{d.Mac}");
-            if (!string.IsNullOrEmpty(stashed))
-                _stashedNamesByMac[d.Mac] = stashed;
         }
     }
 

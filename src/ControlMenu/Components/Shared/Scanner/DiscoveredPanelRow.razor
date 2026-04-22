@@ -51,7 +51,6 @@
 
 @code {
     [Parameter, EditorRequired] public DiscoveredDevice Source { get; set; } = default!;
-    [Parameter, EditorRequired] public IReadOnlyDictionary<string, string> StashedNamesByMac { get; set; } = default!;
     [Parameter, EditorRequired] public IReadOnlyList<Device> Registered { get; set; } = default!;
     [Parameter] public EventCallback<InlineAddPayload> OnAdd { get; set; }
     [Parameter] public EventCallback<DiscoveredDevice> OnDismiss { get; set; }
@@ -83,16 +82,13 @@
 
     // MAC-based initial name lookup. Priority:
     //   1. Registered device with the same MAC — restore the user's current name (edge case; Discovered typically excludes already-registered)
-    //   2. Stashed name cache — restore the last user-assigned name for a re-added device
-    //   3. "" — will be filled by ro.product.model probe (or user types)
+    //   2. "" — will be filled by the async stashed-name / product-model probe in RunProbesAsync
     private string ResolveInitialName()
     {
         if (string.IsNullOrEmpty(Source.Mac)) return "";
         var match = Registered.FirstOrDefault(d =>
             string.Equals(d.MacAddress, Source.Mac, StringComparison.OrdinalIgnoreCase));
-        if (match is not null) return match.Name;
-        if (StashedNamesByMac.TryGetValue(Source.Mac, out var stashed)) return stashed;
-        return "";
+        return match?.Name ?? "";
     }
 
     private async Task RunProbesAsync()
