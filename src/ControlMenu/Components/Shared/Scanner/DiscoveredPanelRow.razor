@@ -29,12 +29,12 @@
             }
         </select>
     </td>
+    <td>
+        <input class="form-control form-control-sm" @bind="_mac" placeholder="aa-bb-cc-dd-ee-ff" />
+    </td>
     <td>@Source.Ip</td>
     <td>
         <input type="number" class="form-control form-control-sm" min="1" max="65535" @bind="_port" />
-    </td>
-    <td>
-        <input class="form-control form-control-sm" @bind="_mac" placeholder="aa-bb-cc-dd-ee-ff" />
     </td>
     <td>
         <input class="form-control form-control-sm" @bind="_serial" placeholder="serial" />
