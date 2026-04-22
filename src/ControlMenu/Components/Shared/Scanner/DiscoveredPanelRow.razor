@@ -19,10 +19,10 @@
         }
     </td>
     <td>
-        <input class="form-control form-control-sm" @bind="_name" placeholder="Device name" />
+        <input class="form-control form-control-sm" style="width: 100%;" @bind="_name" placeholder="Device name" />
     </td>
     <td>
-        <select class="form-control form-control-sm" @bind="_type">
+        <select class="form-control form-control-sm" style="width: 100%;" @bind="_type">
             @foreach (var t in Enum.GetValues<DeviceType>())
             {
                 <option value="@t">@t</option>
@@ -30,17 +30,17 @@
         </select>
     </td>
     <td>
-        <input class="form-control form-control-sm" @bind="_mac" placeholder="aa-bb-cc-dd-ee-ff" />
+        <input class="form-control form-control-sm" style="width: 100%;" @bind="_mac" placeholder="aa-bb-cc-dd-ee-ff" />
     </td>
     <td>@Source.Ip</td>
     <td>
-        <input type="number" class="form-control form-control-sm" min="1" max="65535" @bind="_port" />
+        <input type="number" class="form-control form-control-sm" style="width: 100%;" min="1" max="65535" @bind="_port" />
     </td>
     <td>
-        <input class="form-control form-control-sm" @bind="_serial" placeholder="serial" />
+        <input class="form-control form-control-sm" style="width: 100%;" @bind="_serial" placeholder="serial" />
     </td>
     <td>
-        <input type="password" class="form-control form-control-sm" value="@_pin" @oninput="OnPinInput" placeholder="PIN" />
+        <input type="password" class="form-control form-control-sm" style="width: 100%;" value="@_pin" @oninput="OnPinInput" placeholder="PIN" />
     </td>
     <td class="actions">
         <button class="btn btn-success btn-sm" @onclick="HandleAdd" disabled="@(!IsValid)">Add</button>
