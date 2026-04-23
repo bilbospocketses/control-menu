@@ -1,5 +1,8 @@
 @inject ModuleDiscoveryService ModuleDiscovery
 @inject IJSRuntime JS
+@inject ControlMenu.Services.IDeviceTypeCache DeviceTypeCache
+@inject IServiceProvider ServiceProvider
+@implements IDisposable
 
 <nav class="sidebar @(Collapsed ? "collapsed" : "")">
     <div class="sidebar-header">
@@ -59,7 +62,7 @@
                     @if (IsGroupExpanded(module.Id) && !Collapsed)
                     {
                         <div class="sidebar-group-items">
-                            @foreach (var entry in module.GetNavEntries().OrderBy(e => e.SortOrder))
+                            @foreach (var entry in VisibleEntries(module))
                             {
                                 <NavLink class="sidebar-link" href="@entry.Href" Match="NavLinkMatch.All">
                                     @if (entry.Icon is not null)
@@ -67,6 +70,10 @@
                                         @if (entry.Icon.StartsWith("bi-"))
                                         {
                                             <i class="bi @entry.Icon"></i>
+                                        }
+                                        else if (entry.Icon.StartsWith("/") || entry.Icon.EndsWith(".svg"))
+                                        {
+                                            <img src="@entry.Icon" alt="" class="sidebar-nav-icon" />
                                         }
                                         else
                                         {
@@ -98,12 +105,41 @@
     private bool Collapsed { get; set; }
     private readonly HashSet<string> _expandedGroups = new();
     private bool _allExpanded;
+    private readonly Dictionary<Modules.NavEntry, bool> _visibilityCache = new();
 
     private static readonly Dictionary<string, string> ModuleImageMap = new()
     {
         ["android-devices"] = "/images/android-logo.svg",
         ["jellyfin"] = "/images/jellyfin-logo.svg"
     };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await DeviceTypeCache.RefreshAsync();
+        DeviceTypeCache.CacheUpdated += OnCacheUpdated;
+    }
+
+    private async void OnCacheUpdated()
+    {
+        await InvokeAsync(() =>
+        {
+            _visibilityCache.Clear();
+            StateHasChanged();
+        });
+    }
+
+    private IEnumerable<Modules.NavEntry> VisibleEntries(Modules.IToolModule module) =>
+        module.GetNavEntries()
+              .Where(entry => entry.IsVisible is null
+                              || _visibilityCache.GetValueOrDefault(entry, EvaluateVisibility(entry)))
+              .OrderBy(e => e.SortOrder);
+
+    private bool EvaluateVisibility(Modules.NavEntry entry)
+    {
+        var visible = entry.IsVisible!.Invoke(ServiceProvider);
+        _visibilityCache[entry] = visible;
+        return visible;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -113,7 +149,6 @@
             var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "sidebar-expanded-groups");
             if (hasVisited is not null)
             {
-                // Restore saved state (may be empty = all collapsed)
                 _expandedGroups.Clear();
                 if (!string.IsNullOrEmpty(saved))
                 {
@@ -123,7 +158,6 @@
             }
             else
             {
-                // First visit: all expanded, mark as initialized
                 foreach (var m in ModuleDiscovery.Modules)
                     _expandedGroups.Add(m.Id);
                 await JS.InvokeVoidAsync("localStorage.setItem", "sidebar-initialized", "1");
@@ -171,4 +205,6 @@
     }
 
     private bool IsGroupExpanded(string moduleId) => _expandedGroups.Contains(moduleId);
+
+    public void Dispose() => DeviceTypeCache.CacheUpdated -= OnCacheUpdated;
 }

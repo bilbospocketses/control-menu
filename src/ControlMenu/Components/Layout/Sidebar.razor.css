@@ -202,3 +202,10 @@
     padding-left: 12px;
     margin: 2px 8px;
 }
+
+.sidebar-nav-icon {
+    width: 1.25em;
+    height: 1.25em;
+    object-fit: contain;
+    flex-shrink: 0;
+}
