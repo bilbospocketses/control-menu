@@ -1,4 +1,5 @@
 using ControlMenu.Data.Enums;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ControlMenu.Modules.AndroidDevices;
 
@@ -92,10 +93,15 @@ public class AndroidDevicesModule : IToolModule
 
     public IEnumerable<NavEntry> GetNavEntries() =>
     [
-        new NavEntry("Device List", "/android/devices", "📋", 0),
-        new NavEntry("Google TV", "/android/googletv", "📺", 1),
-        new NavEntry("Android Phone", "/android/phone", "📱", 2)
+        new NavEntry("Device List",    "/android/devices",  "/images/devices/device-list.svg", 0),
+        new NavEntry("Google TV",      "/android/googletv", "/images/devices/smart-tv.svg",    1, HasDevicesOfType(DeviceType.GoogleTV)),
+        new NavEntry("Android Phone",  "/android/phone",    "/images/devices/smart-phone.svg", 2, HasDevicesOfType(DeviceType.AndroidPhone)),
+        new NavEntry("Android Tablet", "/android/tablet",   "/images/devices/tablet.svg",      3, HasDevicesOfType(DeviceType.AndroidTablet)),
+        new NavEntry("Android Watch",  "/android/watch",    "/images/devices/smart-watch.svg", 4, HasDevicesOfType(DeviceType.AndroidWatch)),
     ];
+
+    private static Func<IServiceProvider, bool> HasDevicesOfType(DeviceType type) =>
+        sp => sp.GetRequiredService<ControlMenu.Services.IDeviceTypeCache>().HasDevicesOfType(type);
 
     public IEnumerable<BackgroundJobDefinition> GetBackgroundJobs() => [];
 }
