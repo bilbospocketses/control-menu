@@ -6,7 +6,6 @@ namespace ControlMenu.Tests.Services.Fakes;
 public sealed class FakeDeviceService : IDeviceService
 {
     public List<Device> Devices { get; } = new();
-    public event Action? DevicesChanged;
 
     public Task<IReadOnlyList<Device>> GetAllDevicesAsync()
         => Task.FromResult<IReadOnlyList<Device>>(Devices.ToList());
@@ -17,25 +16,18 @@ public sealed class FakeDeviceService : IDeviceService
     public Task<Device> AddDeviceAsync(Device device)
     {
         Devices.Add(device);
-        DevicesChanged?.Invoke();
         return Task.FromResult(device);
     }
 
     public Task UpdateDeviceAsync(Device device)
-    {
-        DevicesChanged?.Invoke();
-        return Task.CompletedTask;
-    }
+        => Task.CompletedTask;
 
     public Task DeleteDeviceAsync(Guid id)
     {
         Devices.RemoveAll(d => d.Id == id);
-        DevicesChanged?.Invoke();
         return Task.CompletedTask;
     }
 
     public Task UpdateLastSeenAsync(Guid id, string ipAddress)
         => Task.CompletedTask;
-
-    public void RaiseChanged() => DevicesChanged?.Invoke();
 }

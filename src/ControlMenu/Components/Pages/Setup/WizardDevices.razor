@@ -5,6 +5,7 @@
 @using ControlMenu.Services
 @using ControlMenu.Services.Network
 @inject IDeviceService DeviceService
+@inject IDeviceChangeNotifier DeviceChangeNotifier
 @inject INetworkDiscoveryService NetworkDiscovery
 @inject IAdbService AdbService
 @inject IConfigurationService Config
@@ -76,7 +77,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadDevices();
-        // TODO(Task 8): subscribe to IDeviceChangeNotifier.Changed instead of DeviceService.DevicesChanged
+        DeviceChangeNotifier.Changed += OnDevicesChanged;
         Handler.OnStateChanged += HandleHandlerStateChanged;
     }
 
@@ -226,7 +227,7 @@
 
     public void Dispose()
     {
-        // TODO(Task 8): unsubscribe from IDeviceChangeNotifier.Changed
+        DeviceChangeNotifier.Changed -= OnDevicesChanged;
         Handler.OnStateChanged -= HandleHandlerStateChanged;
     }
 }
