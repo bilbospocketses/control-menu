@@ -1,53 +1,47 @@
+@using ControlMenu.Components.Shared.Scanner
 @using ControlMenu.Data.Entities
 @using ControlMenu.Data.Enums
+@using ControlMenu.Modules.AndroidDevices.Services
 @using ControlMenu.Services
+@using ControlMenu.Services.Network
 @inject IDeviceService DeviceService
+@inject INetworkDiscoveryService NetworkDiscovery
+@inject IAdbService AdbService
+@inject IConfigurationService Config
+@inject IScanLifecycleHandler Handler
+@implements IDisposable
 
 <div class="settings-section">
     <h2>Android Devices</h2>
-    <p>Register your Android devices so the app can manage them via ADB. You can add more later in Settings.</p>
+    <p>Scan your network to discover Android devices, then add each one with a click. You can also add devices later from <a href="/settings/devices">Settings › Devices</a>.</p>
 
-    <div class="form-group">
-        <label>Device Name</label>
-        <input class="form-control" @bind="_name" placeholder="Living Room TV" />
+    <div class="toolbar" style="margin-bottom:1rem;">
+        <button class="btn btn-secondary" @onclick="QuickRefresh" disabled="@_scanning">
+            <i class="bi bi-arrow-clockwise"></i> @(_scanning ? "Scanning..." : "Scan Network")
+        </button>
     </div>
 
-    <div class="form-group">
-        <label>Device Type</label>
-        <select class="form-control" @bind="_type">
-            @foreach (var t in Enum.GetValues<DeviceType>())
-            {
-                <option value="@t">@t</option>
-            }
-        </select>
-    </div>
+    @if (Handler.Phase is not ScanPhase.Idle)
+    {
+        <div class="scan-row">
+            <ScanProgressChip Phase="Handler.Phase"
+                              Checked="Handler.LastProgress?.Checked ?? 0"
+                              Total="Handler.LastProgress?.Total ?? 0"
+                              FoundSoFar="Handler.Discovered.Count" />
+        </div>
+    }
 
-    <div class="form-group">
-        <label>ADB Port</label>
-        <input type="number" class="form-control" @bind="_adbPort" />
-    </div>
-
-    <div class="form-group">
-        <label>MAC Address</label>
-        <input class="form-control" @bind="_macAddress" placeholder="b8-7b-d4-f3-ae-84" />
-        <div class="form-hint">Used for automatic IP discovery via ARP.</div>
-    </div>
-
-    <button class="btn btn-primary" @onclick="AddDevice" disabled="@(!CanAdd)">
-        Add Device
-    </button>
+    <DiscoveredPanel Discovered="Handler.Discovered"
+                     Registered="_devices"
+                     OnAdd="HandleInlineAdd"
+                     OnDismiss="Handler.Dismiss" />
 
     @if (_devices.Count > 0)
     {
-        <table class="data-table" style="margin-top: 1.5rem;">
+        <h3 style="margin-top: 1.5rem;">Registered devices</h3>
+        <table class="data-table">
             <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>MAC</th>
-                    <th>Port</th>
-                    <th></th>
-                </tr>
+                <tr><th>Name</th><th>Type</th><th>MAC</th><th>Port</th></tr>
             </thead>
             <tbody>
                 @foreach (var device in _devices)
@@ -57,62 +51,182 @@
                         <td>@device.Type</td>
                         <td><code>@device.MacAddress</code></td>
                         <td>@device.AdbPort</td>
-                        <td>
-                            <button class="btn btn-danger btn-sm" @onclick="() => RemoveDevice(device)">Remove</button>
-                        </td>
                     </tr>
                 }
             </tbody>
         </table>
+    }
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
+            @_message
+        </div>
     }
 </div>
 
 @code {
     [Parameter] public SetupWizard.WizardState State { get; set; } = default!;
 
-    private string _name = "";
-    private DeviceType _type = DeviceType.GoogleTV;
-    private int _adbPort = 5555;
-    private string _macAddress = "";
-
     private List<Device> _devices = [];
+    private bool _scanning;
+    private string? _message;
+    private bool _messageIsError;
 
     protected override async Task OnInitializedAsync()
+    {
+        await LoadDevices();
+        DeviceService.DevicesChanged += OnDevicesChanged;
+        Handler.OnStateChanged += HandleHandlerStateChanged;
+    }
+
+    private async void OnDevicesChanged() => await InvokeAsync(async () =>
+    {
+        await LoadDevices();
+        StateHasChanged();
+    });
+
+    private void HandleHandlerStateChanged()
+    {
+        _ = InvokeAsync(() =>
+        {
+            var err = Handler.ConsumeLastError();
+            if (err is not null)
+            {
+                _message = err;
+                _messageIsError = true;
+            }
+            StateHasChanged();
+        });
+    }
+
+    private async Task LoadDevices()
     {
         _devices = (await DeviceService.GetAllDevicesAsync()).ToList();
         State.DevicesAdded = _devices.Count;
     }
 
-    private bool CanAdd =>
-        !string.IsNullOrWhiteSpace(_name) &&
-        !string.IsNullOrWhiteSpace(_macAddress);
-
-    private async Task AddDevice()
+    private async Task QuickRefresh()
     {
-        var device = new Device
+        _scanning = true;
+        _message = null;
+        StateHasChanged();
+
+        // 1. Query mDNS — each hit gives us IP + advertised ADB port + service name.
+        var mdnsResults = await AdbService.ScanMdnsAsync();
+
+        // 2. Build IP→MAC map from ARP. If any mDNS IPs aren't in ARP yet, ping them
+        //    in parallel to force the OS to resolve them, then re-read ARP.
+        var arpMap = await BuildArpMapAsync();
+        var missing = mdnsResults.Where(m => !arpMap.ContainsKey(m.IpAddress)).Select(m => m.IpAddress).ToList();
+        if (missing.Count > 0)
         {
-            Id = Guid.NewGuid(),
-            Name = _name.Trim(),
-            Type = _type,
-            AdbPort = _adbPort,
-            MacAddress = NetworkDiscoveryService.NormalizeMac(_macAddress.Trim()),
-            ModuleId = "android-devices"
-        };
+            await Task.WhenAll(missing.Select(ip => NetworkDiscovery.PingAsync(ip)));
+            arpMap = await BuildArpMapAsync();
+        }
 
-        await DeviceService.AddDeviceAsync(device);
-        _devices.Add(device);
-        State.DevicesAdded = _devices.Count;
+        // 3. Walk the mDNS hits. Registered devices: update IP/port in-place in the DB.
+        //    Unregistered devices: merge into the panel (preserving non-mDNS entries and respecting dismissed).
+        var devicesByMac = _devices.ToDictionary(d => d.MacAddress, d => d, StringComparer.OrdinalIgnoreCase);
 
-        _name = "";
-        _macAddress = "";
-        _adbPort = 5555;
-        _type = DeviceType.GoogleTV;
+        var merged = new List<DiscoveredDevice>(Handler.Discovered);
+        var mergedKeys = new HashSet<string>(
+            merged.Select(d => ScanMergeHelper.AddressKey(d.Ip, d.Port)),
+            StringComparer.OrdinalIgnoreCase);
+
+        var coveredRegistered = new HashSet<Guid>();
+        int updated = 0;
+        int portUpdated = 0;
+        int newOnes = 0;
+        foreach (var m in mdnsResults)
+        {
+            var mac = arpMap.TryGetValue(m.IpAddress, out var x) ? x : null;
+            if (mac is not null && devicesByMac.TryGetValue(mac, out var registered))
+            {
+                await DeviceService.UpdateLastSeenAsync(registered.Id, m.IpAddress);
+                if (registered.AdbPort != m.Port)
+                {
+                    registered.AdbPort = m.Port;
+                    await DeviceService.UpdateDeviceAsync(registered);
+                    portUpdated++;
+                }
+                coveredRegistered.Add(registered.Id);
+                updated++;
+                continue;
+            }
+
+            var key = ScanMergeHelper.AddressKey(m.IpAddress, m.Port);
+
+            if (Handler.DismissedAddresses.Contains(key))
+                continue;
+
+            if (mergedKeys.Contains(key))
+                continue;
+
+            merged.Add(new DiscoveredDevice(m.ServiceName, m.IpAddress, m.Port, mac, Source: "mdns"));
+            mergedKeys.Add(key);
+            newOnes++;
+        }
+
+        // 4. For registered devices not seen via mDNS, fall back to ARP-only IP refresh.
+        foreach (var device in _devices.Where(d => !coveredRegistered.Contains(d.Id)))
+        {
+            var ip = await NetworkDiscovery.ResolveIpFromMacAsync(device.MacAddress);
+            if (ip is not null)
+            {
+                await DeviceService.UpdateLastSeenAsync(device.Id, ip);
+                updated++;
+            }
+        }
+
+        Handler.ReplaceDiscovered(merged);
+        await LoadDevices();
+        _scanning = false;
+
+        var parts = new List<string> { $"{updated} of {_devices.Count} registered device(s) found" };
+        if (portUpdated > 0) parts.Add($"{portUpdated} ADB port(s) updated from mDNS");
+        if (newOnes > 0) parts.Add($"{newOnes} new device(s) on network");
+        _message = $"Scan complete. {string.Join("; ", parts)}.";
+        _messageIsError = false;
+        StateHasChanged();
     }
 
-    private async Task RemoveDevice(Device device)
+    private async Task<Dictionary<string, string>> BuildArpMapAsync()
     {
-        await DeviceService.DeleteDeviceAsync(device.Id);
-        _devices.Remove(device);
-        State.DevicesAdded = _devices.Count;
+        var entries = await NetworkDiscovery.GetArpTableAsync();
+        return entries
+            .GroupBy(e => e.IpAddress)
+            .ToDictionary(g => g.Key, g => g.First().MacAddress, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task HandleInlineAdd(InlineAddPayload payload)
+    {
+        try
+        {
+            var device = payload.Device;
+            device.MacAddress = NetworkDiscoveryService.NormalizeMac(device.MacAddress);
+
+            var saved = await DeviceService.AddDeviceAsync(device);
+
+            if (!string.IsNullOrEmpty(payload.Pin))
+                await Config.SetSecretAsync($"device-pin-{saved.Id}", payload.Pin);
+
+            Handler.ReplaceDiscovered(Handler.Discovered
+                .Where(d => !string.Equals(d.Mac, saved.MacAddress, StringComparison.OrdinalIgnoreCase)));
+
+            _message = $"Added {saved.Name}.";
+            _messageIsError = false;
+        }
+        catch (Exception ex)
+        {
+            _message = $"Failed to add device: {ex.Message}";
+            _messageIsError = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        DeviceService.DevicesChanged -= OnDevicesChanged;
+        Handler.OnStateChanged -= HandleHandlerStateChanged;
     }
 }
