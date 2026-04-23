@@ -64,15 +64,35 @@ else
                     <span class="action-status">Set PIN in <a href="/settings/devices">Device Settings</a></span>
                 }
             </div>
+
+            <!-- Stream Settings -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-gear"></i> Stream Settings
+                </div>
+                <span class="action-status">Video and audio configuration</span>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-secondary" @onclick="OpenStreamSettings">
+                        <i class="bi bi-sliders"></i> Configure
+                    </button>
+                </div>
+            </div>
         </div>
 
         <div class="mirror-column">
             <span class="device-name">@_device.Name</span>
             <div class="mirror-panel" style="aspect-ratio: @MirrorAspectRatio;">
-                <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" DeviceKind="phone" />
+                <ScrcpyMirror @ref="_mirror" Udid="@($"{Ip}:{Port}")" Inline="true" DeviceKind="phone"
+                              Settings="@_scrcpySettings" Loading="@_mirrorLoading" />
             </div>
         </div>
     </div>
+
+    <ScrcpySettingsModal @ref="_settingsModal"
+        DeviceId="@_device.Id"
+        DeviceName="@_device.Name"
+        Udid="@($"{Ip}:{Port}")"
+        OnConnectStream="OnConnectStream" />
 }
 
 @code {
@@ -83,9 +103,14 @@ else
     [Inject] private IConfigurationService Config { get; set; } = default!;
     [Inject] private NavigationManager Nav { get; set; } = default!;
     [Inject] private IDeviceChangeNotifier DeviceChangeNotifier { get; set; } = default!;
+    [Inject] private IScrcpyProbeService ProbeService { get; set; } = default!;
 
     private DeviceTypePresenceWatcher? _presenceWatcher;
     private Device? _device;
+    private ScrcpySettings? _scrcpySettings;
+    private bool _mirrorLoading = true;
+    private ScrcpySettingsModal? _settingsModal;
+    private ScrcpyMirror? _mirror;
     private bool _connected;
     private bool _busy;
     private bool _hasPin;
@@ -138,6 +163,20 @@ else
                     _screenH = size.Value.Height;
                 }
             }
+
+            _scrcpySettings = await ScrcpySettings.LoadAsync(Config, _device.Id);
+            if (_scrcpySettings is not null)
+            {
+                _mirrorLoading = false;
+            }
+            else
+            {
+                _ = ProbeAndStartAsync();
+            }
+        }
+        else
+        {
+            _mirrorLoading = false;
         }
     }
 
@@ -158,6 +197,36 @@ else
             // Return as "width / height" for CSS
             return $"{totalWidth:F0} / {refHeight:F0}";
         }
+    }
+
+    private async Task ProbeAndStartAsync()
+    {
+        var udid = $"{Ip}:{Port}";
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        var probe = await ProbeService.ProbeAsync(udid, cts.Token);
+
+        if (probe is not null)
+        {
+            _scrcpySettings = ScrcpySettings.DeriveDefaults(probe);
+            await _scrcpySettings.SaveAsync(Config, _device!.Id);
+            await ScrcpySettings.SaveProbeCacheAsync(Config, _device.Id, probe);
+        }
+
+        _mirrorLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OpenStreamSettings()
+    {
+        if (_settingsModal is not null)
+            await _settingsModal.OpenAsync();
+    }
+
+    private async Task OnConnectStream(ScrcpySettings settings)
+    {
+        _scrcpySettings = settings;
+        _mirror?.ReloadStream();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task UnlockPhone()
