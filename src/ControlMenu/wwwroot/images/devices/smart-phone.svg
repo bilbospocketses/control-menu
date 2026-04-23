@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="254px" height="512px" viewBox="128 0 254 512" style="shape-rendering:geometricPrecision; text-rendering:geometricPrecision; image-rendering:optimizeQuality; fill-rule:evenodd; clip-rule:evenodd" xmlns:xlink="http://www.w3.org/1999/xlink">
+<defs>
+<linearGradient id="bezelGrad" x1="0.5" y1="0" x2="0.5" y2="1">
+<stop offset="0" stop-color="#2a2a2c"/>
+<stop offset="0.5" stop-color="#0a0a0c"/>
+<stop offset="1" stop-color="#1a1a1c"/>
+</linearGradient>
+<linearGradient id="glossGrad" x1="0.5" y1="0" x2="0.5" y2="1">
+<stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+<stop offset="0.35" stop-color="#ffffff" stop-opacity="0.15"/>
+<stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
+<stop offset="0.85" stop-color="#ffffff" stop-opacity="0"/>
+<stop offset="1" stop-color="#ffffff" stop-opacity="0.08"/>
+</linearGradient>
+<radialGradient id="cameraGrad" cx="0.3" cy="0.3" r="0.75">
+<stop offset="0" stop-color="#3a3a3c"/>
+<stop offset="0.45" stop-color="#121214"/>
+<stop offset="1" stop-color="#000000"/>
+</radialGradient>
+<clipPath id="phoneScreenClip">
+<rect x="140" y="12" width="230" height="488" rx="10" ry="10"/>
+</clipPath>
+</defs>
+<rect x="128" y="0" width="254" height="511" rx="22" ry="22" fill="url(#bezelGrad)"/>
+<rect x="128" y="0" width="254" height="511" rx="22" ry="22" fill="url(#glossGrad)"/>
+<rect x="128.5" y="0.5" width="253" height="510" rx="21.5" ry="21.5" fill="none" stroke="#6a6a6c" stroke-width="1" opacity="0.8"/>
+<rect x="140" y="12" width="230" height="488" rx="10" ry="10" fill="#1296f9"/>
+<circle cx="255" cy="28" r="6" fill="url(#cameraGrad)"/>
+<circle cx="253" cy="26" r="1.4" fill="#ffffff" opacity="0.7"/>
+<rect x="158" y="60" width="53" height="53" rx="6" fill="#f472b6"/>
+<rect x="229" y="60" width="53" height="53" rx="6" fill="#38bdf8"/>
+<rect x="300" y="60" width="52" height="53" rx="6" fill="#bef264"/>
+<rect x="158" y="135" width="53" height="53" rx="6" fill="#f9d964"/>
+<rect x="229" y="135" width="53" height="53" rx="6" fill="#f86465"/>
+<rect x="300" y="135" width="52" height="53" rx="6" fill="#0ad8c7"/>
+<rect x="158" y="210" width="53" height="53" rx="6" fill="#9bd377"/>
+<rect x="229" y="210" width="53" height="53" rx="6" fill="#444654"/>
+<rect x="300" y="210" width="52" height="53" rx="6" fill="#f89c52"/>
+<rect x="158" y="285" width="53" height="53" rx="6" fill="#4489bb"/>
+<rect x="229" y="285" width="53" height="53" rx="6" fill="#f8d965"/>
+<rect x="300" y="285" width="52" height="53" rx="6" fill="#f9f9f9"/>
+<circle cx="220" cy="377" r="4" fill="#444553"/>
+<circle cx="255" cy="377" r="4" fill="#f7f8f9"/>
+<circle cx="290" cy="377" r="4" fill="#f6f8f9"/>
+<rect x="158" y="415" width="53" height="53" rx="6" fill="#00d9c7"/>
+<rect x="229" y="415" width="53" height="53" rx="6" fill="#22c55e"/>
+<path transform="translate(230, 418) scale(3)" d="M1.885.511a1.745 1.745 0 0 1 2.61.163L6.29 2.98c.329.423.445.974.315 1.494l-.547 2.19a.678.678 0 0 0 .178.643l2.457 2.457a.678.678 0 0 0 .644.178l2.189-.547a1.745 1.745 0 0 1 1.494.315l2.306 1.794c.829.645.905 1.87.163 2.611l-1.034 1.034c-.74.74-1.846 1.065-2.877.702a18.6 18.6 0 0 1-7.01-4.42 18.634 18.634 0 0 1-4.42-7.009c-.362-1.03-.037-2.137.703-2.877L1.885.511z" fill="white"/>
+<rect x="300" y="415" width="52" height="53" rx="6" fill="#f96464"/>
+<g clip-path="url(#phoneScreenClip)">
+<line x1="278" y1="12" x2="140" y2="329" stroke="#ffffff" stroke-opacity="0.3" stroke-width="40"/>
+<line x1="324" y1="12" x2="140" y2="435" stroke="#ffffff" stroke-opacity="0.25" stroke-width="20"/>
+</g>
+</svg>

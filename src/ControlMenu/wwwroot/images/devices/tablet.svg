@@ -1,0 +1,46 @@
+<svg width="420" height="310" viewBox="46 101 420 310" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bezelGrad" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0" stop-color="#2a2a2c"/>
+      <stop offset="0.5" stop-color="#0a0a0c"/>
+      <stop offset="1" stop-color="#1a1a1c"/>
+    </linearGradient>
+    <linearGradient id="screenGrad" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0" stop-color="#44cdf9"/>
+      <stop offset="1" stop-color="#1296f9"/>
+    </linearGradient>
+    <linearGradient id="glossGrad" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
+      <stop offset="0.35" stop-color="#ffffff" stop-opacity="0.15"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.85" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.08"/>
+    </linearGradient>
+    <clipPath id="tabletScreenClip">
+      <rect x="58" y="113" width="396" height="286" rx="8" ry="8"/>
+    </clipPath>
+  </defs>
+  <rect x="46" y="101" width="420" height="310" rx="24" ry="24" fill="url(#bezelGrad)"/>
+  <rect x="46" y="101" width="420" height="310" rx="24" ry="24" fill="url(#glossGrad)"/>
+  <rect x="46.5" y="101.5" width="419" height="309" rx="23.5" ry="23.5" fill="none" stroke="#6a6a6c" stroke-width="1" opacity="0.8"/>
+  <rect x="58" y="113" width="396" height="286" rx="8" ry="8" fill="url(#screenGrad)"/>
+  <rect x="58" y="113" width="396" height="286" rx="8" ry="8" fill="none" stroke="#000" stroke-width="2" opacity="0.4"/>
+  <g>
+    <rect x="91" y="141" width="56" height="56" rx="10" fill="#EA4335"/>
+    <rect x="182" y="141" width="56" height="56" rx="10" fill="#FBBC04"/>
+    <rect x="273" y="141" width="56" height="56" rx="10" fill="#34A853"/>
+    <rect x="364" y="141" width="56" height="56" rx="10" fill="#4285F4"/>
+    <rect x="91" y="227" width="56" height="56" rx="10" fill="#FF6D00"/>
+    <rect x="182" y="227" width="56" height="56" rx="10" fill="#8E24AA"/>
+    <rect x="273" y="227" width="56" height="56" rx="10" fill="#E91E63"/>
+    <rect x="364" y="227" width="56" height="56" rx="10" fill="#00BCD4"/>
+    <rect x="91" y="313" width="56" height="56" rx="10" fill="#673AB7"/>
+    <rect x="182" y="313" width="56" height="56" rx="10" fill="#3F51B5"/>
+    <rect x="273" y="313" width="56" height="56" rx="10" fill="#FF5722"/>
+    <rect x="364" y="313" width="56" height="56" rx="10" fill="#009688"/>
+  </g>
+  <g clip-path="url(#tabletScreenClip)">
+    <line x1="296" y1="113" x2="58" y2="299" stroke="#ffffff" stroke-opacity="0.3" stroke-width="50"/>
+    <line x1="376" y1="113" x2="58" y2="361" stroke="#ffffff" stroke-opacity="0.25" stroke-width="24"/>
+  </g>
+</svg>
