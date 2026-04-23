@@ -13,6 +13,14 @@ public class DeviceService : IDeviceService
         _dbFactory = dbFactory;
     }
 
+    public event Action? DevicesChanged;
+
+    event Action IDeviceService.DevicesChanged
+    {
+        add => DevicesChanged += value;
+        remove => DevicesChanged -= value;
+    }
+
     public async Task<IReadOnlyList<Device>> GetAllDevicesAsync()
     {
         using var db = await _dbFactory.CreateDbContextAsync();
@@ -32,6 +40,7 @@ public class DeviceService : IDeviceService
             device.Id = Guid.NewGuid();
         db.Devices.Add(device);
         await db.SaveChangesAsync();
+        DevicesChanged?.Invoke();
         return device;
     }
 
@@ -44,6 +53,7 @@ public class DeviceService : IDeviceService
 
         db.Entry(existing).CurrentValues.SetValues(device);
         await db.SaveChangesAsync();
+        DevicesChanged?.Invoke();
     }
 
     public async Task DeleteDeviceAsync(Guid id)
@@ -54,6 +64,7 @@ public class DeviceService : IDeviceService
         {
             db.Devices.Remove(device);
             await db.SaveChangesAsync();
+            DevicesChanged?.Invoke();
         }
     }
 

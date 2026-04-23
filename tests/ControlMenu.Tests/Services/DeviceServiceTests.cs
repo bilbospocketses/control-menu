@@ -97,4 +97,55 @@ public class DeviceServiceTests : IDisposable
         Assert.Equal("192.168.1.50", loaded!.LastKnownIp);
         Assert.NotNull(loaded.LastSeen);
     }
+
+    [Fact]
+    public async Task AddDeviceAsync_RaisesDevicesChanged()
+    {
+        var raised = 0;
+        _service.DevicesChanged += () => raised++;
+
+        await _service.AddDeviceAsync(MakeDevice());
+
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public async Task UpdateDeviceAsync_RaisesDevicesChanged()
+    {
+        var device = MakeDevice();
+        await _service.AddDeviceAsync(device);
+        var raised = 0;
+        _service.DevicesChanged += () => raised++;
+
+        device.Name = "Renamed";
+        await _service.UpdateDeviceAsync(device);
+
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public async Task DeleteDeviceAsync_RaisesDevicesChanged()
+    {
+        var device = MakeDevice();
+        await _service.AddDeviceAsync(device);
+        var raised = 0;
+        _service.DevicesChanged += () => raised++;
+
+        await _service.DeleteDeviceAsync(device.Id);
+
+        Assert.Equal(1, raised);
+    }
+
+    [Fact]
+    public async Task UpdateLastSeenAsync_DoesNotRaiseDevicesChanged()
+    {
+        var device = MakeDevice();
+        await _service.AddDeviceAsync(device);
+        var raised = 0;
+        _service.DevicesChanged += () => raised++;
+
+        await _service.UpdateLastSeenAsync(device.Id, "192.168.1.100");
+
+        Assert.Equal(0, raised);
+    }
 }
