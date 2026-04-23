@@ -313,9 +313,9 @@ Additional URL parameters supported by `embed.html` — `host`, `port`, `secure`
 
 The Android Watch dashboard (`/android/watch`) ships as a near-clone of the Android Phone dashboard and has not been verified against a physical Wear OS device (no test hardware available at release time). Code parity with Phone means ADB-connect, PIN unlock, and the scrcpy mirror all wire up identically; please report any watch-specific issues so we can iterate.
 
-### Per-circuit reactivity — cross-tab updates not propagated
+### Per-circuit reactivity — cross-tab updates via singleton notifier
 
-Both `IDeviceService` and `IDeviceTypeCache` are registered as scoped services, meaning each Blazor circuit (browser connection) gets its own instance. A device registered in tab A's scanner raises `DevicesChanged` in tab A's circuit only — tab B's sidebar won't update until its own circuit triggers a fresh DB read (navigation, refresh, etc.). This is acceptable for Control Menu's single-user local-deployment model. Multi-user or multi-tab real-time coordination would require a singleton event aggregator (e.g., a `SingletonDeviceChangeBus` that scoped services subscribe to via host-wide pub/sub).
+`IDeviceService` and `IDeviceTypeCache` are scoped (one per Blazor circuit), but device mutations propagate across all open tabs in real-time via a singleton `IDeviceChangeNotifier`. When `DeviceService` completes an add, update, or delete, it calls `_notifier.NotifyChanged()` on the singleton. Every circuit's `DeviceTypeCache` and `DeviceTypePresenceWatcher` subscribe to the notifier's `Changed` event, so sidebar nav entries and dashboard redirect guards update within ~1 second across all open browser tabs. The notifier uses snapshot + per-handler try/catch invoke so a faulting circuit cannot block notifications to others.
 
 ### Critical Bug Fix
 
