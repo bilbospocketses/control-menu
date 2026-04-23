@@ -154,7 +154,9 @@ else
     [Inject] private IDeviceService DeviceService { get; set; } = default!;
     [Inject] private IAdbService AdbService { get; set; } = default!;
     [Inject] private INetworkDiscoveryService NetworkDiscovery { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
 
+    private DeviceTypePresenceWatcher? _presenceWatcher;
     private Device? _device;
     private bool _connected;
     private bool _busy;
@@ -171,6 +173,15 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        _presenceWatcher = new DeviceTypePresenceWatcher(
+            DeviceType.GoogleTV,
+            DeviceService,
+            Nav,
+            () => InvokeAsync(StateHasChanged));
+
+        if (await _presenceWatcher.EnsurePresentOrRedirectAsync())
+            return;
+
         if (DeviceId.HasValue)
         {
             _device = await DeviceService.GetDeviceAsync(DeviceId.Value);
@@ -338,6 +349,7 @@ else
 
     public void Dispose()
     {
+        _presenceWatcher?.Dispose();
         _statusCts?.Cancel();
         _statusCts?.Dispose();
     }
