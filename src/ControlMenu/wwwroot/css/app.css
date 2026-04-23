@@ -163,7 +163,8 @@ select.form-control { appearance: auto; }
 .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-color); vertical-align: middle; white-space: nowrap; }
 .data-table td.wrap { white-space: normal; }
 .data-table tr:hover td { background-color: var(--hover-bg); }
-.data-table .actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+.data-table .actions { text-align: right; white-space: nowrap; }
+.data-table .actions > * + * { margin-left: 6px; }
 .data-table-fixed { table-layout: fixed; }
 .data-table-fixed td .form-control { margin-left: -13px; width: calc(100% + 13px); }
 .source-badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
