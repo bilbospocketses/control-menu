@@ -125,6 +125,13 @@
     font-size: 0.9rem;
 }
 
+.pill-icon-img {
+    width: 1em;
+    height: 1em;
+    object-fit: contain;
+    flex-shrink: 0;
+}
+
 /* Empty state */
 .empty-state {
     text-align: center;

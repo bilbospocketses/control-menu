@@ -51,6 +51,10 @@ else
                                         {
                                             <i class="bi @entry.Icon"></i>
                                         }
+                                        else if (entry.Icon.StartsWith("/") || entry.Icon.EndsWith(".svg"))
+                                        {
+                                            <img src="@entry.Icon" alt="" class="pill-icon-img" />
+                                        }
                                         else
                                         {
                                             <span class="pill-emoji">@entry.Icon</span>
