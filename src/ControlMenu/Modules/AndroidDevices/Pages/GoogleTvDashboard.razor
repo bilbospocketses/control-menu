@@ -155,6 +155,7 @@ else
     [Inject] private IAdbService AdbService { get; set; } = default!;
     [Inject] private INetworkDiscoveryService NetworkDiscovery { get; set; } = default!;
     [Inject] private NavigationManager Nav { get; set; } = default!;
+    [Inject] private IDeviceChangeNotifier DeviceChangeNotifier { get; set; } = default!;
 
     private DeviceTypePresenceWatcher? _presenceWatcher;
     private Device? _device;
@@ -176,6 +177,7 @@ else
         _presenceWatcher = new DeviceTypePresenceWatcher(
             DeviceType.GoogleTV,
             DeviceService,
+            DeviceChangeNotifier,
             Nav,
             () => InvokeAsync(StateHasChanged));
 

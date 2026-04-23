@@ -8,6 +8,7 @@ public sealed class DeviceTypePresenceWatcher : IDisposable
 {
     private readonly DeviceType _type;
     private readonly IDeviceService _deviceService;
+    private readonly IDeviceChangeNotifier _notifier;
     private readonly NavigationManager _nav;
     private readonly Func<Task>? _onInvalidateAsync;
     private bool _redirected;
@@ -15,19 +16,18 @@ public sealed class DeviceTypePresenceWatcher : IDisposable
     public DeviceTypePresenceWatcher(
         DeviceType type,
         IDeviceService deviceService,
+        IDeviceChangeNotifier notifier,
         NavigationManager nav,
         Func<Task>? onInvalidateAsync)
     {
         _type = type;
         _deviceService = deviceService;
+        _notifier = notifier;
         _nav = nav;
         _onInvalidateAsync = onInvalidateAsync;
-        // TODO(Task 6): subscribe to IDeviceChangeNotifier.Changed instead of DeviceService.DevicesChanged
+        _notifier.Changed += OnDevicesChanged;
     }
 
-    /// <summary>
-    /// Initial-load check. Returns true if the caller should abort its init (a redirect happened).
-    /// </summary>
     public async Task<bool> EnsurePresentOrRedirectAsync()
     {
         var devices = await _deviceService.GetAllDevicesAsync();
@@ -62,8 +62,5 @@ public sealed class DeviceTypePresenceWatcher : IDisposable
         }
     }
 
-    public void Dispose()
-    {
-        // TODO(Task 6): unsubscribe from IDeviceChangeNotifier.Changed
-    }
+    public void Dispose() => _notifier.Changed -= OnDevicesChanged;
 }
