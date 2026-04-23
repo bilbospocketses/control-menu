@@ -2,18 +2,20 @@ using ControlMenu.Data.Entities;
 using ControlMenu.Data.Enums;
 using ControlMenu.Services;
 using ControlMenu.Tests.Data;
+using ControlMenu.Tests.Services.Fakes;
 
 namespace ControlMenu.Tests.Services;
 
 public class DeviceServiceTests : IDisposable
 {
     private readonly InMemoryDbContextFactory _factory;
+    private readonly FakeDeviceChangeNotifier _notifier = new();
     private readonly DeviceService _service;
 
     public DeviceServiceTests()
     {
         _factory = TestDbContextFactory.CreateFactory();
-        _service = new DeviceService(_factory);
+        _service = new DeviceService(_factory, _notifier);
     }
 
     public void Dispose() => _factory.Dispose();
@@ -99,53 +101,46 @@ public class DeviceServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task AddDeviceAsync_RaisesDevicesChanged()
+    public async Task AddDeviceAsync_NotifiesViaNotifier()
     {
-        var raised = 0;
-        _service.DevicesChanged += () => raised++;
-
         await _service.AddDeviceAsync(MakeDevice());
-
-        Assert.Equal(1, raised);
+        Assert.Equal(1, _notifier.NotifyChangedCallCount);
     }
 
     [Fact]
-    public async Task UpdateDeviceAsync_RaisesDevicesChanged()
+    public async Task UpdateDeviceAsync_NotifiesViaNotifier()
     {
         var device = MakeDevice();
         await _service.AddDeviceAsync(device);
-        var raised = 0;
-        _service.DevicesChanged += () => raised++;
+        _notifier.NotifyChangedCallCount = 0;
 
         device.Name = "Renamed";
         await _service.UpdateDeviceAsync(device);
 
-        Assert.Equal(1, raised);
+        Assert.Equal(1, _notifier.NotifyChangedCallCount);
     }
 
     [Fact]
-    public async Task DeleteDeviceAsync_RaisesDevicesChanged()
+    public async Task DeleteDeviceAsync_NotifiesViaNotifier()
     {
         var device = MakeDevice();
         await _service.AddDeviceAsync(device);
-        var raised = 0;
-        _service.DevicesChanged += () => raised++;
+        _notifier.NotifyChangedCallCount = 0;
 
         await _service.DeleteDeviceAsync(device.Id);
 
-        Assert.Equal(1, raised);
+        Assert.Equal(1, _notifier.NotifyChangedCallCount);
     }
 
     [Fact]
-    public async Task UpdateLastSeenAsync_DoesNotRaiseDevicesChanged()
+    public async Task UpdateLastSeenAsync_DoesNotNotify()
     {
         var device = MakeDevice();
         await _service.AddDeviceAsync(device);
-        var raised = 0;
-        _service.DevicesChanged += () => raised++;
+        _notifier.NotifyChangedCallCount = 0;
 
         await _service.UpdateLastSeenAsync(device.Id, "192.168.1.100");
 
-        Assert.Equal(0, raised);
+        Assert.Equal(0, _notifier.NotifyChangedCallCount);
     }
 }

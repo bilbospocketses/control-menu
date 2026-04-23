@@ -7,18 +7,12 @@ namespace ControlMenu.Services;
 public class DeviceService : IDeviceService
 {
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
+    private readonly IDeviceChangeNotifier _notifier;
 
-    public DeviceService(IDbContextFactory<AppDbContext> dbFactory)
+    public DeviceService(IDbContextFactory<AppDbContext> dbFactory, IDeviceChangeNotifier notifier)
     {
         _dbFactory = dbFactory;
-    }
-
-    public event Action? DevicesChanged;
-
-    event Action IDeviceService.DevicesChanged
-    {
-        add => DevicesChanged += value;
-        remove => DevicesChanged -= value;
+        _notifier = notifier;
     }
 
     public async Task<IReadOnlyList<Device>> GetAllDevicesAsync()
@@ -40,7 +34,7 @@ public class DeviceService : IDeviceService
             device.Id = Guid.NewGuid();
         db.Devices.Add(device);
         await db.SaveChangesAsync();
-        DevicesChanged?.Invoke();
+        _notifier.NotifyChanged();
         return device;
     }
 
@@ -53,7 +47,7 @@ public class DeviceService : IDeviceService
 
         db.Entry(existing).CurrentValues.SetValues(device);
         await db.SaveChangesAsync();
-        DevicesChanged?.Invoke();
+        _notifier.NotifyChanged();
     }
 
     public async Task DeleteDeviceAsync(Guid id)
@@ -64,7 +58,7 @@ public class DeviceService : IDeviceService
         {
             db.Devices.Remove(device);
             await db.SaveChangesAsync();
-            DevicesChanged?.Invoke();
+            _notifier.NotifyChanged();
         }
     }
 
