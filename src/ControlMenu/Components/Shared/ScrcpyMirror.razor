@@ -10,10 +10,18 @@
             Screen mirroring unavailable — configure ws-scrcpy-web path in Settings
         </div>
     }
+    else if (Loading)
+    {
+        <div class="scrcpy-loading">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Connecting...</span>
+            </div>
+        </div>
+    }
     else if (Inline)
     {
         <iframe @ref="_iframeRef" src="@StreamUrl" class="scrcpy-iframe" tabindex="0"
-                allow="autoplay; fullscreen" @onload="FocusIframe"></iframe>
+                allow="autoplay; fullscreen" @onload="FocusIframe" @key="_renderKey"></iframe>
     }
     else
     {
@@ -30,32 +38,47 @@
     [Parameter]
     public bool Inline { get; set; }
 
-    /// <summary>
-    /// Optional hint to ws-scrcpy-web about the device's form factor.
-    /// Values: "phone", "tablet", "tv". When set, ws-scrcpy-web seeds the
-    /// stream toolbar's D-pad/Touch toggle appropriately (D-pad for TV,
-    /// Touch for phone/tablet). Omit to accept the upstream default.
-    /// </summary>
     [Parameter]
     public string? DeviceKind { get; set; }
 
-    // ws-scrcpy-web's /embed.html is always in embed mode (transparent bg,
-    // toolbar + mirror only). Inline=true (iframe) and Inline=false (popup
-    // window) share the same URL.
+    [Parameter]
+    public ScrcpySettings? Settings { get; set; }
+
+    [Parameter]
+    public bool Loading { get; set; }
+
+    private int _renderKey;
+    private ElementReference _iframeRef;
+
     private string StreamUrl
     {
         get
         {
             var url = $"{WsScrcpy.BaseUrl}/embed.html?device={Uri.EscapeDataString(Udid)}";
             if (!string.IsNullOrEmpty(DeviceKind))
-            {
                 url += $"&deviceKind={Uri.EscapeDataString(DeviceKind)}";
+
+            if (Settings is not null)
+            {
+                if (Settings.Codec is not null) url += $"&codec={Uri.EscapeDataString(Settings.Codec)}";
+                if (Settings.Encoder is not null) url += $"&encoder={Uri.EscapeDataString(Settings.Encoder)}";
+                if (Settings.Bitrate.HasValue) url += $"&bitrate={Settings.Bitrate.Value}";
+                if (Settings.MaxFps.HasValue) url += $"&maxFps={Settings.MaxFps.Value}";
+                if (Settings.MaxSize.HasValue) url += $"&maxSize={Settings.MaxSize.Value}";
+                if (Settings.Audio.HasValue) url += $"&audio={Settings.Audio.Value.ToString().ToLowerInvariant()}";
+                if (Settings.AudioSource is not null) url += $"&audioSource={Uri.EscapeDataString(Settings.AudioSource)}";
+                if (Settings.AudioCodec is not null) url += $"&audioCodec={Uri.EscapeDataString(Settings.AudioCodec)}";
             }
+
             return url;
         }
     }
 
-    private ElementReference _iframeRef;
+    public void ReloadStream()
+    {
+        _renderKey++;
+        StateHasChanged();
+    }
 
     private async Task FocusIframe()
     {
