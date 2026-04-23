@@ -38,10 +38,4 @@ public sealed class FakeDeviceService : IDeviceService
         => Task.CompletedTask;
 
     public void RaiseChanged() => DevicesChanged?.Invoke();
-
-    event Action IDeviceService.DevicesChanged
-    {
-        add => DevicesChanged += value;
-        remove => DevicesChanged -= value;
-    }
 }

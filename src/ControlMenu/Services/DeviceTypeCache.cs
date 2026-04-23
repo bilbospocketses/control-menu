@@ -5,15 +5,17 @@ namespace ControlMenu.Services;
 public sealed class DeviceTypeCache : IDeviceTypeCache, IDisposable
 {
     private readonly IDeviceService _deviceService;
+    private readonly IDeviceChangeNotifier _notifier;
     private readonly ReaderWriterLockSlim _lock = new();
     private HashSet<DeviceType> _typesPresent = new();
 
     public event Action? CacheUpdated;
 
-    public DeviceTypeCache(IDeviceService deviceService)
+    public DeviceTypeCache(IDeviceService deviceService, IDeviceChangeNotifier notifier)
     {
         _deviceService = deviceService;
-        _deviceService.DevicesChanged += OnDevicesChanged;
+        _notifier = notifier;
+        _notifier.Changed += OnDevicesChanged;
     }
 
     public bool HasDevicesOfType(DeviceType type)
@@ -45,10 +47,7 @@ public sealed class DeviceTypeCache : IDeviceTypeCache, IDisposable
 
     public void Dispose()
     {
-        // Unsubscribe first so no NEW handler invocations start; in-flight handlers
-        // may race _lock.Dispose() but their ObjectDisposedException is swallowed
-        // by OnDevicesChanged's catch.
-        _deviceService.DevicesChanged -= OnDevicesChanged;
+        _notifier.Changed -= OnDevicesChanged;
         _lock.Dispose();
     }
 }

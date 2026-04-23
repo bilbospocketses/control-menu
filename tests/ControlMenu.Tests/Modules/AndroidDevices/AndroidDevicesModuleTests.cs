@@ -115,9 +115,12 @@ public class AndroidDevicesModuleTests
             fakeDeviceService.Devices.Add(new Device { Id = Guid.NewGuid(), Name = "D", Type = t, MacAddress = "aa", ModuleId = "android-devices" });
 
         services.AddSingleton<IDeviceService>(fakeDeviceService);
+        services.AddSingleton<IDeviceChangeNotifier, DeviceChangeNotifier>();
         services.AddSingleton<IDeviceTypeCache>(sp =>
         {
-            var cache = new DeviceTypeCache(sp.GetRequiredService<IDeviceService>());
+            var cache = new DeviceTypeCache(
+                sp.GetRequiredService<IDeviceService>(),
+                sp.GetRequiredService<IDeviceChangeNotifier>());
             cache.RefreshAsync().GetAwaiter().GetResult();
             return cache;
         });

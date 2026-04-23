@@ -8,11 +8,12 @@ namespace ControlMenu.Tests.Services;
 public class DeviceTypeCacheTests
 {
     private readonly FakeDeviceService _deviceService = new();
+    private readonly FakeDeviceChangeNotifier _notifier = new();
     private readonly DeviceTypeCache _cache;
 
     public DeviceTypeCacheTests()
     {
-        _cache = new DeviceTypeCache(_deviceService);
+        _cache = new DeviceTypeCache(_deviceService, _notifier);
     }
 
     private static Device Make(DeviceType type)
@@ -40,7 +41,7 @@ public class DeviceTypeCacheTests
     }
 
     [Fact]
-    public async Task DevicesChanged_TriggersReadAndCacheUpdated()
+    public async Task NotifierChanged_TriggersRefreshAndCacheUpdated()
     {
         var updated = 0;
         var tcs = new TaskCompletionSource();
@@ -51,7 +52,7 @@ public class DeviceTypeCacheTests
         };
 
         _deviceService.Devices.Add(Make(DeviceType.AndroidPhone));
-        _deviceService.RaiseChanged();
+        _notifier.RaiseChanged();
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.True(_cache.HasDevicesOfType(DeviceType.AndroidPhone));
@@ -70,23 +71,22 @@ public class DeviceTypeCacheTests
         _cache.CacheUpdated += () => tcs.TrySetResult();
 
         _deviceService.Devices.Clear();
-        _deviceService.RaiseChanged();
+        _notifier.RaiseChanged();
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.False(_cache.HasDevicesOfType(DeviceType.AndroidPhone));
     }
 
     [Fact]
-    public async Task Dispose_UnsubscribesFromDevicesChanged()
+    public async Task Dispose_UnsubscribesFromNotifier()
     {
         var updated = 0;
         _cache.CacheUpdated += () => updated++;
 
         _cache.Dispose();
         _deviceService.Devices.Add(Make(DeviceType.AndroidPhone));
-        _deviceService.RaiseChanged();
+        _notifier.RaiseChanged();
 
-        // Give any in-flight handler a chance to run; we expect NONE.
         await Task.Delay(100);
 
         Assert.Equal(0, updated);

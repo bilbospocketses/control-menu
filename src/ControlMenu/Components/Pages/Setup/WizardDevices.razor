@@ -76,7 +76,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadDevices();
-        DeviceService.DevicesChanged += OnDevicesChanged;
+        // TODO(Task 8): subscribe to IDeviceChangeNotifier.Changed instead of DeviceService.DevicesChanged
         Handler.OnStateChanged += HandleHandlerStateChanged;
     }
 
@@ -226,7 +226,7 @@
 
     public void Dispose()
     {
-        DeviceService.DevicesChanged -= OnDevicesChanged;
+        // TODO(Task 8): unsubscribe from IDeviceChangeNotifier.Changed
         Handler.OnStateChanged -= HandleHandlerStateChanged;
     }
 }

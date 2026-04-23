@@ -22,7 +22,7 @@ public sealed class DeviceTypePresenceWatcher : IDisposable
         _deviceService = deviceService;
         _nav = nav;
         _onInvalidateAsync = onInvalidateAsync;
-        _deviceService.DevicesChanged += OnDevicesChanged;
+        // TODO(Task 6): subscribe to IDeviceChangeNotifier.Changed instead of DeviceService.DevicesChanged
     }
 
     /// <summary>
@@ -62,5 +62,8 @@ public sealed class DeviceTypePresenceWatcher : IDisposable
         }
     }
 
-    public void Dispose() => _deviceService.DevicesChanged -= OnDevicesChanged;
+    public void Dispose()
+    {
+        // TODO(Task 6): unsubscribe from IDeviceChangeNotifier.Changed
+    }
 }
