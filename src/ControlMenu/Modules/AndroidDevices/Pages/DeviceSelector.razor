@@ -30,7 +30,7 @@ else
         {
             <div class="device-card @(device.LastSeen.HasValue && device.LastSeen > DateTime.UtcNow.AddMinutes(-5) ? "online" : "offline")">
                 <div class="device-card-header">
-                    <i class="bi @(device.Type == DeviceType.GoogleTV ? "bi-tv" : "bi-phone")"></i>
+                    <i class="bi @IconFor(device.Type)"></i>
                     <h3>@device.Name</h3>
                 </div>
                 <div class="device-card-body">
@@ -48,18 +48,9 @@ else
                     </div>
                 </div>
                 <div class="device-card-actions">
-                    @if (device.Type == DeviceType.GoogleTV)
-                    {
-                        <a href="/android/googletv/@device.Id" class="btn btn-primary">
-                            <i class="bi bi-gear"></i> Manage
-                        </a>
-                    }
-                    else
-                    {
-                        <a href="/android/phone/@device.Id" class="btn btn-primary">
-                            <i class="bi bi-gear"></i> Manage
-                        </a>
-                    }
+                    <a href="@RouteFor(device)" class="btn btn-primary">
+                        <i class="bi bi-gear"></i> Manage
+                    </a>
                 </div>
             </div>
         }
@@ -78,4 +69,22 @@ else
         _devices = allDevices.Where(d => d.ModuleId == "android-devices").ToList();
         _loading = false;
     }
+
+    private static string IconFor(DeviceType type) => type switch
+    {
+        DeviceType.GoogleTV      => "bi-tv",
+        DeviceType.AndroidPhone  => "bi-phone",
+        DeviceType.AndroidTablet => "bi-tablet-landscape",
+        DeviceType.AndroidWatch  => "bi-smartwatch",
+        _                        => "bi-phone",
+    };
+
+    private static string RouteFor(Device device) => device.Type switch
+    {
+        DeviceType.GoogleTV      => $"/android/googletv/{device.Id}",
+        DeviceType.AndroidPhone  => $"/android/phone/{device.Id}",
+        DeviceType.AndroidTablet => $"/android/tablet/{device.Id}",
+        DeviceType.AndroidWatch  => $"/android/watch/{device.Id}",
+        _                        => $"/android/phone/{device.Id}",
+    };
 }

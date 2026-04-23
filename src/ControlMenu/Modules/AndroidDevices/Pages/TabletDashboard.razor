@@ -54,7 +54,7 @@ else
                 {
                     <span class="action-status">Send PIN to unlock screen</span>
                     <div class="action-buttons">
-                        <button class="btn btn-sm btn-success" @onclick="UnlockPhone" disabled="@(_busy || !_connected)">Unlock</button>
+                        <button class="btn btn-sm btn-success" @onclick="UnlockTablet" disabled="@(_busy || !_connected)">Unlock</button>
                     </div>
                 }
                 else
@@ -151,7 +151,7 @@ else
         }
     }
 
-    private async Task UnlockPhone()
+    private async Task UnlockTablet()
     {
         if (_device is null || string.IsNullOrEmpty(Ip) || string.IsNullOrEmpty(_pin)) return;
         _busy = true;

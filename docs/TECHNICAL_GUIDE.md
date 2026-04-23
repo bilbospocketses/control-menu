@@ -313,6 +313,10 @@ Additional URL parameters supported by `embed.html` — `host`, `port`, `secure`
 
 The Android Watch dashboard (`/android/watch`) ships as a near-clone of the Android Phone dashboard and has not been verified against a physical Wear OS device (no test hardware available at release time). Code parity with Phone means ADB-connect, PIN unlock, and the scrcpy mirror all wire up identically; please report any watch-specific issues so we can iterate.
 
+### Per-circuit reactivity — cross-tab updates not propagated
+
+Both `IDeviceService` and `IDeviceTypeCache` are registered as scoped services, meaning each Blazor circuit (browser connection) gets its own instance. A device registered in tab A's scanner raises `DevicesChanged` in tab A's circuit only — tab B's sidebar won't update until its own circuit triggers a fresh DB read (navigation, refresh, etc.). This is acceptable for Control Menu's single-user local-deployment model. Multi-user or multi-tab real-time coordination would require a singleton event aggregator (e.g., a `SingletonDeviceChangeBus` that scoped services subscribe to via host-wide pub/sub).
+
 ### Critical Bug Fix
 
 The phone mirror panel required explicit sizing for iframe click handling to work correctly. Without `position: relative` on the container and `position: absolute` on the iframe, click events would not propagate through to the ws-scrcpy-web stream. This is documented further in [Known Issues and Fixes](#14-known-issues-and-fixes).
