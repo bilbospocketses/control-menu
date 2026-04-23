@@ -1,0 +1,220 @@
+@page "/android/tablet"
+@page "/android/tablet/{DeviceId:guid}"
+@using ControlMenu.Data.Entities
+@using ControlMenu.Data.Enums
+@using ControlMenu.Services
+@implements IDisposable
+@using ControlMenu.Modules.AndroidDevices.Services
+
+<PageTitle>Android Tablet - @(_device?.Name ?? "Select Device")</PageTitle>
+
+@if (_device is null)
+{
+    <h1><i class="bi bi-tablet-landscape"></i> Android Tablet</h1>
+    <p>No device selected. <a href="/android/devices">Select a device</a>.</p>
+}
+else
+{
+    <div class="device-header">
+        <h1><i class="bi bi-tablet-landscape"></i> Android Tablet</h1>
+        <span class="status-badge @(_connected ? "connected" : "disconnected")">
+            <i class="bi @(_connected ? "bi-wifi" : "bi-wifi-off")"></i>
+            @(_connected ? "Connected" : "Disconnected")
+        </span>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_statusMessage))
+    {
+        <div class="status-bar @_statusClass">
+            <i class="bi @_statusIcon"></i> @_statusMessage
+        </div>
+    }
+
+    <div class="dashboard-layout">
+        <div class="controls-panel">
+            <h3 class="panel-heading">Quick Actions</h3>
+
+            <!-- ADB Connect -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-plug"></i> ADB Connect
+                </div>
+                <span class="action-status">WiFi connection</span>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-primary" @onclick="ConnectDevice" disabled="@_busy">Connect</button>
+                </div>
+            </div>
+
+            <!-- Unlock Tablet -->
+            <div class="action-row">
+                <div class="action-label">
+                    <i class="bi bi-unlock"></i> Unlock Tablet
+                </div>
+                @if (_hasPin)
+                {
+                    <span class="action-status">Send PIN to unlock screen</span>
+                    <div class="action-buttons">
+                        <button class="btn btn-sm btn-success" @onclick="UnlockPhone" disabled="@(_busy || !_connected)">Unlock</button>
+                    </div>
+                }
+                else
+                {
+                    <span class="action-status">Set PIN in <a href="/settings/devices">Device Settings</a></span>
+                }
+            </div>
+        </div>
+
+        <div class="mirror-column">
+            <span class="device-name">@_device.Name</span>
+            <div class="mirror-panel" style="aspect-ratio: @MirrorAspectRatio;">
+                <ScrcpyMirror Udid="@($"{Ip}:{Port}")" Inline="true" DeviceKind="tablet" />
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid? DeviceId { get; set; }
+    [Inject] private IDeviceService DeviceService { get; set; } = default!;
+    [Inject] private IAdbService AdbService { get; set; } = default!;
+    [Inject] private INetworkDiscoveryService NetworkDiscovery { get; set; } = default!;
+    [Inject] private IConfigurationService Config { get; set; } = default!;
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private DeviceTypePresenceWatcher? _presenceWatcher;
+    private Device? _device;
+    private bool _connected;
+    private bool _busy;
+    private bool _hasPin;
+    private string? _pin;
+    private int _screenW = 9;
+    private int _screenH = 20;
+    private string _statusMessage = "";
+    private string _statusClass = "";
+    private string _statusIcon = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _presenceWatcher = new DeviceTypePresenceWatcher(
+            DeviceType.AndroidTablet,
+            DeviceService,
+            Nav,
+            () => InvokeAsync(StateHasChanged));
+
+        if (await _presenceWatcher.EnsurePresentOrRedirectAsync())
+            return;
+
+        if (DeviceId.HasValue)
+        {
+            _device = await DeviceService.GetDeviceAsync(DeviceId.Value);
+        }
+        else
+        {
+            var devices = await DeviceService.GetAllDevicesAsync();
+            _device = devices.FirstOrDefault(d => d.Type == DeviceType.AndroidTablet && d.ModuleId == "android-devices");
+        }
+
+        if (_device is not null)
+        {
+            _pin = await Config.GetSecretAsync($"device-pin-{_device.Id}");
+            _hasPin = !string.IsNullOrEmpty(_pin);
+        }
+
+        if (_device?.LastKnownIp is not null)
+        {
+            _connected = await AdbService.ConnectAsync(_device.LastKnownIp, _device.AdbPort);
+
+            if (_connected)
+            {
+                var size = await AdbService.GetScreenSizeAsync(_device.LastKnownIp, _device.AdbPort);
+                if (size is not null)
+                {
+                    _screenW = size.Value.Width;
+                    _screenH = size.Value.Height;
+                }
+            }
+        }
+    }
+
+    private string Ip => _device?.LastKnownIp ?? "";
+    private int Port => _device?.AdbPort ?? 5555;
+
+    private string MirrorAspectRatio
+    {
+        get
+        {
+            const double toolbarPx = 52.0;
+            const double refHeight = 700.0;
+            var videoWidth = refHeight * _screenW / _screenH;
+            var totalWidth = videoWidth + toolbarPx;
+            return $"{totalWidth:F0} / {refHeight:F0}";
+        }
+    }
+
+    private async Task UnlockPhone()
+    {
+        if (_device is null || string.IsNullOrEmpty(Ip) || string.IsNullOrEmpty(_pin)) return;
+        _busy = true;
+        await AdbService.UnlockWithPinAsync(Ip, Port, _pin);
+        SetStatus("Tablet unlocked.", "status-success", "bi-unlock");
+        _busy = false;
+    }
+
+    private async Task ConnectDevice()
+    {
+        if (_device is null) return;
+
+        if (_device.LastKnownIp is null && !string.IsNullOrEmpty(_device.MacAddress))
+        {
+            var ip = await NetworkDiscovery.ResolveIpFromMacAsync(_device.MacAddress);
+            if (ip is not null)
+            {
+                _device.LastKnownIp = ip;
+                await DeviceService.UpdateLastSeenAsync(_device.Id, ip);
+            }
+        }
+
+        if (_device.LastKnownIp is null)
+        {
+            SetStatus("No IP address known for this device. Run a network scan in Settings.", "status-warning", "bi-exclamation-triangle");
+            return;
+        }
+        _busy = true;
+        _connected = await AdbService.ConnectAsync(Ip, Port);
+        if (_connected)
+        {
+            await DeviceService.UpdateLastSeenAsync(_device.Id, _device.LastKnownIp);
+        }
+        SetStatus(_connected ? "Connected successfully." : "Connection failed.", _connected ? "status-success" : "status-warning", _connected ? "bi-check-circle" : "bi-x-circle");
+        _busy = false;
+    }
+
+    private CancellationTokenSource? _statusCts;
+
+    private void SetStatus(string message, string cssClass, string icon, int dismissMs = 5000)
+    {
+        _statusMessage = message;
+        _statusClass = cssClass;
+        _statusIcon = icon;
+
+        _statusCts?.Cancel();
+        _statusCts = new CancellationTokenSource();
+        var token = _statusCts.Token;
+
+        _ = Task.Delay(dismissMs, token).ContinueWith(_ =>
+        {
+            InvokeAsync(() =>
+            {
+                _statusMessage = "";
+                StateHasChanged();
+            });
+        }, TaskContinuationOptions.OnlyOnRanToCompletion);
+    }
+
+    public void Dispose()
+    {
+        _presenceWatcher?.Dispose();
+        _statusCts?.Cancel();
+        _statusCts?.Dispose();
+    }
+}
