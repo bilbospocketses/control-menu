@@ -45,6 +45,9 @@ public sealed class DeviceTypeCache : IDeviceTypeCache, IDisposable
 
     public void Dispose()
     {
+        // Unsubscribe first so no NEW handler invocations start; in-flight handlers
+        // may race _lock.Dispose() but their ObjectDisposedException is swallowed
+        // by OnDevicesChanged's catch.
         _deviceService.DevicesChanged -= OnDevicesChanged;
         _lock.Dispose();
     }

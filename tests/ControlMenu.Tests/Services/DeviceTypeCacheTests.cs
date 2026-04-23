@@ -43,11 +43,16 @@ public class DeviceTypeCacheTests
     public async Task DevicesChanged_TriggersReadAndCacheUpdated()
     {
         var updated = 0;
-        _cache.CacheUpdated += () => updated++;
+        var tcs = new TaskCompletionSource();
+        _cache.CacheUpdated += () =>
+        {
+            updated++;
+            tcs.TrySetResult();
+        };
 
         _deviceService.Devices.Add(Make(DeviceType.AndroidPhone));
         _deviceService.RaiseChanged();
-        await Task.Delay(50);   // let async void handler settle
+        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.True(_cache.HasDevicesOfType(DeviceType.AndroidPhone));
         Assert.Equal(1, updated);
@@ -61,9 +66,12 @@ public class DeviceTypeCacheTests
         await _cache.RefreshAsync();
         Assert.True(_cache.HasDevicesOfType(DeviceType.AndroidPhone));
 
+        var tcs = new TaskCompletionSource();
+        _cache.CacheUpdated += () => tcs.TrySetResult();
+
         _deviceService.Devices.Clear();
         _deviceService.RaiseChanged();
-        await Task.Delay(50);
+        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.False(_cache.HasDevicesOfType(DeviceType.AndroidPhone));
     }
@@ -77,7 +85,9 @@ public class DeviceTypeCacheTests
         _cache.Dispose();
         _deviceService.Devices.Add(Make(DeviceType.AndroidPhone));
         _deviceService.RaiseChanged();
-        await Task.Delay(50);
+
+        // Give any in-flight handler a chance to run; we expect NONE.
+        await Task.Delay(100);
 
         Assert.Equal(0, updated);
     }
