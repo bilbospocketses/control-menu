@@ -1,0 +1,209 @@
+@using ControlMenu.Services
+@inject IConfigurationService Config
+@inject IScrcpyProbeService ProbeService
+@inject IJSRuntime JS
+
+<dialog @ref="_dialogRef" class="scrcpy-settings-dialog">
+    <div class="modal-header">
+        <span class="modal-title">@DeviceName</span>
+        <button class="modal-close" @onclick="Close" title="Close">&times;</button>
+    </div>
+
+    <div class="modal-controls">
+        @if (_probing)
+        {
+            <span class="label">status:</span>
+            <span class="status-probing">probing...</span>
+        }
+        else
+        {
+            <span class="label">video codec:</span>
+            <select class="input" @bind="_codec">
+                @foreach (var c in _availableCodecs)
+                {
+                    <option value="@c">@c</option>
+                }
+            </select>
+
+            <span class="label">encoder:</span>
+            <select class="input" @bind="_encoder">
+                <option value="">(auto)</option>
+                @foreach (var e in FilteredEncoders)
+                {
+                    <option value="@e">@e</option>
+                }
+            </select>
+
+            <span class="label">max fps (@_maxFps):</span>
+            <input type="range" class="input" min="1" max="60" step="1" @bind="_maxFps" @bind:event="oninput" />
+
+            <span class="label">audio codec:</span>
+            <select class="input" disabled="@(!_audio)" @bind="_audioCodec">
+                @foreach (var c in _availableAudioCodecs)
+                {
+                    <option value="@c">@c</option>
+                }
+            </select>
+
+            <span class="label">audio source:</span>
+            <select class="input" disabled="@(!_audio)" @bind="_audioSource">
+                <option value="playback">playback — keeps device audio</option>
+                <option value="output">output — silences device</option>
+                <option value="mic">mic — captures microphone</option>
+            </select>
+
+            <span class="label">enable audio:</span>
+            <input type="checkbox" class="input checkbox" @bind="_audio" />
+
+            <span class="label">bitrate (@FormatBitrate(_bitrate)):</span>
+            <input type="range" class="input" min="524288" max="8388608" step="524288" @bind="_bitrate" @bind:event="oninput" />
+        }
+    </div>
+
+    <div class="modal-footer">
+        @if (!string.IsNullOrEmpty(_notification))
+        {
+            <span class="notification-chip">@_notification</span>
+        }
+        <div class="modal-buttons">
+            <button class="btn-modal" @onclick="OnSave" title="Save current settings">save</button>
+            <button class="btn-modal" @onclick="OnClearRefresh" title="Clear saved settings and re-probe device capabilities">clear / refresh</button>
+            <button class="btn-modal btn-connect" @onclick="OnConnect" title="Reconnect stream with current settings">connect</button>
+        </div>
+    </div>
+</dialog>
+
+@code {
+    [Parameter, EditorRequired] public Guid DeviceId { get; set; }
+    [Parameter, EditorRequired] public string DeviceName { get; set; } = "";
+    [Parameter, EditorRequired] public string Udid { get; set; } = "";
+    [Parameter] public EventCallback<ScrcpySettings> OnConnectStream { get; set; }
+
+    private ElementReference _dialogRef;
+    private bool _probing;
+    private string? _notification;
+
+    private string _codec = "h264";
+    private string _encoder = "";
+    private int _maxFps = 60;
+    private int _bitrate = 8_000_000;
+    private int _maxSize = 1920;
+    private bool _audio = true;
+    private string _audioSource = "playback";
+    private string _audioCodec = "opus";
+
+    private string[] _videoEncoders = [];
+    private string[] _audioEncoders = [];
+    private string[] _availableCodecs = ["h264", "h265", "av1"];
+    private string[] _availableAudioCodecs = ["opus", "aac", "flac", "raw"];
+
+    private IEnumerable<string> FilteredEncoders => _videoEncoders.Where(e =>
+        _codec == "h265" ? (e.Contains("265") || e.Contains("hevc", StringComparison.OrdinalIgnoreCase)) :
+        _codec == "h264" ? (e.Contains("264") || e.Contains("avc", StringComparison.OrdinalIgnoreCase)) :
+        _codec == "av1" ? e.Contains("av1", StringComparison.OrdinalIgnoreCase) :
+        true);
+
+    public async Task OpenAsync()
+    {
+        _notification = null;
+        await LoadFromDb();
+        StateHasChanged();
+        await Task.Yield();
+        await JS.InvokeVoidAsync("HTMLDialogElement.prototype.showModal.call", _dialogRef);
+    }
+
+    private async Task LoadFromDb()
+    {
+        var settings = await ScrcpySettings.LoadAsync(Config, DeviceId);
+        if (settings is not null)
+        {
+            _codec = settings.Codec ?? "h264";
+            _encoder = settings.Encoder ?? "";
+            _bitrate = settings.Bitrate ?? 8_000_000;
+            _maxFps = settings.MaxFps ?? 60;
+            _maxSize = settings.MaxSize ?? 1920;
+            _audio = settings.Audio ?? true;
+            _audioSource = settings.AudioSource ?? "playback";
+            _audioCodec = settings.AudioCodec ?? "opus";
+        }
+
+        var encodersRaw = await Config.GetSettingAsync($"scrcpy-videoencoders-{DeviceId}", "android-devices");
+        _videoEncoders = string.IsNullOrEmpty(encodersRaw) ? [] : encodersRaw.Split(',');
+
+        var audioEncodersRaw = await Config.GetSettingAsync($"scrcpy-audioencoders-{DeviceId}", "android-devices");
+        _audioEncoders = string.IsNullOrEmpty(audioEncodersRaw) ? [] : audioEncodersRaw.Split(',');
+
+        if (_videoEncoders.Length == 0 && _audioEncoders.Length == 0)
+            await RunProbe();
+    }
+
+    private async Task RunProbe()
+    {
+        _probing = true;
+        StateHasChanged();
+
+        var probe = await ProbeService.ProbeAsync(Udid);
+        if (probe is not null)
+        {
+            _videoEncoders = probe.VideoEncoders;
+            _audioEncoders = probe.AudioEncoders;
+
+            var defaults = ScrcpySettings.DeriveDefaults(probe);
+            _codec = defaults.Codec ?? "h264";
+            _encoder = defaults.Encoder ?? "";
+            _bitrate = defaults.Bitrate ?? 8_000_000;
+            _maxFps = defaults.MaxFps ?? 60;
+            _maxSize = defaults.MaxSize ?? 1920;
+            _audio = defaults.Audio ?? true;
+            _audioSource = defaults.AudioSource ?? "playback";
+            _audioCodec = defaults.AudioCodec ?? "opus";
+
+            await ScrcpySettings.SaveProbeCacheAsync(Config, DeviceId, probe);
+        }
+
+        _probing = false;
+        StateHasChanged();
+    }
+
+    private ScrcpySettings CurrentSettings => new(
+        Codec: _codec,
+        Encoder: string.IsNullOrEmpty(_encoder) ? null : _encoder,
+        Bitrate: _bitrate,
+        MaxFps: _maxFps,
+        MaxSize: _maxSize,
+        Audio: _audio,
+        AudioSource: _audioSource,
+        AudioCodec: _audioCodec);
+
+    private async Task OnSave()
+    {
+        await CurrentSettings.SaveAsync(Config, DeviceId);
+        _notification = "settings saved";
+        StateHasChanged();
+    }
+
+    private async Task OnClearRefresh()
+    {
+        await ScrcpySettings.ClearAllAsync(Config, DeviceId);
+        await RunProbe();
+        _notification = "defaults restored";
+        StateHasChanged();
+    }
+
+    private async Task OnConnect()
+    {
+        await OnConnectStream.InvokeAsync(CurrentSettings);
+        await JS.InvokeVoidAsync("HTMLDialogElement.prototype.close.call", _dialogRef);
+    }
+
+    private async Task Close()
+    {
+        await JS.InvokeVoidAsync("HTMLDialogElement.prototype.close.call", _dialogRef);
+    }
+
+    private static string FormatBitrate(int bps)
+    {
+        if (bps >= 1_000_000) return $"{bps / 1_000_000.0:F1} Mbps";
+        return $"{bps / 1_000.0:F0} Kbps";
+    }
+}

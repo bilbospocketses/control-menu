@@ -1,0 +1,129 @@
+.scrcpy-settings-dialog {
+    background: var(--bs-body-bg, #1a1a2e);
+    color: var(--bs-body-color, #e0e0e0);
+    border: 1px solid var(--bs-border-color, #333);
+    border-radius: 8px;
+    padding: 0;
+    min-width: 500px;
+    max-width: 700px;
+}
+
+.scrcpy-settings-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--bs-border-color, #333);
+}
+
+.modal-title {
+    font-weight: bold;
+    font-size: 1.1rem;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    color: var(--bs-body-color, #e0e0e0);
+    font-size: 1.4rem;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+}
+
+.modal-controls {
+    display: grid;
+    grid-template-columns: 35% 1fr;
+    gap: 0.5rem 0.75rem;
+    align-items: center;
+    padding: 16px;
+}
+
+.label {
+    font-size: 13px;
+    color: #aaa;
+    text-align: right;
+    padding-right: 8px;
+}
+
+.input {
+    background: var(--bs-tertiary-bg, #1a1a2e);
+    color: var(--bs-body-color, #e0e0e0);
+    border: 1px solid var(--bs-border-color, #444);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 13px;
+    width: 100%;
+}
+
+.input:disabled {
+    opacity: 0.4;
+}
+
+.checkbox {
+    width: 16px;
+    height: 16px;
+    justify-self: start;
+}
+
+input[type="range"] {
+    accent-color: #5b9aff;
+    padding: 0;
+    border: none;
+    background: transparent;
+}
+
+.status-probing {
+    color: #f06c75;
+    font-size: 13px;
+}
+
+.modal-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--bs-border-color, #333);
+}
+
+.notification-chip {
+    font-size: 12px;
+    color: #4ade80;
+    padding: 2px 10px;
+    border: 1px solid #4ade80;
+    border-radius: 12px;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.btn-modal {
+    background: transparent;
+    color: var(--bs-body-color, #e0e0e0);
+    border: 1px solid var(--bs-border-color, #444);
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.btn-modal:hover {
+    background: var(--bs-tertiary-bg, #2a2a3a);
+}
+
+.btn-connect {
+    color: #5b9aff;
+    border-color: #5b9aff;
+}
+
+.btn-connect:hover {
+    background: rgba(91, 154, 255, 0.1);
+}
