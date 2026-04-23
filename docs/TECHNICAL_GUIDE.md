@@ -307,6 +307,12 @@ Additional URL parameters supported by `embed.html` — `host`, `port`, `secure`
 
 **Android Phone (Portrait)**: Uses a `position: relative` container with an `absolute`-positioned iframe. The aspect ratio is calculated from ADB screen dimensions (via `GetScreenSizeAsync`) plus toolbar width compensation.
 
+**Android Tablet / Android Watch**: Same dashboards as Android Phone, differing only in label, icon, `DeviceType` filter, and `DeviceKind` attribute passed to `ScrcpyMirror`. The `DeviceTypePresenceWatcher` in each dashboard redirects to `/android/devices` when the last device of its type is deleted.
+
+### Watch dashboard — unverified on real hardware
+
+The Android Watch dashboard (`/android/watch`) ships as a near-clone of the Android Phone dashboard and has not been verified against a physical Wear OS device (no test hardware available at release time). Code parity with Phone means ADB-connect, PIN unlock, and the scrcpy mirror all wire up identically; please report any watch-specific issues so we can iterate.
+
 ### Critical Bug Fix
 
 The phone mirror panel required explicit sizing for iframe click handling to work correctly. Without `position: relative` on the container and `position: absolute` on the iframe, click events would not propagate through to the ws-scrcpy-web stream. This is documented further in [Known Issues and Fixes](#14-known-issues-and-fixes).
