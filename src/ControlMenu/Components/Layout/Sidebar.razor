@@ -105,7 +105,6 @@
     private bool Collapsed { get; set; }
     private readonly HashSet<string> _expandedGroups = new();
     private bool _allExpanded;
-    private readonly Dictionary<Modules.NavEntry, bool> _visibilityCache = new();
 
     private static readonly Dictionary<string, string> ModuleImageMap = new()
     {
@@ -115,31 +114,27 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await DeviceTypeCache.RefreshAsync();
         DeviceTypeCache.CacheUpdated += OnCacheUpdated;
+        await DeviceTypeCache.RefreshAsync();
     }
 
     private async void OnCacheUpdated()
     {
-        await InvokeAsync(() =>
+        try
         {
-            _visibilityCache.Clear();
-            StateHasChanged();
-        });
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Async-void handler: swallow to avoid terminating the circuit.
+            // A missed StateHasChanged is non-fatal; user sees stale filter until next update.
+        }
     }
 
     private IEnumerable<Modules.NavEntry> VisibleEntries(Modules.IToolModule module) =>
         module.GetNavEntries()
-              .Where(entry => entry.IsVisible is null
-                              || _visibilityCache.GetValueOrDefault(entry, EvaluateVisibility(entry)))
+              .Where(entry => entry.IsVisible is null || entry.IsVisible(ServiceProvider))
               .OrderBy(e => e.SortOrder);
-
-    private bool EvaluateVisibility(Modules.NavEntry entry)
-    {
-        var visible = entry.IsVisible!.Invoke(ServiceProvider);
-        _visibilityCache[entry] = visible;
-        return visible;
-    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
