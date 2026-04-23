@@ -54,6 +54,8 @@ builder.Services.AddScoped<IDeviceTypeCache, DeviceTypeCache>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
 
+builder.Services.AddSingleton<IScrcpyProbeService, ScrcpyProbeService>();
+
 // Android Devices module services
 builder.Services.AddSingleton<IAdbService, AdbService>();
 
