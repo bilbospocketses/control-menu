@@ -95,6 +95,42 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Click Add — the form opens with Name already populated with "My Phone" (restored from Settings)
 - [ ] Save — device is re-added with its original name intact
 
+### 5e. A1+A4 dynamic nav and dashboards
+
+**Empty-inventory start:**
+- [ ] Fresh install or all devices deleted. Sidebar shows only "Device List" under Android Devices.
+- [ ] Navigate to `/android/phone` directly in the URL bar → redirected to `/android/devices`.
+
+**First-device emergence:**
+- [ ] On Device List page, scan and add an Android Phone. Sidebar updates within one render cycle to show "Android Phone" entry.
+- [ ] Click the Android Phone entry → `/android/phone` loads the newly added device.
+
+**Multi-type sidebar:**
+- [ ] Add an Android Tablet. Both "Android Phone" and "Android Tablet" entries present in sidebar.
+- [ ] Add a Google TV device. "Google TV" entry present too.
+
+**Last-device deletion while on its dashboard:**
+- [ ] Navigate to `/android/tablet`. Delete the only tablet from another browser tab or via the scanner. Current tab auto-redirects to `/android/devices`.
+- [ ] Repeat for phone (`/android/phone`) and Google TV (`/android/googletv`).
+
+**Watch dashboard cold load (no hardware test possible):**
+- [ ] Register a watch device (manually via DB or via scanner if the device advertises as a watch). Navigate to `/android/watch`. Page renders with "Unlock Watch" label. `ScrcpyMirror` iframe is wired.
+
+**Wizard flow (from fresh install):**
+- [ ] Walk the setup wizard. On Devices step, `DiscoveredPanel` renders, Scan Network button works, discovered list populates.
+- [ ] Use inline add on a discovered row → device appears in the "Registered devices" table below.
+- [ ] Complete wizard → `/` → sidebar shows the added device types.
+- [ ] Visual: verify the DiscoveredPanel table doesn't horizontally overflow the wizard content area (flagged in T14 review — `data-table-fixed` column widths total ~1105px).
+
+**Collapsed sidebar:**
+- [ ] Toggle sidebar collapsed. Device type entries still render as SVG icons (no text).
+- [ ] Click the Android Phone SVG icon → navigates correctly to `/android/phone`.
+
+**Icon visual check in both themes:**
+- [ ] Verify custom SVG icons render correctly in light mode.
+- [ ] Verify custom SVG icons render correctly in dark mode.
+- [ ] Flag any contrast issues with the device-list icon (lighter content against dark sidebar).
+
 ## 6. Settings > Cameras
 
 - [ ] Page loads at `/settings/cameras` with camera slots (default 8)
