@@ -27,7 +27,7 @@ public sealed class ScrcpyProbeService : IScrcpyProbeService
             using var ws = new ClientWebSocket();
             var baseUri = new Uri(_wsScrcpy.BaseUrl);
             var wsScheme = baseUri.Scheme == "https" ? "wss" : "ws";
-            var probeUri = new Uri($"{wsScheme}://{baseUri.Host}:{baseUri.Port}/?action=PROBE_DEVICE&udid={Uri.EscapeDataString(udid)}");
+            var probeUri = new Uri($"{wsScheme}://{baseUri.Host}:{baseUri.Port}/?action=probe&udid={Uri.EscapeDataString(udid)}");
 
             await ws.ConnectAsync(probeUri, cts.Token);
 

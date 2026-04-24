@@ -18,7 +18,7 @@
         else
         {
             <span class="label">video codec:</span>
-            <select class="input" @bind="_codec">
+            <select class="input" value="@_codec" @onchange="OnCodecChanged">
                 @foreach (var c in _availableCodecs)
                 {
                     <option value="@c">@c</option>
@@ -27,7 +27,6 @@
 
             <span class="label">encoder:</span>
             <select class="input" @bind="_encoder">
-                <option value="">(auto)</option>
                 @foreach (var e in FilteredEncoders)
                 {
                     <option value="@e">@e</option>
@@ -46,14 +45,25 @@
             </select>
 
             <span class="label">audio source:</span>
-            <select class="input" disabled="@(!_audio)" @bind="_audioSource">
-                <option value="playback">playback — keeps device audio</option>
+            <select class="input" disabled="@(!_audio || !_audioCaptureSupported)" @bind="_audioSource">
+                @if (_audioDupSupported)
+                {
+                    <option value="playback">playback — keeps device audio</option>
+                }
                 <option value="output">output — silences device</option>
                 <option value="mic">mic — captures microphone</option>
             </select>
 
             <span class="label">enable audio:</span>
-            <input type="checkbox" class="input checkbox" @bind="_audio" />
+            @if (_audioCaptureSupported)
+            {
+                <input type="checkbox" class="input checkbox" @bind="_audio" />
+            }
+            else
+            {
+                <input type="checkbox" class="input checkbox" disabled checked="@false"
+                       title="Android 11+ required for audio capture" />
+            }
 
             <span class="label">bitrate (@FormatBitrate(_bitrate)):</span>
             <input type="range" class="input" min="524288" max="8388608" step="524288" @bind="_bitrate" @bind:event="oninput" />
@@ -89,23 +99,49 @@
     private int _bitrate = 8_000_000;
     private int _maxSize = 1920;
     private bool _audio = true;
-    private string _audioSource = "playback";
+    private string _audioSource = "output";
     private string _audioCodec = "opus";
 
     private string[] _videoEncoders = [];
     private string[] _audioEncoders = [];
-    private string[] _availableCodecs = ["h264", "h265", "av1"];
-    private string[] _availableAudioCodecs = ["opus", "aac", "flac", "raw"];
+    private string[] _availableCodecs = ["h264"];
+    private string[] _availableAudioCodecs = ["raw"];
+    private int _sdkInt;
+    private bool _audioCaptureSupported = true;
+    private bool _audioDupSupported = true;
+    private string[]? _browserCodecs;
 
-    private IEnumerable<string> FilteredEncoders => _videoEncoders.Where(e =>
-        _codec == "h265" ? (e.Contains("265") || e.Contains("hevc", StringComparison.OrdinalIgnoreCase)) :
-        _codec == "h264" ? (e.Contains("264") || e.Contains("avc", StringComparison.OrdinalIgnoreCase)) :
-        _codec == "av1" ? e.Contains("av1", StringComparison.OrdinalIgnoreCase) :
-        true);
+    private IEnumerable<string> FilteredEncoders =>
+        _videoEncoders.Where(e => ScrcpySettings.EncoderMatchesCodec(e, _codec));
+
+    private void OnCodecChanged(ChangeEventArgs e)
+    {
+        _codec = e.Value?.ToString() ?? "h264";
+        _encoder = ScrcpySettings.PickBestEncoder(_videoEncoders, _codec) ?? "";
+    }
+
+    private void RebuildAvailableCodecs()
+    {
+        if (_videoEncoders.Length > 0)
+            _availableCodecs = ScrcpySettings.DetectVideoCodecs(_videoEncoders);
+        if (_audioEncoders.Length > 0)
+            _availableAudioCodecs = ScrcpySettings.DetectAudioCodecs(_audioEncoders);
+    }
+
+    private void ApplySdkGating()
+    {
+        _audioCaptureSupported = _sdkInt == 0 || ScrcpySettings.AudioCaptureSupported(_sdkInt);
+        _audioDupSupported = _sdkInt == 0 || ScrcpySettings.AudioDupSupported(_sdkInt);
+        if (!_audioCaptureSupported)
+            _audio = false;
+        if (!_audioDupSupported && _audioSource == "playback")
+            _audioSource = "output";
+    }
 
     public async Task OpenAsync()
     {
         _notification = null;
+        _browserCodecs ??= await JS.InvokeAsync<string[]>("codecSupport.detect");
         await LoadFromDb();
         StateHasChanged();
         await Task.Yield();
@@ -123,7 +159,7 @@
             _maxFps = settings.MaxFps ?? 60;
             _maxSize = settings.MaxSize ?? 1920;
             _audio = settings.Audio ?? true;
-            _audioSource = settings.AudioSource ?? "playback";
+            _audioSource = settings.AudioSource ?? "output";
             _audioCodec = settings.AudioCodec ?? "opus";
         }
 
@@ -133,8 +169,16 @@
         var audioEncodersRaw = await Config.GetSettingAsync($"scrcpy-audioencoders-{DeviceId}", "android-devices");
         _audioEncoders = string.IsNullOrEmpty(audioEncodersRaw) ? [] : audioEncodersRaw.Split(',');
 
+        var sdkRaw = await Config.GetSettingAsync($"scrcpy-sdkint-{DeviceId}", "android-devices");
+        _sdkInt = int.TryParse(sdkRaw, out var sdk) ? sdk : 0;
+        ApplySdkGating();
+
+        RebuildAvailableCodecs();
+
         if (_videoEncoders.Length == 0 && _audioEncoders.Length == 0)
             await RunProbe();
+        else if (string.IsNullOrEmpty(_encoder))
+            _encoder = ScrcpySettings.PickBestEncoder(_videoEncoders, _codec) ?? "";
     }
 
     private async Task RunProbe()
@@ -147,8 +191,11 @@
         {
             _videoEncoders = probe.VideoEncoders;
             _audioEncoders = probe.AudioEncoders;
+            _sdkInt = probe.SdkInt;
+            ApplySdkGating();
+            RebuildAvailableCodecs();
 
-            var defaults = ScrcpySettings.DeriveDefaults(probe);
+            var defaults = ScrcpySettings.DeriveDefaults(probe, _browserCodecs);
             _codec = defaults.Codec ?? "h264";
             _encoder = defaults.Encoder ?? "";
             _bitrate = defaults.Bitrate ?? 8_000_000;

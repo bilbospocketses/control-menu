@@ -102,7 +102,6 @@ else
     [Inject] private NavigationManager Nav { get; set; } = default!;
     [Inject] private IDeviceChangeNotifier DeviceChangeNotifier { get; set; } = default!;
     [Inject] private IScrcpyProbeService ProbeService { get; set; } = default!;
-
     private DeviceTypePresenceWatcher? _presenceWatcher;
     private Device? _device;
     private ScrcpySettings? _scrcpySettings;

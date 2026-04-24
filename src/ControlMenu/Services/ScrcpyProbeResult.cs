@@ -7,4 +7,5 @@ public record ScrcpyProbeResult(
     [property: JsonPropertyName("height")] int Height,
     [property: JsonPropertyName("density")] int Density,
     [property: JsonPropertyName("videoEncoders")] string[] VideoEncoders,
-    [property: JsonPropertyName("audioEncoders")] string[] AudioEncoders);
+    [property: JsonPropertyName("audioEncoders")] string[] AudioEncoders,
+    [property: JsonPropertyName("sdkInt")] int SdkInt = 0);
