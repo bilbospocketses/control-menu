@@ -22,6 +22,9 @@ Desktop.ini
 # Data Protection keys (machine-specific)
 keys/
 
+# Build logs
+build.log
+
 # Root-level binaries (existing tools — not part of the .NET project)
 /*.exe
 /*.dll
