@@ -13,9 +13,17 @@ window.filePickerOpen = async function (acceptTypes) {
         });
         const file = await handle.getFile();
         const buffer = await file.arrayBuffer();
+        // Encode as base64 — returning Uint8Array nested in an object does not
+        // round-trip cleanly through Blazor JS interop into a record's byte[] field.
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+        }
         return {
             name: file.name,
-            bytes: new Uint8Array(buffer)
+            bytesBase64: btoa(binary)
         };
     } catch (e) {
         if (e.name === 'AbortError') return null;

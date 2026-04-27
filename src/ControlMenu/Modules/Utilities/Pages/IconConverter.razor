@@ -124,12 +124,19 @@
         _savedPath = null;
         _error = null;
 
-        var result = await JS.InvokeAsync<FilePickerResult?>("filePickerOpen", ".png,.jpg,.jpeg,.bmp,.gif,.webp,.tiff,.tif");
-        if (result is null) return;
+        try
+        {
+            var result = await JS.InvokeAsync<FilePickerResult?>("filePickerOpen", ".png,.jpg,.jpeg,.bmp,.gif,.webp,.tiff,.tif");
+            if (result is null) return;
 
-        _fileName = result.Name;
-        _fileBytes = result.Bytes;
-        _icoFileName = Path.GetFileNameWithoutExtension(result.Name) + ".ico";
+            _fileName = result.Name;
+            _fileBytes = System.Convert.FromBase64String(result.BytesBase64);
+            _icoFileName = Path.GetFileNameWithoutExtension(result.Name) + ".ico";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not read selected file: {ex.Message}";
+        }
     }
 
     private void ToggleSize(int size, bool selected)
@@ -222,5 +229,5 @@
         }
     }
 
-    private record FilePickerResult(string Name, byte[] Bytes);
+    private record FilePickerResult(string Name, string BytesBase64);
 }

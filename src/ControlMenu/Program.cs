@@ -30,7 +30,13 @@ builder.Configuration["DependenciesRoot"] = depsRoot;
 
 // Blazor Server
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents()
+    .AddHubOptions(options =>
+    {
+        // Icon Converter ships image bytes (base64) over the SignalR circuit;
+        // default 32KB cap rejects anything but a tiny image.
+        options.MaximumReceiveMessageSize = 32 * 1024 * 1024; // 32 MB
+    });
 
 // Database — factory pattern required for Blazor Server (avoids stale change-tracker state)
 builder.Services.AddDbContextFactory<AppDbContext>(options =>
