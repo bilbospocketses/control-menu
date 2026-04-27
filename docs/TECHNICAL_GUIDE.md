@@ -663,6 +663,8 @@ Manages the lifecycle of external tool dependencies: version checking, downloadi
 
 **Installed version detection** prioritizes the local install path over the system PATH. This prevents a system-installed older version from masking the managed version and causing an update loop.
 
+**Install-path override storage** (`dep-path-{name}` Setting): paths under the module's `DepsRoot` are stored as **relative segments** (e.g. `"platform-tools"` rather than `C:\...\dependencies\platform-tools`); paths outside `DepsRoot` are stored as absolute. `InstallPathResolver` (in `Services/`) handles encode/decode against the current `DepsRoot`. This means folder/repo renames don't strand the override at the old absolute path. On startup `SyncDependenciesAsync` calls `ValidateInstallPathOverridesAsync`, which clears any override whose resolved parent directory no longer exists (defensive self-heal for absolute overrides pointing at vanished locations).
+
 **Periodic background checks**: `DependencyCheckHostedService` runs as a `BackgroundService`, checking all dependency versions on a configurable interval (default: 24 hours, setting key: `dep-check-interval`). It waits 10 seconds after app start before the first check.
 
 ### BackgroundJobService

@@ -42,6 +42,8 @@ public class DependencyManagerService : IDependencyManagerService
 
     public async Task SyncDependenciesAsync()
     {
+        await ValidateInstallPathOverridesAsync();
+
         using var db = await _dbFactory.CreateDbContextAsync();
         var declared = _modules
             .SelectMany(m => m.Dependencies.Select(d => (Module: m, Dep: d)))
@@ -572,7 +574,7 @@ public class DependencyManagerService : IDependencyManagerService
         if (moduleId is not null && dep.InstallPath is not null)
         {
             var customPath = await _config.GetSettingAsync($"dep-path-{dep.Name}");
-            var installDir = !string.IsNullOrEmpty(customPath) ? customPath : dep.InstallPath;
+            var installDir = InstallPathResolver.Resolve(dep.InstallPath, customPath);
 
             var exeName = dep.ExecutableName;
             if (OperatingSystem.IsWindows() && !exeName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
@@ -779,17 +781,57 @@ public class DependencyManagerService : IDependencyManagerService
 
     public async Task<string?> GetInstallPathAsync(string name, string moduleId)
     {
+        var dep = FindModuleDependency(moduleId, name);
+        if (dep?.InstallPath is null) return dep?.InstallPath;
+
         var custom = await _config.GetSettingAsync($"dep-path-{name}");
-        if (!string.IsNullOrWhiteSpace(custom)) return custom;
-        return FindModuleDependency(moduleId, name)?.InstallPath;
+        return InstallPathResolver.Resolve(dep.InstallPath, custom);
     }
 
     public async Task SetInstallPathAsync(string name, string path)
     {
         if (string.IsNullOrWhiteSpace(path))
+        {
             await _config.DeleteSettingAsync($"dep-path-{name}");
-        else
-            await _config.SetSettingAsync($"dep-path-{name}", path);
+            return;
+        }
+
+        var defaultInstallPath = _modules
+            .SelectMany(m => m.Dependencies)
+            .FirstOrDefault(d => d.Name == name)?.InstallPath;
+
+        var toStore = defaultInstallPath is null
+            ? path
+            : InstallPathResolver.Encode(path, defaultInstallPath);
+
+        await _config.SetSettingAsync($"dep-path-{name}", toStore);
+    }
+
+    /// <summary>
+    /// Clears any <c>dep-path-{name}</c> override whose configured directory has no existing parent
+    /// (e.g., the repo was renamed/moved and the override still points at the old absolute path).
+    /// Relative overrides resolve against the current <c>DepsRoot</c> and are not affected.
+    /// </summary>
+    private async Task ValidateInstallPathOverridesAsync()
+    {
+        foreach (var module in _modules)
+        {
+            foreach (var dep in module.Dependencies)
+            {
+                if (dep.InstallPath is null) continue;
+
+                var stored = await _config.GetSettingAsync($"dep-path-{dep.Name}");
+                if (string.IsNullOrWhiteSpace(stored)) continue;
+
+                var resolved = InstallPathResolver.Resolve(dep.InstallPath, stored);
+                if (!InstallPathResolver.IsParentMissing(resolved)) continue;
+
+                _logger.LogWarning(
+                    "Clearing stale install-path override for {Name}: {Path} (parent directory does not exist)",
+                    dep.Name, resolved);
+                await _config.DeleteSettingAsync($"dep-path-{dep.Name}");
+            }
+        }
     }
 
     public bool IsConfigurable(string name, string moduleId)
