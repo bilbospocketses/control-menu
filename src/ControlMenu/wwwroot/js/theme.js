@@ -8,6 +8,9 @@ window.themeManager = {
     set: function (theme) {
         localStorage.setItem(this._storageKey, theme);
         document.documentElement.setAttribute('data-theme', theme);
+        if (window.scrcpyThemeBridge) {
+            window.scrcpyThemeBridge.notify(theme);
+        }
     },
 
     toggle: function () {
