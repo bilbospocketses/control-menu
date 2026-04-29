@@ -7,6 +7,18 @@
     var PUSH_TYPE = 'ws-scrcpy-web:theme';
     var REQUEST_TYPE = 'ws-scrcpy-web:theme-request';
 
+    // Loop-prevention guard for the iframe → CM → iframe round-trip.
+    //
+    // Set true around themeManager.set(...) calls that originate from the
+    // iframe's `theme-changed` message, so themeManager's downstream call
+    // to scrcpyThemeBridge.notify(...) becomes a no-op instead of echoing
+    // back to the iframe.
+    //
+    // CONTRACT: this guard requires themeManager.set to be fully
+    // synchronous. The try/finally below relies on .set returning before
+    // the guard releases. If themeManager.set ever becomes async (await,
+    // microtask, Blazor JS interop round-trip, etc.), switch to a
+    // token/sequence-based guard before the change lands.
     var settingFromIframe = false;
 
     function currentTheme() {
