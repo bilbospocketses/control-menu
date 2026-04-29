@@ -1,4 +1,5 @@
 @using ControlMenu.Services
+@implements IAsyncDisposable
 
 <header class="top-bar">
     <div class="top-bar-breadcrumb">
@@ -39,6 +40,8 @@
     private IDependencyManagerService DepManager { get; set; } = default!;
 
     private int _updateCount;
+    private DotNetObjectReference<TopBar>? _selfRef;
+    private IJSObjectReference? _unsubscribe;
 
     protected override async Task OnInitializedAsync()
     {
@@ -50,6 +53,8 @@
         if (firstRender)
         {
             CurrentTheme = await JS.InvokeAsync<string>("themeManager.get");
+            _selfRef = DotNetObjectReference.Create(this);
+            _unsubscribe = await JS.InvokeAsync<IJSObjectReference>("themeManager.subscribeBlazor", _selfRef);
             StateHasChanged();
         }
     }
@@ -57,5 +62,32 @@
     private async Task ToggleTheme()
     {
         CurrentTheme = await JS.InvokeAsync<string>("themeManager.toggle");
+    }
+
+    [JSInvokable]
+    public async Task OnThemeChanged(string theme)
+    {
+        if (CurrentTheme != theme)
+        {
+            CurrentTheme = theme;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_unsubscribe is not null)
+            {
+                await _unsubscribe.InvokeVoidAsync("call");
+                await _unsubscribe.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // circuit closed; nothing to clean up
+        }
+        _selfRef?.Dispose();
     }
 }
