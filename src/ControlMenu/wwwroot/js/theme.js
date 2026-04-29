@@ -12,9 +12,16 @@ window.themeManager = {
         if (window.scrcpyThemeBridge) {
             window.scrcpyThemeBridge.notify(theme);
         }
-        // Notify Blazor (and any other) subscribers AFTER bridge.notify so
-        // the bridge's settingFromIframe guard wraps cleanly. Fire-and-forget
-        // — subscriber errors are swallowed so a misbehaving listener can't
+        // Notify Blazor (and any other) subscribers AFTER bridge.notify.
+        //
+        // The bridge's settingFromIframe guard is fully synchronous and
+        // released before this loop runs. The order matters mainly for
+        // re-entrancy: if a subscriber synchronously calls themeManager.set
+        // again, doing bridge.notify first means the iframe push for the
+        // outer set has already fired before the inner set re-enters, so
+        // the iframe sees state changes in the order they actually happened.
+        //
+        // Subscriber errors are swallowed so a misbehaving listener can't
         // break the theme toggle.
         for (var i = 0; i < this._listeners.length; i++) {
             try {
@@ -53,10 +60,18 @@ window.themeManager = {
     // method named 'OnThemeChanged(string theme)'.
     subscribeBlazor: function (dotnetRef) {
         return this.subscribe(function (theme) {
+            // invokeMethodAsync returns a promise. A synchronous try/catch
+            // catches setup errors (null ref, immediate disposal); .catch
+            // covers async rejections from a closed Blazor Server circuit.
             try {
-                dotnetRef.invokeMethodAsync('OnThemeChanged', theme);
+                var result = dotnetRef.invokeMethodAsync('OnThemeChanged', theme);
+                if (result && typeof result.catch === 'function') {
+                    result.catch(function () {
+                        // .NET reference disposed (circuit closed); ignore.
+                    });
+                }
             } catch (e) {
-                // ignore — the .NET reference may have been disposed
+                // ignore — synchronous failure path
             }
         });
     }
