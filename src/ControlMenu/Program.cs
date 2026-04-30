@@ -14,18 +14,8 @@ using Microsoft.Extensions.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Prepend bundled dependency folders to PATH for self-contained operation
 // ContentRootPath = project dir in dev, published root in production
 var depsRoot = Path.Combine(builder.Environment.ContentRootPath, "dependencies");
-if (Directory.Exists(depsRoot))
-{
-    var depPaths = Directory.GetDirectories(depsRoot)
-        .Where(d => !Path.GetFileName(d).StartsWith('.'));
-    var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
-    var newPath = string.Join(Path.PathSeparator, depPaths) + Path.PathSeparator + currentPath;
-    Environment.SetEnvironmentVariable("PATH", newPath);
-}
-// Store deps root for modules to reference
 builder.Configuration["DependenciesRoot"] = depsRoot;
 
 // Blazor Server
