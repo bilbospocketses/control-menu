@@ -7,8 +7,16 @@ namespace ControlMenu.Tests.Modules.AndroidDevices;
 public class AdbServiceTests
 {
     private readonly Mock<ICommandExecutor> _mockExecutor = new();
+    private readonly Mock<IDependencyPathResolver> _mockResolver = new();
 
-    private AdbService CreateService() => new(_mockExecutor.Object);
+    public AdbServiceTests()
+    {
+        // Resolver returns the literal string "adb" so existing string-based Setup() calls keep matching.
+        _mockResolver.Setup(r => r.ResolveAsync("android-devices", "adb", It.IsAny<CancellationToken>()))
+                     .ReturnsAsync("adb");
+    }
+
+    private AdbService CreateService() => new(_mockExecutor.Object, _mockResolver.Object);
 
     [Fact]
     public async Task ConnectAsync_ReturnsTrue_WhenAdbConnectsSuccessfully()

@@ -6,28 +6,33 @@ namespace ControlMenu.Modules.AndroidDevices.Services;
 public partial class AdbService : IAdbService
 {
     private readonly ICommandExecutor _executor;
+    private readonly IDependencyPathResolver _resolver;
 
-    public AdbService(ICommandExecutor executor)
+    public AdbService(ICommandExecutor executor, IDependencyPathResolver resolver)
     {
         _executor = executor;
+        _resolver = resolver;
     }
 
     private string DeviceArg(string ip, int port) => $"-s {ip}:{port}";
 
+    private Task<CommandResult> AdbAsync(string args, CancellationToken ct = default) =>
+        _executor.ExecuteResolvedAsync(_resolver, "android-devices", "adb", args, null, ct);
+
     public async Task<bool> ConnectAsync(string ip, int port, CancellationToken ct = default)
     {
-        var result = await _executor.ExecuteAsync("adb", $"connect {ip}:{port}", null, ct);
+        var result = await AdbAsync($"connect {ip}:{port}", ct);
         return result.ExitCode == 0 && result.StandardOutput.Contains("connected");
     }
 
     public async Task DisconnectAsync(string ip, int port, CancellationToken ct = default)
     {
-        await _executor.ExecuteAsync("adb", $"disconnect {ip}:{port}", null, ct);
+        await AdbAsync($"disconnect {ip}:{port}", ct);
     }
 
     public async Task<PowerState> GetPowerStateAsync(string ip, int port, CancellationToken ct = default)
     {
-        var result = await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell dumpsys power", null, ct);
+        var result = await AdbAsync($"{DeviceArg(ip, port)} shell dumpsys power", ct);
         if (result.ExitCode != 0) return PowerState.Unknown;
         if (result.StandardOutput.Contains("mwakefulness=awake", StringComparison.OrdinalIgnoreCase)
             || result.StandardOutput.Contains("mWakefulness=Awake"))
@@ -37,17 +42,17 @@ public partial class AdbService : IAdbService
 
     public async Task RebootAsync(string ip, int port, CancellationToken ct = default)
     {
-        await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell reboot", null, ct);
+        await AdbAsync($"{DeviceArg(ip, port)} shell reboot", ct);
     }
 
     public async Task TogglePowerAsync(string ip, int port, CancellationToken ct = default)
     {
-        await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell input keyevent KEYCODE_POWER", null, ct);
+        await AdbAsync($"{DeviceArg(ip, port)} shell input keyevent KEYCODE_POWER", ct);
     }
 
     public async Task<string> GetScreensaverAsync(string ip, int port, CancellationToken ct = default)
     {
-        var result = await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell settings get secure screensaver_components", null, ct);
+        var result = await AdbAsync($"{DeviceArg(ip, port)} shell settings get secure screensaver_components", ct);
         var output = result.StandardOutput.Trim();
         if (string.IsNullOrEmpty(output) || result.ExitCode != 0)
             return "Unknown";
@@ -65,23 +70,23 @@ public partial class AdbService : IAdbService
             "SkyFolio" => "com.snapwood.skyfolio/com.snapwood.skyfolio.DreamService",
             _ => "com.google.android.apps.tv.dreamx/.service.Backdrop"
         };
-        await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell settings put secure screensaver_components {component}", null, ct);
+        await AdbAsync($"{DeviceArg(ip, port)} shell settings put secure screensaver_components {component}", ct);
     }
 
     public async Task<int> GetScreenTimeoutAsync(string ip, int port, CancellationToken ct = default)
     {
-        var result = await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell settings get system screen_off_timeout", null, ct);
+        var result = await AdbAsync($"{DeviceArg(ip, port)} shell settings get system screen_off_timeout", ct);
         return int.TryParse(result.StandardOutput.Trim(), out var ms) ? ms : 0;
     }
 
     public async Task SetScreenTimeoutAsync(string ip, int port, int milliseconds, CancellationToken ct = default)
     {
-        await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell settings put system screen_off_timeout {milliseconds}", null, ct);
+        await AdbAsync($"{DeviceArg(ip, port)} shell settings put system screen_off_timeout {milliseconds}", ct);
     }
 
     public async Task<bool> IsLauncherDisabledAsync(string ip, int port, CancellationToken ct = default)
     {
-        var result = await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell pm list packages -d", null, ct);
+        var result = await AdbAsync($"{DeviceArg(ip, port)} shell pm list packages -d", ct);
         return result.StandardOutput.Contains("com.google.android.apps.tv.launcherx");
     }
 
@@ -89,24 +94,24 @@ public partial class AdbService : IAdbService
     {
         if (enabled)
         {
-            await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell pm enable com.google.android.apps.tv.launcherx", null, ct);
-            await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell pm enable com.google.android.tungsten.setupwraith", null, ct);
+            await AdbAsync($"{DeviceArg(ip, port)} shell pm enable com.google.android.apps.tv.launcherx", ct);
+            await AdbAsync($"{DeviceArg(ip, port)} shell pm enable com.google.android.tungsten.setupwraith", ct);
         }
         else
         {
-            await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell pm disable-user --user 0 com.google.android.apps.tv.launcherx", null, ct);
-            await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell pm disable-user --user 0 com.google.android.tungsten.setupwraith", null, ct);
+            await AdbAsync($"{DeviceArg(ip, port)} shell pm disable-user --user 0 com.google.android.apps.tv.launcherx", ct);
+            await AdbAsync($"{DeviceArg(ip, port)} shell pm disable-user --user 0 com.google.android.tungsten.setupwraith", ct);
         }
     }
 
     public async Task StartShizukuAsync(string ip, int port, CancellationToken ct = default)
     {
-        await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell sh /storage/emulated/0/Android/data/moe.shizuku.privileged.api/start.sh", null, ct);
+        await AdbAsync($"{DeviceArg(ip, port)} shell sh /storage/emulated/0/Android/data/moe.shizuku.privileged.api/start.sh", ct);
     }
 
     public async Task<IReadOnlyList<string>> ListProjectivyBackupsAsync(string ip, int port, CancellationToken ct = default)
     {
-        var result = await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell ls /storage/emulated/0/Projectivy-Backups", null, ct);
+        var result = await AdbAsync($"{DeviceArg(ip, port)} shell ls /storage/emulated/0/Projectivy-Backups", ct);
         if (result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StandardOutput))
             return [];
         return result.StandardOutput
@@ -116,14 +121,14 @@ public partial class AdbService : IAdbService
 
     public async Task RestoreProjectivyBackupAsync(string ip, int port, string filename, CancellationToken ct = default)
     {
-        await _executor.ExecuteAsync("adb",
+        await AdbAsync(
             $"{DeviceArg(ip, port)} shell am start -a android.intent.action.VIEW -d \"file:///storage/emulated/0/Projectivy-Backups/{filename}\" -n com.spocky.projengmenu/.ui.launcherActivities.ImportSettingsActivity",
-            null, ct);
+            ct);
     }
 
     public async Task<IReadOnlyList<string>> GetConnectedDevicesAsync(CancellationToken ct = default)
     {
-        var result = await _executor.ExecuteAsync("adb", "devices", null, ct);
+        var result = await AdbAsync("devices", ct);
         return result.StandardOutput
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Skip(1) // skip "List of devices attached" header
@@ -144,7 +149,7 @@ public partial class AdbService : IAdbService
     /// </summary>
     public async Task<IReadOnlyList<MdnsAdbDevice>> ScanMdnsAsync(CancellationToken ct = default)
     {
-        var result = await _executor.ExecuteAsync("adb", "mdns services", null, ct);
+        var result = await AdbAsync("mdns services", ct);
         if (result.ExitCode != 0) return [];
 
         var entries = new List<MdnsAdbDevice>();
@@ -165,7 +170,7 @@ public partial class AdbService : IAdbService
 
     public async Task<(int Width, int Height)?> GetScreenSizeAsync(string ip, int port, CancellationToken ct = default)
     {
-        var result = await _executor.ExecuteAsync("adb", $"{DeviceArg(ip, port)} shell wm size", null, ct);
+        var result = await AdbAsync($"{DeviceArg(ip, port)} shell wm size", ct);
         if (result.ExitCode != 0) return null;
         // Parse "Physical size: 1080x2424" or "Override size: 1080x2424"
         var match = System.Text.RegularExpressions.Regex.Match(result.StandardOutput,
@@ -178,10 +183,10 @@ public partial class AdbService : IAdbService
     {
         var dev = DeviceArg(ip, port);
         // Exact sequence from the original PowerShell script — no delays, separate adb calls
-        await _executor.ExecuteAsync("adb", $"{dev} shell input keyevent 26", null, ct);
-        await _executor.ExecuteAsync("adb", $"{dev} shell input keyevent 82", null, ct);
-        await _executor.ExecuteAsync("adb", $"{dev} shell input text {pin}", null, ct);
-        await _executor.ExecuteAsync("adb", $"{dev} shell input keyevent 66", null, ct);
+        await AdbAsync($"{dev} shell input keyevent 26", ct);
+        await AdbAsync($"{dev} shell input keyevent 82", ct);
+        await AdbAsync($"{dev} shell input text {pin}", ct);
+        await AdbAsync($"{dev} shell input keyevent 66", ct);
     }
 
     public async Task DisconnectAllAsync(CancellationToken ct = default)
@@ -189,7 +194,7 @@ public partial class AdbService : IAdbService
         var devices = await GetConnectedDevicesAsync(ct);
         foreach (var device in devices)
         {
-            await _executor.ExecuteAsync("adb", $"disconnect {device}", null, ct);
+            await AdbAsync($"disconnect {device}", ct);
         }
     }
 
@@ -238,7 +243,7 @@ public partial class AdbService : IAdbService
     {
         try
         {
-            var r = await _executor.ExecuteAsync("adb", $"{deviceArg} shell {shellCmd}", null, ct);
+            var r = await AdbAsync($"{deviceArg} shell {shellCmd}", ct);
             return r.ExitCode == 0 ? r.StandardOutput : "";
         }
         catch
