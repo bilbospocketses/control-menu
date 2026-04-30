@@ -88,7 +88,7 @@ public class DependencyManagerService : IDependencyManagerService
             entity.ProjectHomeUrl = dep.ProjectHomeUrl;
             entity.DownloadUrl = entity.DownloadUrl ?? dep.DownloadUrl;
 
-            // Refresh installed version — check local install path first, then system PATH
+            // Refresh installed version — local install path only (no PATH fallback)
             entity.InstalledVersion = await GetInstalledVersionAsync(dep, module.Id);
         }
 
@@ -161,7 +161,7 @@ public class DependencyManagerService : IDependencyManagerService
 
         try
         {
-            // Refresh installed version — check local install path first, then system PATH
+            // Refresh installed version — local install path only (no PATH fallback)
             entity.InstalledVersion = await GetInstalledVersionAsync(moduleDep, entity.ModuleId);
 
             switch (entity.SourceType)
@@ -416,7 +416,6 @@ public class DependencyManagerService : IDependencyManagerService
                 var entity = existing.FirstOrDefault(e =>
                     e.ModuleId == module.Id && e.Name == dep.Name);
 
-                // Already configured in DB with a known version
                 if (entity?.InstalledVersion is not null)
                 {
                     results.Add(new DependencyScanResult(
@@ -426,23 +425,6 @@ public class DependencyManagerService : IDependencyManagerService
                     continue;
                 }
 
-                // Try PATH
-                var pathResult = await TryScanPathAsync(dep, module.Id);
-                if (pathResult is not null)
-                {
-                    results.Add(pathResult);
-                    continue;
-                }
-
-                // Try common locations
-                var locationResult = await TryScanCommonLocationsAsync(dep, module.Id);
-                if (locationResult is not null)
-                {
-                    results.Add(locationResult);
-                    continue;
-                }
-
-                // Not found anywhere
                 results.Add(new DependencyScanResult(
                     dep.Name, module.Id, Found: false,
                     Path: null, Version: null,
@@ -497,132 +479,34 @@ public class DependencyManagerService : IDependencyManagerService
 
     // --- Private helpers ---
 
-    private async Task<DependencyScanResult?> TryScanPathAsync(ModuleDependency dep, string moduleId)
+    private async Task<string?> GetInstalledVersionAsync(ModuleDependency dep, string? moduleId = null)
     {
+        if (moduleId is null || dep.InstallPath is null)
+            return null; // No local install path declared — we can't (and won't) check PATH.
+
         var parts = dep.VersionCommand.Split(' ', 2);
-        var command = parts[0];
         var args = parts.Length > 1 ? parts[1] : null;
 
-        try
-        {
-            var result = await _executor.ExecuteAsync(command, args);
-            if (result.ExitCode != 0) return null;
+        var customPath = await _config.GetSettingAsync($"dep-path-{dep.Name}");
+        var installDir = InstallPathResolver.Resolve(dep.InstallPath, customPath);
 
-            var version = ExtractVersion(result.StandardOutput, dep.VersionPattern);
-            if (version is null) return null;
-
-            return new DependencyScanResult(
-                dep.Name, moduleId, Found: true,
-                Path: command, Version: version,
-                Source: "PATH");
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private async Task<DependencyScanResult?> TryScanCommonLocationsAsync(ModuleDependency dep, string moduleId)
-    {
         var exeName = dep.ExecutableName;
         if (OperatingSystem.IsWindows() && !exeName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
             exeName += ".exe";
 
-        foreach (var location in GetCommonLocations(exeName))
-        {
-            if (!File.Exists(location)) continue;
-
-            try
-            {
-                var parts = dep.VersionCommand.Split(' ', 2);
-                var args = parts.Length > 1 ? parts[1] : null;
-
-                var result = await _executor.ExecuteAsync(location, args);
-                if (result.ExitCode != 0) continue;
-
-                var version = ExtractVersion(result.StandardOutput, dep.VersionPattern);
-                if (version is null) continue;
-
-                return new DependencyScanResult(
-                    dep.Name, moduleId, Found: true,
-                    Path: location, Version: version,
-                    Source: location);
-            }
-            catch
-            {
-                // Continue to next location
-            }
-        }
-
-        return null;
-    }
-
-    private static IEnumerable<string> GetCommonLocations(string executableName)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            yield return $@"C:\platform-tools\{executableName}";
-            yield return $@"C:\scrcpy\{executableName}";
-            yield return $@"C:\Program Files\Android\platform-tools\{executableName}";
-            yield return Path.Combine(localAppData, "Android", "Sdk", "platform-tools", executableName);
-        }
-        else if (OperatingSystem.IsLinux())
-        {
-            yield return $"/usr/local/bin/{executableName}";
-            yield return $"/opt/platform-tools/{executableName}";
-            yield return $"/opt/scrcpy/{executableName}";
-            yield return $"/snap/bin/{executableName}";
-        }
-    }
-
-    private async Task<string?> GetInstalledVersionAsync(ModuleDependency dep, string? moduleId = null)
-    {
-        var parts = dep.VersionCommand.Split(' ', 2);
-        var args = parts.Length > 1 ? parts[1] : null;
-
-        // If we manage this dependency locally, only check the local path — never
-        // fall back to system PATH, which would report a stale version and cause
-        // an update loop.
-        if (moduleId is not null && dep.InstallPath is not null)
-        {
-            var customPath = await _config.GetSettingAsync($"dep-path-{dep.Name}");
-            var installDir = InstallPathResolver.Resolve(dep.InstallPath, customPath);
-
-            var exeName = dep.ExecutableName;
-            if (OperatingSystem.IsWindows() && !exeName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-                exeName += ".exe";
-
-            var localExe = Path.Combine(installDir, exeName);
-            if (!File.Exists(localExe))
-                return null; // Not installed yet — don't check system PATH
-
-            try
-            {
-                var localResult = await _executor.ExecuteAsync(localExe, args);
-                if (localResult.ExitCode == 0)
-                {
-                    var v = ExtractVersion(localResult.StandardOutput, dep.VersionPattern);
-                    if (v is not null) return v;
-                }
-            }
-            catch { /* binary exists but failed to run */ }
-
+        var localExe = Path.Combine(installDir, exeName);
+        if (!File.Exists(localExe))
             return null;
-        }
 
-        // No local install path — use system PATH
-        var command = parts[0];
         try
         {
-            var result = await _executor.ExecuteAsync(command, args);
-            if (result.ExitCode != 0) return null;
-            return ExtractVersion(result.StandardOutput, dep.VersionPattern);
+            var localResult = await _executor.ExecuteAsync(localExe, args);
+            if (localResult.ExitCode == 0)
+                return ExtractVersion(localResult.StandardOutput, dep.VersionPattern);
         }
-        catch
-        {
-            return null;
-        }
+        catch { /* binary exists but failed to run */ }
+
+        return null;
     }
 
     private static string? ExtractVersion(string output, string pattern)

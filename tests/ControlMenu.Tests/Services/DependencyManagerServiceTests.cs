@@ -22,6 +22,7 @@ public class DependencyManagerServiceTests : IDisposable
     private readonly WsScrcpyService _wsScrcpy;
     private readonly Mock<IGo2RtcService> _mockGo2Rtc = new();
     private readonly Mock<IDependencyPathResolver> _mockResolver = new();
+    private readonly string _tempRoot;
 
     public DependencyManagerServiceTests()
     {
@@ -35,9 +36,32 @@ public class DependencyManagerServiceTests : IDisposable
         _wsScrcpy = new WsScrcpyService(
             provider.GetRequiredService<IServiceScopeFactory>(),
             NullLogger<WsScrcpyService>.Instance);
+        _tempRoot = Path.Combine(Path.GetTempPath(), "ControlMenuTests", Guid.NewGuid().ToString());
+        Directory.CreateDirectory(_tempRoot);
     }
 
-    public void Dispose() => _dbFactory.Dispose();
+    public void Dispose()
+    {
+        _dbFactory.Dispose();
+        try { Directory.Delete(_tempRoot, recursive: true); } catch { /* best-effort */ }
+    }
+
+    /// <summary>
+    /// Creates a fake local install dir under the test temp root with an empty file
+    /// matching <paramref name="exeName"/> (with .exe suffix on Windows). Returns the
+    /// install dir and the resolved exe path so tests can wire the executor mock to it.
+    /// </summary>
+    private (string InstallDir, string LocalExePath) MakeLocalInstall(string subdir, string exeName)
+    {
+        var installDir = Path.Combine(_tempRoot, subdir);
+        Directory.CreateDirectory(installDir);
+        var resolvedExe = exeName;
+        if (OperatingSystem.IsWindows() && !resolvedExe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            resolvedExe += ".exe";
+        var localExe = Path.Combine(installDir, resolvedExe);
+        File.WriteAllText(localExe, "");
+        return (installDir, localExe);
+    }
 
     private DependencyManagerService CreateService(params IToolModule[] modules)
     {
@@ -50,6 +74,7 @@ public class DependencyManagerServiceTests : IDisposable
     [Fact]
     public async Task SyncDependenciesAsync_InsertsNewDependencies()
     {
+        var (installDir, localExe) = MakeLocalInstall("tool-a-install", "tool-a");
         var module = new FakeModule("test-module", "Test",
         [
             new ModuleDependency
@@ -59,11 +84,12 @@ public class DependencyManagerServiceTests : IDisposable
                 VersionCommand = "tool-a --version",
                 VersionPattern = @"([\d.]+)",
                 SourceType = UpdateSourceType.Manual,
-                ProjectHomeUrl = "https://example.com"
+                ProjectHomeUrl = "https://example.com",
+                InstallPath = installDir
             }
         ]);
 
-        _mockExecutor.Setup(e => e.ExecuteAsync("tool-a", "--version", null, default))
+        _mockExecutor.Setup(e => e.ExecuteAsync(localExe, "--version", null, default))
             .ReturnsAsync(new CommandResult(0, "tool-a version 1.2.3", "", false));
 
         var service = CreateService(module);
@@ -114,6 +140,7 @@ public class DependencyManagerServiceTests : IDisposable
         });
         await setupDb.SaveChangesAsync();
 
+        var (installDir, localExe) = MakeLocalInstall("tool-a-update", "tool-a");
         var module = new FakeModule("test-module", "Test",
         [
             new ModuleDependency
@@ -124,11 +151,12 @@ public class DependencyManagerServiceTests : IDisposable
                 VersionPattern = @"([\d.]+)",
                 SourceType = UpdateSourceType.GitHub,
                 GitHubRepo = "owner/repo",
-                ProjectHomeUrl = "https://new-url.com"
+                ProjectHomeUrl = "https://new-url.com",
+                InstallPath = installDir
             }
         ]);
 
-        _mockExecutor.Setup(e => e.ExecuteAsync("tool-a", "--version", null, default))
+        _mockExecutor.Setup(e => e.ExecuteAsync(localExe, "--version", null, default))
             .ReturnsAsync(new CommandResult(0, "1.0.0", "", false));
 
         var service = CreateService(module);
@@ -196,6 +224,7 @@ public class DependencyManagerServiceTests : IDisposable
     [Fact]
     public async Task CheckDependencyAsync_GitHub_DetectsUpdateAvailable()
     {
+        var (installDir, localExe) = MakeLocalInstall("scrcpy-install", "scrcpy");
         var module = new FakeModule("android-module", "Android",
         [
             new ModuleDependency
@@ -205,11 +234,12 @@ public class DependencyManagerServiceTests : IDisposable
                 VersionCommand = "scrcpy --version",
                 VersionPattern = @"scrcpy ([\d.]+)",
                 SourceType = UpdateSourceType.GitHub,
-                GitHubRepo = "Genymobile/scrcpy"
+                GitHubRepo = "Genymobile/scrcpy",
+                InstallPath = installDir
             }
         ]);
 
-        _mockExecutor.Setup(e => e.ExecuteAsync("scrcpy", "--version", null, default))
+        _mockExecutor.Setup(e => e.ExecuteAsync(localExe, "--version", null, default))
             .ReturnsAsync(new CommandResult(0, "scrcpy 3.3.2", "", false));
 
         var depId = Guid.NewGuid();
@@ -240,6 +270,7 @@ public class DependencyManagerServiceTests : IDisposable
     [Fact]
     public async Task CheckDependencyAsync_DirectUrl_ParsesXmlVersion()
     {
+        var (installDir, localExe) = MakeLocalInstall("adb-install", "adb");
         var module = new FakeModule("android-module", "Android",
         [
             new ModuleDependency
@@ -250,11 +281,12 @@ public class DependencyManagerServiceTests : IDisposable
                 VersionPattern = @"Android Debug Bridge version ([\d.]+)",
                 SourceType = UpdateSourceType.DirectUrl,
                 VersionCheckUrl = "https://dl.google.com/android/repository/repository2-3.xml",
-                VersionCheckPattern = @"<major>(\d+)</major>\s*<minor>(\d+)</minor>\s*<micro>(\d+)</micro>"
+                VersionCheckPattern = @"<major>(\d+)</major>\s*<minor>(\d+)</minor>\s*<micro>(\d+)</micro>",
+                InstallPath = installDir
             }
         ]);
 
-        _mockExecutor.Setup(e => e.ExecuteAsync("adb", "--version", null, default))
+        _mockExecutor.Setup(e => e.ExecuteAsync(localExe, "--version", null, default))
             .ReturnsAsync(new CommandResult(0, "Android Debug Bridge version 36.0.0", "", false));
 
         var depId = Guid.NewGuid();
@@ -286,6 +318,7 @@ public class DependencyManagerServiceTests : IDisposable
     [Fact]
     public async Task CheckDependencyAsync_Manual_StaysUpToDate()
     {
+        var (installDir, localExe) = MakeLocalInstall("docker-install", "docker");
         var module = new FakeModule("jellyfin-module", "Jellyfin",
         [
             new ModuleDependency
@@ -294,11 +327,12 @@ public class DependencyManagerServiceTests : IDisposable
                 ExecutableName = "docker",
                 VersionCommand = "docker --version",
                 VersionPattern = @"Docker version ([\d.]+)",
-                SourceType = UpdateSourceType.Manual
+                SourceType = UpdateSourceType.Manual,
+                InstallPath = installDir
             }
         ]);
 
-        _mockExecutor.Setup(e => e.ExecuteAsync("docker", "--version", null, default))
+        _mockExecutor.Setup(e => e.ExecuteAsync(localExe, "--version", null, default))
             .ReturnsAsync(new CommandResult(0, "Docker version 27.1.0, build abc123", "", false));
 
         var depId = Guid.NewGuid();

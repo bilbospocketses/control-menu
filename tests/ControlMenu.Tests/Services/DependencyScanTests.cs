@@ -46,9 +46,11 @@ public class DependencyScanTests : IDisposable
     }
 
     [Fact]
-    public async Task ScanForDependenciesAsync_FindsToolOnPath()
+    public async Task ScanForDependenciesAsync_DoesNotProbePath()
     {
-        // Arrange: module declares adb dependency, no DB entity with InstalledVersion
+        // CLAUDE.md / local-deps-only architecture: with no local install present
+        // and no DB record, scan must report Not Found — never "Source = PATH"
+        // and never invoke the executor against a bare tool name.
         var module = new FakeScanModule("android-module", "Android",
         [
             new ModuleDependency
@@ -62,19 +64,19 @@ public class DependencyScanTests : IDisposable
             }
         ]);
 
-        _mockExecutor.Setup(e => e.ExecuteAsync("adb", "--version", null, default))
-            .ReturnsAsync(new CommandResult(0, "Android Debug Bridge version 36.0.0", "", false));
-
         var service = CreateService(module);
         var results = await service.ScanForDependenciesAsync();
 
         Assert.Single(results);
         var result = results[0];
-        Assert.True(result.Found);
-        Assert.Equal("adb", result.Name);
-        Assert.Equal("android-module", result.ModuleId);
-        Assert.Equal("36.0.0", result.Version);
-        Assert.Equal("PATH", result.Source);
+        Assert.False(result.Found);
+        Assert.Equal("Not found", result.Source);
+        Assert.All(results, r => Assert.NotEqual("PATH", r.Source));
+
+        // No PATH probing should ever happen
+        _mockExecutor.Verify(
+            e => e.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), default),
+            Times.Never);
     }
 
     [Fact]
