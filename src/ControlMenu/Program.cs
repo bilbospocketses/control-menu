@@ -54,6 +54,10 @@ builder.Services.AddDataProtection()
 builder.Services.AddSingleton<ICommandExecutor, CommandExecutor>();
 builder.Services.AddScoped<ISecretStore, SecretStore>();
 builder.Services.AddScoped<IConfigurationService, ConfigurationService>();
+builder.Services.AddScoped<IDependencyPathResolver>(sp =>
+    new DependencyPathResolver(
+        sp.GetRequiredService<ModuleDiscoveryService>().Modules,
+        sp.GetRequiredService<IConfigurationService>()));
 builder.Services.AddSingleton<IDeviceChangeNotifier, DeviceChangeNotifier>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
 builder.Services.AddScoped<IDeviceTypeCache, DeviceTypeCache>();
