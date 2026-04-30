@@ -304,9 +304,12 @@ public class DependencyManagerService : IDependencyManagerService
             }
             else if (tempFile.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
             {
-                var result = await _executor.ExecuteAsync("tar", $"xzf \"{tempFile}\" -C \"{extractDir}\"");
-                if (result.ExitCode != 0)
-                    return new UpdateResult(false, null, $"Extraction failed: {result.StandardError}", urlAction);
+                Directory.CreateDirectory(extractDir);
+                await using var fileStream = File.OpenRead(tempFile);
+                await using var gzipStream = new System.IO.Compression.GZipStream(
+                    fileStream, System.IO.Compression.CompressionMode.Decompress);
+                await System.Formats.Tar.TarFile.ExtractToDirectoryAsync(
+                    gzipStream, extractDir, overwriteFiles: true);
             }
 
             // 3. Verify — find the executable in extracted dir and run version command
