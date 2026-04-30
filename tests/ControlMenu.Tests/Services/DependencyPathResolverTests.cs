@@ -61,4 +61,75 @@ public class DependencyPathResolverResolveTests
         }
         finally { tempDir.Delete(recursive: true); }
     }
+
+    [Fact]
+    public async Task ResolveAsync_Throws_WhenBinaryMissing()
+    {
+        var tempDir = Directory.CreateTempSubdirectory("cm-resolver-missing");
+        try
+        {
+            var dep = new ModuleDependency
+            {
+                Name = "adb", ExecutableName = "adb",
+                VersionCommand = "adb --version", VersionPattern = @"([\d.]+)",
+                InstallPath = tempDir.FullName
+            };
+            var module = MakeModule("android-devices", dep);
+            var config = new Mock<IConfigurationService>();
+            config.Setup(c => c.GetSettingAsync(It.IsAny<string>(), It.IsAny<string?>())).ReturnsAsync((string?)null);
+            var resolver = new DependencyPathResolver(new[] { module }, config.Object);
+
+            var ex = await Assert.ThrowsAsync<DependencyNotInstalledException>(
+                () => resolver.ResolveAsync("android-devices", "adb"));
+            Assert.Equal("adb", ex.Name);
+            Assert.Contains(tempDir.FullName, ex.ExpectedPath);
+        }
+        finally { tempDir.Delete(recursive: true); }
+    }
+
+    [Fact]
+    public async Task ResolveAsync_Throws_WhenModuleUnknown()
+    {
+        var resolver = new DependencyPathResolver(Array.Empty<IToolModule>(), new Mock<IConfigurationService>().Object);
+        await Assert.ThrowsAsync<DependencyNotInstalledException>(
+            () => resolver.ResolveAsync("nope", "adb"));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_Throws_WhenDependencyNotDeclared()
+    {
+        var module = MakeModule("android-devices");
+        var resolver = new DependencyPathResolver(new[] { module }, new Mock<IConfigurationService>().Object);
+        await Assert.ThrowsAsync<DependencyNotInstalledException>(
+            () => resolver.ResolveAsync("android-devices", "adb"));
+    }
+
+    [Fact]
+    public async Task ResolveAsync_HonorsUserOverride()
+    {
+        var defaultDir = Directory.CreateTempSubdirectory("cm-resolver-default");
+        var overrideDir = Directory.CreateTempSubdirectory("cm-resolver-override");
+        try
+        {
+            var exeName = OperatingSystem.IsWindows() ? "adb.exe" : "adb";
+            var exeInOverride = Path.Combine(overrideDir.FullName, exeName);
+            File.WriteAllText(exeInOverride, "fake");
+
+            var dep = new ModuleDependency
+            {
+                Name = "adb", ExecutableName = "adb",
+                VersionCommand = "adb --version", VersionPattern = @"([\d.]+)",
+                InstallPath = defaultDir.FullName
+            };
+            var module = MakeModule("android-devices", dep);
+            var config = new Mock<IConfigurationService>();
+            config.Setup(c => c.GetSettingAsync("dep-path-adb", It.IsAny<string?>()))
+                  .ReturnsAsync(overrideDir.FullName);
+            var resolver = new DependencyPathResolver(new[] { module }, config.Object);
+
+            var result = await resolver.ResolveAsync("android-devices", "adb");
+            Assert.Equal(exeInOverride, result, ignoreCase: true);
+        }
+        finally { defaultDir.Delete(recursive: true); overrideDir.Delete(recursive: true); }
+    }
 }
