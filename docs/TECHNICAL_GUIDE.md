@@ -525,7 +525,7 @@ api:
 
 **Crash recovery**: If go2rtc exits unexpectedly, the service restarts it up to 2 times within a 30-second window before giving up.
 
-**Binary resolution** (`FindExecutable`): Checks the local dependency install path first (`dep-path-go2rtc` setting or default `dependencies/go2rtc/`), then falls back to system PATH.
+**Binary resolution** (`FindExecutable`): Resolves through `IDependencyPathResolver.ResolveAsync("cameras", "go2rtc")` (via `IServiceScopeFactory`); returns `null` on `DependencyNotInstalledException`. The resolver itself applies the `dep-path-go2rtc` user override on top of the default `dependencies/go2rtc/`. No system PATH fallback — local-only per CLAUDE.md "Local Dependencies Only" rule.
 
 **Interface:**
 ```csharp
@@ -655,7 +655,7 @@ Manages the lifecycle of external tool dependencies: version checking, downloadi
 
 **Download and install** (`DownloadAndInstallAsync`):
 1. Download the asset to a temp directory
-2. Extract (ZIP via `System.IO.Compression`, tar.gz via `tar` command)
+2. Extract (ZIP via `System.IO.Compression`, tar.gz via `System.Formats.Tar` over `GZipStream` — no external `tar` binary required)
 3. Verify the extracted binary by running the version command
 4. Stop dependent services if needed (ws-scrcpy-web and ADB server when updating `adb`; go2rtc when updating `go2rtc`)
 5. Backup existing files (`.bak` suffix)
@@ -663,7 +663,9 @@ Manages the lifecycle of external tool dependencies: version checking, downloadi
 7. Update the database entity
 8. Restart dependent services
 
-**Installed version detection** prioritizes the local install path over the system PATH. This prevents a system-installed older version from masking the managed version and causing an update loop.
+**Installed version detection** is local-only: `GetInstalledVersionAsync` resolves the configured `InstallPath` (with optional `dep-path-{name}` override), checks for the binary on disk, and runs its version command. Returns `null` if the binary isn't installed locally — never falls back to system PATH. This is enforced by the architectural rule, not just convention; see `IDependencyPathResolver` below.
+
+**`IDependencyPathResolver`** (`Services/DependencyPathResolver.cs`) is the single supported way to obtain a path to a bundled binary. `ResolveAsync(moduleId, name, ct)` returns the absolute local path or throws `DependencyNotInstalledException`. All consumers go through `ICommandExecutor.ExecuteResolvedAsync(resolver, moduleId, name, args, …)` (an extension method); the raw `ICommandExecutor.ExecuteAsync(string command, …)` overload is reserved for the OS-builtin allowlist (`docker`, `powershell`, `arp`, `ping`) — XML-documented at the call site. Bare-name calls to bundled binaries are an anti-pattern this boundary makes structurally impossible.
 
 **Install-path override storage** (`dep-path-{name}` Setting): paths under the module's `DepsRoot` are stored as **relative segments** (e.g. `"platform-tools"` rather than `C:\...\dependencies\platform-tools`); paths outside `DepsRoot` are stored as absolute. `InstallPathResolver` (in `Services/`) handles encode/decode against the current `DepsRoot`. This means folder/repo renames don't strand the override at the old absolute path. On startup `SyncDependenciesAsync` calls `ValidateInstallPathOverridesAsync`, which clears any override whose resolved parent directory no longer exists (defensive self-heal for absolute overrides pointing at vanished locations).
 

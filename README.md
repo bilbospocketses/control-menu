@@ -35,7 +35,7 @@ Control Menu replaces a collection of PowerShell scripts with a cross-platform w
 - **Cross-platform** &mdash; `CommandExecutor` strategy pattern abstracts Windows vs Linux commands
 - **Encrypted secrets** &mdash; ASP.NET Data Protection API for API keys and passwords
 - **Background jobs** &mdash; Long-running tasks with progress tracking, cancellation, and resume
-- **Self-contained dependencies** &mdash; Bundled tools folder with PATH injection at startup; install/update buttons in UI; services auto-stop/restart during updates
+- **Self-contained dependencies** &mdash; Bundled tools folder resolved through an `IDependencyPathResolver` boundary (no system `PATH` resolution for bundled binaries); install/update buttons in UI; services auto-stop/restart during updates
 - **Email notifications** &mdash; Configurable SMTP with dedicated From address for provider authorization
 - **File System Access API** &mdash; Native OS file picker for icon conversion in Chrome/Edge
 
