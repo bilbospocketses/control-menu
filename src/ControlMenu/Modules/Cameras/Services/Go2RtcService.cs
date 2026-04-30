@@ -141,51 +141,16 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
 
     private string? FindExecutable()
     {
-        var name = OperatingSystem.IsWindows() ? "go2rtc.exe" : "go2rtc";
-
-        // Check local dependency install path first (dep-path-go2rtc setting or default)
-        var localPath = GetLocalInstallPathAsync().GetAwaiter().GetResult();
-        if (localPath is not null)
-        {
-            var localExe = Path.Combine(localPath, name);
-            if (File.Exists(localExe))
-                return localExe;
-        }
-
-        // Fall back to system PATH
-        var pathDirs = (Environment.GetEnvironmentVariable("PATH") ?? "")
-            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
-
-        foreach (var dir in pathDirs)
-        {
-            var candidate = Path.Combine(dir, name);
-            if (File.Exists(candidate))
-                return candidate;
-        }
-
-        return null;
-    }
-
-    private async Task<string?> GetLocalInstallPathAsync()
-    {
         using var scope = _scopeFactory.CreateScope();
-        var config = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
-        var customPath = await config.GetSettingAsync("dep-path-go2rtc");
-        if (!string.IsNullOrWhiteSpace(customPath))
-            return customPath;
-
-        // Walk up from base directory to find dependencies folder (matches CamerasModule.FindDepsRoot)
-        var dir = AppContext.BaseDirectory;
-        for (var i = 0; i < 5; i++)
+        var resolver = scope.ServiceProvider.GetRequiredService<IDependencyPathResolver>();
+        try
         {
-            var candidate = Path.Combine(dir, "dependencies", "go2rtc");
-            if (Directory.Exists(candidate)) return candidate;
-            var parent = Directory.GetParent(dir)?.FullName;
-            if (parent is null) break;
-            dir = parent;
+            return resolver.ResolveAsync("cameras", "go2rtc").GetAwaiter().GetResult();
         }
-
-        return Path.Combine(_contentRoot, "dependencies", "go2rtc");
+        catch (DependencyNotInstalledException)
+        {
+            return null;
+        }
     }
 
     private void SpawnProcess(string exePath)
