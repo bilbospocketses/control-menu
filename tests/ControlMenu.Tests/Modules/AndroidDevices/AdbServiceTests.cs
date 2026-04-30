@@ -243,4 +243,25 @@ public class AdbServiceTests
         _mockExecutor.Verify(e => e.ExecuteAsync("adb", "disconnect 192.168.1.100:5555", null, default), Times.Once);
     }
 
+    [Fact]
+    public async Task AdbService_ResolvesViaDependencyPathResolver_NotBareName()
+    {
+        var localResolver = new Mock<IDependencyPathResolver>();
+        localResolver.Setup(r => r.ResolveAsync("android-devices", "adb", It.IsAny<CancellationToken>()))
+                     .ReturnsAsync("/cm/local/adb.exe");
+        var localExecutor = new Mock<ICommandExecutor>();
+        localExecutor.Setup(e => e.ExecuteAsync("/cm/local/adb.exe", "devices", null, default))
+                     .ReturnsAsync(new CommandResult(0, "List of devices attached", "", false));
+
+        var service = new AdbService(localExecutor.Object, localResolver.Object);
+        await service.GetConnectedDevicesAsync();
+
+        localExecutor.Verify(
+            e => e.ExecuteAsync("adb", It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "AdbService must NOT call the executor with bare 'adb' — local-deps rule.");
+        localExecutor.Verify(
+            e => e.ExecuteAsync("/cm/local/adb.exe", "devices", null, default),
+            Times.Once);
+    }
 }
