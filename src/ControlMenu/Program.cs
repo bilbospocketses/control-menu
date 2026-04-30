@@ -67,7 +67,7 @@ builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>
 builder.Services.AddSingleton<IScrcpyProbeService, ScrcpyProbeService>();
 
 // Android Devices module services
-builder.Services.AddSingleton<IAdbService, AdbService>();
+builder.Services.AddScoped<IAdbService, AdbService>();
 
 // ws-scrcpy-web process management
 builder.Services.AddSingleton<WsScrcpyService>();
