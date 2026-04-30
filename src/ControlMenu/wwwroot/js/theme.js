@@ -55,11 +55,18 @@ window.themeManager = {
         };
     },
 
+    // Token-keyed map of unsubscribe functions. Avoids returning a JS
+    // function as IJSObjectReference (which Blazor can't marshal —
+    // see fix/theme-toggle-sync-blazor-marshal).
+    _blazorUnsubs: {},
+    _nextBlazorToken: 0,
+
     // Blazor-friendly shim: wraps a DotNetObjectReference so .NET methods
-    // can be called as listeners. The .NET side must expose an [JSInvokable]
-    // method named 'OnThemeChanged(string theme)'.
+    // can be called as listeners. The .NET side must expose a [JSInvokable]
+    // method named 'OnThemeChanged(string theme)'. Returns a numeric token
+    // that the .NET side passes back to `unsubscribeBlazor` on disposal.
     subscribeBlazor: function (dotnetRef) {
-        return this.subscribe(function (theme) {
+        var unsub = this.subscribe(function (theme) {
             // invokeMethodAsync returns a promise. A synchronous try/catch
             // catches setup errors (null ref, immediate disposal); .catch
             // covers async rejections from a closed Blazor Server circuit.
@@ -74,6 +81,18 @@ window.themeManager = {
                 // ignore — synchronous failure path
             }
         });
+        var token = ++this._nextBlazorToken;
+        this._blazorUnsubs[token] = unsub;
+        return token;
+    },
+
+    // Called by .NET on disposal of a TopBar (or any subscribeBlazor caller).
+    unsubscribeBlazor: function (token) {
+        var unsub = this._blazorUnsubs[token];
+        if (typeof unsub === 'function') {
+            unsub();
+            delete this._blazorUnsubs[token];
+        }
     }
 };
 
