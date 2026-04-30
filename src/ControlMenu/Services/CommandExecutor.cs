@@ -2,6 +2,18 @@ using System.Diagnostics;
 
 namespace ControlMenu.Services;
 
+/// <summary>
+/// Executes external commands. By project policy ("Local Dependencies Only" — see CLAUDE.md), the raw
+/// (string command, …) overload is reserved for OS-builtin / genuinely external commands ONLY:
+/// <list type="bullet">
+///   <item><c>docker</c> — external daemon, not vendorable</item>
+///   <item><c>powershell</c> — OS-shipped on Windows</item>
+///   <item><c>arp</c> — OS-shipped network utility</item>
+///   <item><c>ping</c> — OS-shipped network utility</item>
+/// </list>
+/// All bundled binaries (adb, scrcpy, node, sqlite3, go2rtc, ws-scrcpy-web) MUST go through
+/// <see cref="ResolvedExecutorExtensions.ExecuteResolvedAsync"/>.
+/// </summary>
 public class CommandExecutor : ICommandExecutor
 {
     public async Task<CommandResult> ExecuteAsync(
