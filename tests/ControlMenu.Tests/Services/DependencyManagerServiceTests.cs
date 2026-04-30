@@ -21,12 +21,16 @@ public class DependencyManagerServiceTests : IDisposable
     private readonly Mock<IConfigurationService> _mockConfig = new();
     private readonly WsScrcpyService _wsScrcpy;
     private readonly Mock<IGo2RtcService> _mockGo2Rtc = new();
+    private readonly Mock<IDependencyPathResolver> _mockResolver = new();
 
     public DependencyManagerServiceTests()
     {
         _dbFactory = TestDbContextFactory.CreateFactory();
+        _mockResolver.Setup(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, string name, CancellationToken _) => name);
         var services = new ServiceCollection();
         services.AddScoped(_ => _mockConfig.Object);
+        services.AddScoped(_ => _mockResolver.Object);
         var provider = services.BuildServiceProvider();
         _wsScrcpy = new WsScrcpyService(
             provider.GetRequiredService<IServiceScopeFactory>(),
@@ -39,7 +43,8 @@ public class DependencyManagerServiceTests : IDisposable
     {
         return new DependencyManagerService(
             _dbFactory, modules, _mockExecutor.Object, _mockHttpFactory.Object,
-            _mockConfig.Object, _wsScrcpy, _mockGo2Rtc.Object, NullLogger<DependencyManagerService>.Instance);
+            _mockConfig.Object, _wsScrcpy, _mockGo2Rtc.Object, _mockResolver.Object,
+            NullLogger<DependencyManagerService>.Instance);
     }
 
     [Fact]

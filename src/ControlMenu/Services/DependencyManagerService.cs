@@ -18,6 +18,7 @@ public class DependencyManagerService : IDependencyManagerService
     private readonly IConfigurationService _config;
     private readonly WsScrcpyService _wsScrcpy;
     private readonly IGo2RtcService _go2Rtc;
+    private readonly IDependencyPathResolver _resolver;
     private readonly ILogger<DependencyManagerService> _logger;
 
     public DependencyManagerService(
@@ -28,6 +29,7 @@ public class DependencyManagerService : IDependencyManagerService
         IConfigurationService config,
         WsScrcpyService wsScrcpy,
         IGo2RtcService go2Rtc,
+        IDependencyPathResolver resolver,
         ILogger<DependencyManagerService> logger)
     {
         _dbFactory = dbFactory;
@@ -37,6 +39,7 @@ public class DependencyManagerService : IDependencyManagerService
         _config = config;
         _wsScrcpy = wsScrcpy;
         _go2Rtc = go2Rtc;
+        _resolver = resolver;
         _logger = logger;
     }
 
@@ -326,7 +329,14 @@ public class DependencyManagerService : IDependencyManagerService
             {
                 _logger.LogInformation("Stopping ws-scrcpy-web and ADB server before updating adb");
                 await _wsScrcpy.StopAsync(CancellationToken.None);
-                await _executor.ExecuteAsync("adb", "kill-server");
+                try
+                {
+                    await _executor.ExecuteResolvedAsync(_resolver, "android-devices", "adb", "kill-server");
+                }
+                catch (DependencyNotInstalledException)
+                {
+                    // adb not installed — nothing to kill. Continue with the install/swap.
+                }
                 stoppedScrcpy = true;
                 await Task.Delay(500);
             }

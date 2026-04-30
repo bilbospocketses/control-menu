@@ -106,8 +106,9 @@ builder.Services.AddScoped<IDependencyManagerService>(sp =>
     var config = sp.GetRequiredService<IConfigurationService>();
     var wsScrcpy = sp.GetRequiredService<WsScrcpyService>();
     var go2Rtc = sp.GetRequiredService<IGo2RtcService>();
+    var resolver = sp.GetRequiredService<IDependencyPathResolver>();
     var logger = sp.GetRequiredService<ILogger<DependencyManagerService>>();
-    return new DependencyManagerService(dbFactory, modules, executor, httpFactory, config, wsScrcpy, go2Rtc, logger);
+    return new DependencyManagerService(dbFactory, modules, executor, httpFactory, config, wsScrcpy, go2Rtc, resolver, logger);
 });
 builder.Services.AddHostedService<DependencyCheckHostedService>();
 
