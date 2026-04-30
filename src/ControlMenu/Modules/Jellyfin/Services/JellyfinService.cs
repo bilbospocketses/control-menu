@@ -7,12 +7,14 @@ public class JellyfinService : IJellyfinService
     private readonly ICommandExecutor _executor;
     private readonly IConfigurationService _config;
     private readonly IHttpClientFactory _httpFactory;
+    private readonly IDependencyPathResolver _resolver;
 
-    public JellyfinService(ICommandExecutor executor, IConfigurationService config, IHttpClientFactory httpFactory)
+    public JellyfinService(ICommandExecutor executor, IConfigurationService config, IHttpClientFactory httpFactory, IDependencyPathResolver resolver)
     {
         _executor = executor;
         _config = config;
         _httpFactory = httpFactory;
+        _resolver = resolver;
     }
 
     public async Task<ComposeParseResult> ParseComposeFileAsync(CancellationToken ct = default)
@@ -114,7 +116,7 @@ public class JellyfinService : IJellyfinService
             return false;
         }
 
-        var result = await _executor.ExecuteAsync("sqlite3", $"\"{dbPath}\" \"UPDATE BaseItems SET DateCreated=PremiereDate WHERE PremiereDate IS NOT NULL;\"", null, ct);
+        var result = await _executor.ExecuteResolvedAsync(_resolver, "jellyfin", "sqlite3", $"\"{dbPath}\" \"UPDATE BaseItems SET DateCreated=PremiereDate WHERE PremiereDate IS NOT NULL;\"", null, ct);
         if (result.ExitCode == 0)
         {
             logger?.Ok("SQL update applied: DateCreated = PremiereDate");

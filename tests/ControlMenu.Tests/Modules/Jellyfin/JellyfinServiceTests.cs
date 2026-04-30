@@ -9,8 +9,15 @@ public class JellyfinServiceTests
     private readonly Mock<ICommandExecutor> _mockExecutor = new();
     private readonly Mock<IConfigurationService> _mockConfig = new();
     private readonly Mock<IHttpClientFactory> _mockHttpFactory = new();
+    private readonly Mock<IDependencyPathResolver> _mockResolver = new();
 
-    private JellyfinService CreateService() => new(_mockExecutor.Object, _mockConfig.Object, _mockHttpFactory.Object);
+    public JellyfinServiceTests()
+    {
+        _mockResolver.Setup(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, string name, CancellationToken _) => name);
+    }
+
+    private JellyfinService CreateService() => new(_mockExecutor.Object, _mockConfig.Object, _mockHttpFactory.Object, _mockResolver.Object);
 
     [Fact]
     public async Task GetContainerIdAsync_ParsesDockerPsOutput()
