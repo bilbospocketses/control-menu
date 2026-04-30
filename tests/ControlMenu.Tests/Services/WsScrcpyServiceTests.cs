@@ -9,12 +9,16 @@ namespace ControlMenu.Tests.Services;
 public class WsScrcpyServiceTests
 {
     private readonly Mock<IConfigurationService> _mockConfig = new();
+    private readonly Mock<IDependencyPathResolver> _mockResolver = new();
     private readonly Mock<ILogger<WsScrcpyService>> _mockLogger = new();
 
     private WsScrcpyService CreateService()
     {
+        _mockResolver.Setup(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("node");
         var services = new ServiceCollection();
         services.AddScoped(_ => _mockConfig.Object);
+        services.AddScoped(_ => _mockResolver.Object);
         var provider = services.BuildServiceProvider();
         return new WsScrcpyService(
             provider.GetRequiredService<IServiceScopeFactory>(),

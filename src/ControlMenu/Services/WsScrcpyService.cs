@@ -16,6 +16,7 @@ public class WsScrcpyService : IHostedService, IDisposable
     private readonly object _lock = new();
     private Process? _process;
     private string? _indexJs;
+    private string? _nodePath;
     private int _crashCount;
     private DateTime _lastCrash = DateTime.MinValue;
     private bool _serviceReady;
@@ -72,10 +73,21 @@ public class WsScrcpyService : IHostedService, IDisposable
         }
 
         await KillOrphanOnPortAsync(cancellationToken);
+        await EnsureNodePathAsync(cancellationToken);
 
         lock (_lock) { SpawnProcess(); }
 
         await WaitForReadyAsync(cancellationToken);
+    }
+
+    private async Task EnsureNodePathAsync(CancellationToken ct)
+    {
+        if (_nodePath is not null) return;
+        // Singleton hosted service must resolve the Scoped IDependencyPathResolver
+        // through a freshly-created scope to avoid captive-dependency leaks.
+        using var scope = _scopeFactory.CreateScope();
+        var resolver = scope.ServiceProvider.GetRequiredService<IDependencyPathResolver>();
+        _nodePath = await resolver.ResolveAsync("android-devices", "node", ct);
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
@@ -95,7 +107,8 @@ public class WsScrcpyService : IHostedService, IDisposable
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = "node",
+                FileName = _nodePath ?? throw new InvalidOperationException(
+                    "Node path not resolved before SpawnProcess. EnsureNodePathAsync must be awaited first."),
                 Arguments = _indexJs,
                 WorkingDirectory = workingDir,
                 UseShellExecute = false,
