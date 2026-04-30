@@ -41,7 +41,7 @@
 
     private int _updateCount;
     private DotNetObjectReference<TopBar>? _selfRef;
-    private IJSObjectReference? _unsubscribe;
+    private long _subscribeToken;
 
     protected override async Task OnInitializedAsync()
     {
@@ -54,7 +54,7 @@
         {
             CurrentTheme = await JS.InvokeAsync<string>("themeManager.get");
             _selfRef = DotNetObjectReference.Create(this);
-            _unsubscribe = await JS.InvokeAsync<IJSObjectReference>("themeManager.subscribeBlazor", _selfRef);
+            _subscribeToken = await JS.InvokeAsync<long>("themeManager.subscribeBlazor", _selfRef);
             StateHasChanged();
         }
     }
@@ -78,10 +78,9 @@
     {
         try
         {
-            if (_unsubscribe is not null)
+            if (_subscribeToken != 0)
             {
-                await _unsubscribe.InvokeVoidAsync("call");
-                await _unsubscribe.DisposeAsync();
+                await JS.InvokeVoidAsync("themeManager.unsubscribeBlazor", _subscribeToken);
             }
         }
         catch (JSDisconnectedException)
