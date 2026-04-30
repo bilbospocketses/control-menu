@@ -335,6 +335,8 @@ Strictly additive — Android Devices module remains the primary device-manageme
 
 All four ws-scrcpy-web modals — shell, list files, configure stream, connect — render inside the iframe's own document, so `showModal()`'s top-layer and backdrop are scoped to the iframe viewport. No JS-interop wiring; no library-bundle injection into Blazor; no cross-origin CORS concerns (ws-scrcpy-web serves both the bundle and the embedded page itself, same origin).
 
+**Theme sync.** The embedded ws-scrcpy-web iframe receives theme updates from Control Menu via cross-origin `postMessage`. The bridge lives in `wwwroot/js/scrcpyThemeBridge.js` and uses ws-scrcpy-web's public theme-bridge API (shipped in v0.1.24-beta.5+). Bidirectional: clicking ws-scrcpy-web's own toggle inside the iframe also updates CM's theme. Protocol details are in `docs/superpowers/specs/2026-04-29-iframe-theme-bridge-design.md`.
+
 ---
 
 ## 5. Jellyfin Module
