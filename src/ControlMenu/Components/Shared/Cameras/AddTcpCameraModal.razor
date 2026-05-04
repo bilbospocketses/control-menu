@@ -1,0 +1,119 @@
+@using ControlMenu.Modules.Cameras.Network
+@using ControlMenu.Modules.Cameras.Entities
+@using ControlMenu.Modules.Cameras.Services
+@inject IRtspProbeClient RtspClient
+@inject ICameraService CameraService
+
+<div class="dialog-overlay" @onclick="@CloseAsync">
+    <div class="dialog add-tcp-dialog" @onclick:stopPropagation="true">
+        <div class="dialog-header">
+            <h3>Add RTSP camera manually</h3>
+        </div>
+        <div class="dialog-body">
+            <label class="form-field">
+                <span>IP</span>
+                <input type="text" value="@Ip" disabled />
+            </label>
+            <label class="form-field">
+                <span>Port</span>
+                <input type="number" value="@Port" disabled />
+            </label>
+            <label class="form-field">
+                <span>Display name</span>
+                <input type="text" @bind="_name" />
+            </label>
+            <label class="form-field">
+                <span>Manufacturer</span>
+                <input type="text" @bind="_manufacturer" placeholder="optional" />
+            </label>
+            <label class="form-field">
+                <span>Username</span>
+                <input type="text" @bind="_username" />
+            </label>
+            <label class="form-field">
+                <span>Password</span>
+                <input type="password" @bind="_password" />
+            </label>
+            <label class="form-field">
+                <span>Stream path</span>
+                <input list="stream-path-hints" @bind="_streamPath" />
+                <datalist id="stream-path-hints">
+                    <option value="/Streaming/Channels/101">Hikvision</option>
+                    <option value="/cam/realmonitor?channel=1&subtype=0">Dahua</option>
+                    <option value="/h264Preview_01_main">Reolink</option>
+                </datalist>
+            </label>
+            @if (_error is not null)
+            {
+                <div class="error-banner">&#9888; @_error</div>
+            }
+        </div>
+        <div class="dialog-actions">
+            <button @onclick="@CloseAsync">Cancel</button>
+            <button @onclick="@SubmitAsync" disabled="@_busy">@(_busy ? "Validating..." : "Add")</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Ip { get; set; } = "";
+    [Parameter] public int Port { get; set; } = 554;
+    [Parameter] public EventCallback OnClosed { get; set; }
+    [Parameter] public EventCallback OnAdded { get; set; }
+
+    private string _name = "";
+    private string _manufacturer = "";
+    private string _username = "";
+    private string _password = "";
+    private string _streamPath = "";
+    private string? _error;
+    private bool _busy;
+
+    private async Task SubmitAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_name)) { _error = "Display name required"; return; }
+        if (string.IsNullOrWhiteSpace(_streamPath)) { _error = "Stream path required"; return; }
+
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            var encUser = Uri.EscapeDataString(_username);
+            var encPass = Uri.EscapeDataString(_password);
+            var rtspUrl = $"rtsp://{encUser}:{encPass}@{Ip}:{Port}{_streamPath}";
+
+            var result = await RtspClient.DescribeAsync(rtspUrl, TimeSpan.FromSeconds(5), default);
+            if (!result.Success)
+            {
+                _error = $"RTSP DESCRIBE failed: {result.StatusCode} {result.StatusReason}".TrimEnd();
+                return;
+            }
+
+            var cam = new Camera
+            {
+                Name = _name,
+                IpAddress = Ip,
+                Port = Port,
+                Manufacturer = string.IsNullOrWhiteSpace(_manufacturer) ? null : _manufacturer,
+                RtspStreamUrl = $"rtsp://{Ip}:{Port}{_streamPath}",
+                IsOnvif = false,
+                Enabled = true,
+            };
+            await CameraService.AddAsync(cam, _username, _password);
+            await OnAdded.InvokeAsync();
+            await CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Add failed: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CloseAsync() => await OnClosed.InvokeAsync();
+}
