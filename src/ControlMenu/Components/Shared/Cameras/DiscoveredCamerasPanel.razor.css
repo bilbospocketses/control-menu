@@ -1,0 +1,37 @@
+.discovered-empty {
+    color: var(--muted, #666);
+    font-style: italic;
+}
+.discovered-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.discovered-row {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border, #eee);
+}
+.discovered-row:last-child {
+    border-bottom: none;
+}
+.hit-summary {
+    margin-bottom: 0.25rem;
+}
+.hit-ip {
+    margin-left: 0.5rem;
+    color: var(--muted, #666);
+    font-family: monospace;
+}
+.hit-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+.hit-actions input {
+    padding: 0.25rem 0.5rem;
+}
+.hit-error {
+    margin-top: 0.25rem;
+    color: var(--error, #c00);
+    font-size: 0.9em;
+}

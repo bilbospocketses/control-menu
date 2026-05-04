@@ -1,0 +1,160 @@
+@using ControlMenu.Modules.Cameras.Network
+@using ControlMenu.Modules.Cameras.Entities
+@using ControlMenu.Modules.Cameras.Services
+@inject ICameraScanService ScanService
+@inject IOnvifClient OnvifClient
+@inject ICameraService CameraService
+@implements IDisposable
+
+@if (_hits.Count == 0)
+{
+    <p class="discovered-empty">No new cameras discovered. Run a scan to look for cameras on your network.</p>
+}
+else
+{
+    <ul class="discovered-list">
+        @foreach (var hit in _hits)
+        {
+            <li class="discovered-row" @key="hit.IpAddress">
+                @if (hit.IsOnvif)
+                {
+                    <div class="hit-summary">
+                        <strong>ONVIF:</strong> @(hit.Manufacturer ?? "Unknown") @(hit.Model ?? "")
+                        <span class="hit-ip">@hit.IpAddress</span>
+                    </div>
+                    <div class="hit-actions">
+                        <input type="text" placeholder="username"
+                               value="@GetUser(hit.IpAddress)"
+                               @oninput="@(e => SetUser(hit.IpAddress, e.Value?.ToString() ?? ""))" />
+                        <input type="password" placeholder="password"
+                               value="@GetPass(hit.IpAddress)"
+                               @oninput="@(e => SetPass(hit.IpAddress, e.Value?.ToString() ?? ""))" />
+                        <button @onclick="@(() => AddOnvifAsync(hit))" disabled="@_busy.Contains(hit.IpAddress)">Add</button>
+                    </div>
+                    @if (_errors.TryGetValue(hit.IpAddress, out var err))
+                    {
+                        <div class="hit-error">⚠ @err</div>
+                    }
+                }
+                else
+                {
+                    <div class="hit-summary">
+                        <strong>RTSP only:</strong> @hit.IpAddress :@hit.Port
+                    </div>
+                    <div class="hit-actions">
+                        <button @onclick="@(() => OpenTcpModal(hit))">Add manually...</button>
+                    </div>
+                }
+            </li>
+        }
+    </ul>
+}
+
+@if (_tcpModalHit is not null)
+{
+    <AddTcpCameraModal Ip="@_tcpModalHit.IpAddress"
+                       Port="@_tcpModalHit.Port"
+                       OnClosed="@(() => _tcpModalHit = null)"
+                       OnAdded="@OnTcpAdded" />
+}
+
+@code {
+    [Parameter] public EventCallback OnCameraAdded { get; set; }
+
+    private IDisposable? _subscription;
+    private readonly List<CameraScanHit> _hits = new();
+    private readonly Dictionary<string, string> _userInputs = new();
+    private readonly Dictionary<string, string> _passInputs = new();
+    private readonly Dictionary<string, string> _errors = new();
+    private readonly HashSet<string> _busy = new();
+    private CameraScanHit? _tcpModalHit;
+
+    protected override void OnInitialized()
+    {
+        _hits.AddRange(ScanService.Hits);
+        _subscription = ScanService.Subscribe(HandleEvent);
+    }
+
+    private void HandleEvent(CameraScanEvent ev)
+    {
+        switch (ev)
+        {
+            case CameraScanStartedEvent:
+                _hits.Clear(); _errors.Clear();
+                break;
+            case CameraScanHitEvent hitEv:
+                _hits.Add(hitEv.Hit);
+                break;
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string GetUser(string ip) => _userInputs.GetValueOrDefault(ip, "");
+    private string GetPass(string ip) => _passInputs.GetValueOrDefault(ip, "");
+    private void SetUser(string ip, string val) => _userInputs[ip] = val;
+    private void SetPass(string ip, string val) => _passInputs[ip] = val;
+
+    private async Task AddOnvifAsync(CameraScanHit hit)
+    {
+        _errors.Remove(hit.IpAddress);
+        _busy.Add(hit.IpAddress);
+        StateHasChanged();
+        try
+        {
+            var user = GetUser(hit.IpAddress);
+            var pass = GetPass(hit.IpAddress);
+            var profiles = await OnvifClient.GetProfilesAsync(hit.OnvifServiceUrl!, user, pass, default);
+            if (profiles.Count == 0)
+                throw new InvalidOperationException("No media profiles returned");
+            var streamUri = await OnvifClient.GetStreamUriAsync(hit.OnvifServiceUrl!, profiles[0].Token, user, pass, default);
+
+            var rawName = $"{hit.Manufacturer} {hit.Model}".Trim();
+            var name = string.IsNullOrEmpty(rawName) ? $"Camera at {hit.IpAddress}" : rawName;
+
+            var cam = new Camera
+            {
+                Name = name,
+                IpAddress = hit.IpAddress,
+                Port = hit.Port,
+                Manufacturer = hit.Manufacturer,
+                Model = hit.Model,
+                RtspStreamUrl = streamUri,
+                OnvifServiceUrl = hit.OnvifServiceUrl,
+                IsOnvif = true,
+                Enabled = true,
+            };
+            await CameraService.AddAsync(cam, user, pass);
+            _hits.Remove(hit);
+            _userInputs.Remove(hit.IpAddress);
+            _passInputs.Remove(hit.IpAddress);
+            await OnCameraAdded.InvokeAsync();
+        }
+        catch (OnvifAuthenticationException)
+        {
+            _errors[hit.IpAddress] = $"Authentication failed at {DateTime.Now:HH:mm:ss}";
+        }
+        catch (Exception ex)
+        {
+            _errors[hit.IpAddress] = $"Add failed: {ex.Message}";
+        }
+        finally
+        {
+            _busy.Remove(hit.IpAddress);
+            StateHasChanged();
+        }
+    }
+
+    private void OpenTcpModal(CameraScanHit hit) => _tcpModalHit = hit;
+
+    private async Task OnTcpAdded()
+    {
+        if (_tcpModalHit is not null)
+        {
+            _hits.Remove(_tcpModalHit);
+        }
+        _tcpModalHit = null;
+        await OnCameraAdded.InvokeAsync();
+    }
+
+    public void Dispose() => _subscription?.Dispose();
+}
