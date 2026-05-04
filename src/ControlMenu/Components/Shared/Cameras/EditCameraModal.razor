@@ -1,0 +1,124 @@
+@using ControlMenu.Modules.Cameras.Entities
+@using ControlMenu.Modules.Cameras.Services
+@inject ICameraService CameraService
+
+<div class="dialog-overlay" @onclick="@CloseAsync">
+    <div class="dialog edit-camera-dialog" @onclick:stopPropagation="true">
+        <div class="dialog-header">
+            <h3>Edit camera</h3>
+        </div>
+        <div class="form-body">
+            <label class="form-field">
+                <span>Name</span>
+                <input type="text" @bind="_camera.Name" />
+            </label>
+            <label class="form-field">
+                <span>IP</span>
+                <input type="text" @bind="_camera.IpAddress" />
+            </label>
+            <label class="form-field">
+                <span>Port</span>
+                <input type="number" @bind="_camera.Port" />
+            </label>
+            <label class="form-field">
+                <span>Username</span>
+                <input type="text" @bind="_username" />
+            </label>
+            <label class="form-field">
+                <span>Password</span>
+                <input type="password" @bind="_password" placeholder="(unchanged if blank)" />
+            </label>
+            <label class="form-field form-field-inline">
+                <input type="checkbox" @bind="_camera.Enabled" />
+                <span>Enabled</span>
+            </label>
+            @if (_error is not null)
+            {
+                <div class="error-banner">&#9888; @_error</div>
+            }
+        </div>
+        <div class="dialog-actions">
+            <button @onclick="@CloseAsync">Cancel</button>
+            <button @onclick="@SaveAsync" disabled="@_busy">@(_busy ? "Saving..." : "Save")</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Camera Camera { get; set; } = default!;
+    [Parameter] public EventCallback OnClosed { get; set; }
+
+    private Camera _camera = default!;
+    private string _username = "";
+    private string _password = "";
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Defensive copy so cancel doesn't mutate the parent's reference.
+        _camera = new Camera
+        {
+            Id = Camera.Id,
+            Name = Camera.Name,
+            IpAddress = Camera.IpAddress,
+            Port = Camera.Port,
+            Manufacturer = Camera.Manufacturer,
+            Model = Camera.Model,
+            RtspStreamUrl = Camera.RtspStreamUrl,
+            OnvifServiceUrl = Camera.OnvifServiceUrl,
+            IsOnvif = Camera.IsOnvif,
+            Enabled = Camera.Enabled,
+            LastSeen = Camera.LastSeen,
+            Metadata = Camera.Metadata,
+        };
+        var creds = await CameraService.GetCredentialsAsync(Camera.Id);
+        if (creds is not null) _username = creds.Value.Username;
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_camera.Name))
+        {
+            _error = "Name is required";
+            return;
+        }
+
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            await CameraService.UpdateAsync(_camera);
+
+            if (!string.IsNullOrEmpty(_password))
+            {
+                // User entered a new password — store it.
+                await CameraService.SetCredentialsAsync(_camera.Id, _username, _password);
+            }
+            else
+            {
+                // Password blank — only re-store if username changed (so the stored
+                // password stays paired with the right username).
+                var stored = await CameraService.GetCredentialsAsync(_camera.Id);
+                if (stored is not null && _username != stored.Value.Username)
+                {
+                    await CameraService.SetCredentialsAsync(_camera.Id, _username, stored.Value.Password);
+                }
+            }
+
+            await CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CloseAsync() => await OnClosed.InvokeAsync();
+}
