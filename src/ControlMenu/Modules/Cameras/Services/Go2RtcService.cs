@@ -17,6 +17,7 @@ public interface IGo2RtcService
 
 public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
 {
+    private readonly ICameraChangeNotifier _cameraNotifier;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<Go2RtcService> _logger;
     private readonly string _contentRoot;
@@ -33,12 +34,15 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
     public Go2RtcService(
         IServiceScopeFactory scopeFactory,
         ILogger<Go2RtcService> logger,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ICameraChangeNotifier cameraNotifier)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
         _contentRoot = configuration.GetValue<string>(WebHostDefaults.ContentRootKey)
             ?? AppContext.BaseDirectory;
+        _cameraNotifier = cameraNotifier;
+        _cameraNotifier.CamerasChanged += OnCamerasChanged;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -115,14 +119,48 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
 
     private async Task GenerateConfigAsync()
     {
+        using var scope = _scopeFactory.CreateScope();
+        var cameraService = scope.ServiceProvider.GetRequiredService<ICameraService>();
+
+        var cameras = await cameraService.GetEnabledAsync();
         var sb = new StringBuilder();
         sb.AppendLine("streams:");
+
+        foreach (var cam in cameras)
+        {
+            var creds = await cameraService.GetCredentialsAsync(cam.Id);
+            if (creds is null)
+            {
+                _logger.LogWarning("Camera {Name} ({Id}) skipped — no credentials stored", cam.Name, cam.Id);
+                continue;
+            }
+            var (username, password) = creds.Value;
+
+            // Prefer the resolved RtspStreamUrl (full URL with auth replaced inline);
+            // fall back to bare ip:port for ONVIF cameras whose discovery couldn't probe streams.
+            string streamLine;
+            if (!string.IsNullOrEmpty(cam.RtspStreamUrl))
+            {
+                var uri = new Uri(cam.RtspStreamUrl);
+                streamLine = $"{uri.Scheme}://{username}:{password}@{uri.Host}:{uri.Port}{uri.PathAndQuery}";
+            }
+            else
+            {
+                streamLine = $"rtsp://{username}:{password}@{cam.IpAddress}:{cam.Port}";
+            }
+
+            sb.AppendLine($"  camera-{cam.Id:N}: {streamLine}");
+        }
+
         sb.AppendLine("api:");
         sb.AppendLine("  listen: \":1984\"");
+
         var configPath = Path.Combine(_contentRoot, "go2rtc.yaml");
         await File.WriteAllTextAsync(configPath, sb.ToString());
-        _logger.LogInformation("Wrote go2rtc config (stub) to {Path}", configPath);
+        _logger.LogInformation("Wrote go2rtc config with {Count} stream(s) to {Path}", cameras.Count, configPath);
     }
+
+    private void OnCamerasChanged() => _ = RegenerateConfigAsync();
 
     private string? FindExecutable()
     {
@@ -340,6 +378,7 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
 
     public void Dispose()
     {
+        _cameraNotifier.CamerasChanged -= OnCamerasChanged;
         _disposed = true;
         _serviceReady = false;
         lock (_lock) { KillProcess(); }
