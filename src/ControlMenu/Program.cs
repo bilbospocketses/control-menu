@@ -77,6 +77,7 @@ builder.Services.AddSingleton<IIconConversionService, IconConversionService>();
 builder.Services.AddSingleton<IFileUnblockService, FileUnblockService>();
 
 // Cameras module services
+builder.Services.AddSingleton<ICameraChangeNotifier, CameraChangeNotifier>();
 builder.Services.AddScoped<ICameraService, CameraService>();
 
 // go2rtc streaming service
@@ -141,10 +142,19 @@ using (var scope = app.Services.CreateScope())
     // Load camera names for sidebar nav entries (module can't do async)
     var cameraService = scope.ServiceProvider.GetRequiredService<ICameraService>();
     var allCameras = await cameraService.GetAllAsync();
-    CamerasModule.CameraCount = allCameras.Count;
-    CamerasModule.CameraNames = allCameras
-        .Select((c, i) => (Index: i + 1, c.Name))
-        .ToDictionary(x => x.Index, x => x.Name);
+    CamerasModule.EnabledCameras = allCameras
+        .Select(c => (c.Id, c.Name))
+        .ToList();
 }
+
+// Refresh sidebar nav when cameras change (Add/Update/Delete)
+var cameraNotifier = app.Services.GetRequiredService<ICameraChangeNotifier>();
+cameraNotifier.CamerasChanged += () =>
+{
+    using var scope = app.Services.CreateScope();
+    var svc = scope.ServiceProvider.GetRequiredService<ICameraService>();
+    var fresh = svc.GetAllAsync().GetAwaiter().GetResult();
+    CamerasModule.EnabledCameras = fresh.Select(c => (c.Id, c.Name)).ToList();
+};
 
 await app.RunAsync();

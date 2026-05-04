@@ -29,11 +29,10 @@ public class CamerasModule : IToolModule
     public int SortOrder => 4;
 
     /// <summary>
-    /// Set by Program.cs on startup from camera settings.
+    /// Set by Program.cs on startup AND on CameraChangeNotifier.CamerasChanged.
     /// Used by GetNavEntries() which can't do async.
     /// </summary>
-    public static int CameraCount { get; set; } = 0;
-    public static Dictionary<int, string> CameraNames { get; set; } = new();
+    public static List<(Guid Id, string Name)> EnabledCameras { get; set; } = new();
 
     public IEnumerable<ModuleDependency> Dependencies =>
     [
@@ -54,11 +53,10 @@ public class CamerasModule : IToolModule
 
     public IEnumerable<NavEntry> GetNavEntries()
     {
-        for (var i = 1; i <= CameraCount; i++)
+        var index = 0;
+        foreach (var cam in EnabledCameras)
         {
-            var name = CameraNames.TryGetValue(i, out var n) && !string.IsNullOrWhiteSpace(n)
-                ? n : $"Camera {i}";
-            yield return new NavEntry(name, $"/cameras/{i}", "📷", i);
+            yield return new NavEntry(cam.Name, $"/cameras/{cam.Id:N}", "📷", index++);
         }
     }
 
