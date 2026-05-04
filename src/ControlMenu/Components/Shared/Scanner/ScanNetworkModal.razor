@@ -7,7 +7,7 @@
 <div class="dialog-overlay" @onclick="Close">
     <div class="dialog dialog-large" @onclick:stopPropagation="true">
         <div class="dialog-header">
-            <h3>Scan network</h3>
+            <h3>@Title</h3>
             <button class="btn-close" @onclick="Close" aria-label="Close">×</button>
         </div>
         <div class="dialog-body">
@@ -60,6 +60,8 @@
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback<IReadOnlyList<ParsedSubnet>> OnStart { get; set; }
     [Parameter] public bool ScanInProgress { get; set; }
+    [Parameter] public string SettingsKey { get; set; } = "scan-subnets";
+    [Parameter] public string Title { get; set; } = "Scan network";
 
     private readonly List<ParsedSubnet> _subnets = new();
     private DetectedSubnet? _detected;
@@ -74,7 +76,7 @@
 
     private async Task LoadSubnetsAsync()
     {
-        var raw = await Config.GetSettingAsync("scan-subnets");
+        var raw = await Config.GetSettingAsync(SettingsKey);
         if (string.IsNullOrEmpty(raw)) return;
         try
         {
@@ -93,7 +95,7 @@
 
     private async Task SaveSubnetsAsync()
     {
-        await Config.SetSettingAsync("scan-subnets",
+        await Config.SetSettingAsync(SettingsKey,
             JsonSerializer.Serialize(_subnets.Select(s => s.Raw).ToArray()));
     }
 
