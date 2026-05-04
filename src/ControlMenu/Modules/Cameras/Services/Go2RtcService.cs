@@ -115,28 +115,13 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
 
     private async Task GenerateConfigAsync()
     {
-        using var scope = _scopeFactory.CreateScope();
-        var cameraService = scope.ServiceProvider.GetRequiredService<ICameraService>();
-
-        var cameras = await cameraService.GetConfiguredCamerasAsync();
         var sb = new StringBuilder();
         sb.AppendLine("streams:");
-
-        foreach (var camera in cameras)
-        {
-            var creds = await cameraService.GetCredentialsAsync(camera.Index);
-            if (creds is null) continue;
-
-            var (username, password) = creds.Value;
-            sb.AppendLine($"  camera-{camera.Index}: rtsp://{username}:{password}@{camera.IpAddress}:{camera.Port}");
-        }
-
         sb.AppendLine("api:");
         sb.AppendLine("  listen: \":1984\"");
-
         var configPath = Path.Combine(_contentRoot, "go2rtc.yaml");
         await File.WriteAllTextAsync(configPath, sb.ToString());
-        _logger.LogInformation("Wrote go2rtc config with {Count} stream(s) to {Path}", cameras.Count, configPath);
+        _logger.LogInformation("Wrote go2rtc config (stub) to {Path}", configPath);
     }
 
     private string? FindExecutable()

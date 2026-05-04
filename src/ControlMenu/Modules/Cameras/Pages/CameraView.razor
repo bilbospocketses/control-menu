@@ -1,17 +1,9 @@
 @page "/cameras/{Index:int}"
 @using ControlMenu.Modules.Cameras.Services
 
-<PageTitle>@(_camera?.Name ?? $"Camera {Index}") - Control Menu</PageTitle>
+<PageTitle>Camera @Index - Control Menu</PageTitle>
 
-@if (_camera is null)
-{
-    <div class="camera-not-configured">
-        <i class="bi bi-camera-video-off"></i>
-        <h2>Camera @Index not configured</h2>
-        <p>Set up this camera in <a href="/settings/cameras">Settings &gt; Cameras</a>.</p>
-    </div>
-}
-else if (!Go2Rtc.IsRunning)
+@if (!Go2Rtc.IsRunning)
 {
     <div class="camera-not-configured">
         <i class="bi bi-exclamation-triangle"></i>
@@ -28,13 +20,5 @@ else
 
 @code {
     [Parameter] public int Index { get; set; }
-    [Inject] private ICameraService CameraService { get; set; } = default!;
     [Inject] private IGo2RtcService Go2Rtc { get; set; } = default!;
-
-    private CameraConfig? _camera;
-
-    protected override async Task OnInitializedAsync()
-    {
-        _camera = await CameraService.GetCameraAsync(Index);
-    }
 }

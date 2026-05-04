@@ -1,65 +1,101 @@
+using ControlMenu.Data;
+using ControlMenu.Modules.Cameras.Entities;
 using ControlMenu.Services;
+using Microsoft.EntityFrameworkCore;
 
 namespace ControlMenu.Modules.Cameras.Services;
 
-public class CameraService(IConfigurationService config) : ICameraService
+public class CameraService : ICameraService
 {
     private const string Module = "cameras";
+    private readonly IDbContextFactory<AppDbContext> _dbFactory;
+    private readonly IConfigurationService _config;
+    private readonly ICameraChangeNotifier _notifier;
 
-    public async Task<int> GetCameraCountAsync()
+    public CameraService(
+        IDbContextFactory<AppDbContext> dbFactory,
+        IConfigurationService config,
+        ICameraChangeNotifier notifier)
     {
-        var val = await config.GetSettingAsync("camera-count", Module);
-        return int.TryParse(val, out var count) ? count : ICameraService.DefaultCameraCount;
+        _dbFactory = dbFactory;
+        _config = config;
+        _notifier = notifier;
     }
 
-    public async Task SetCameraCountAsync(int count)
+    public async Task<IReadOnlyList<Camera>> GetAllAsync()
     {
-        await config.SetSettingAsync("camera-count", Math.Max(1, count).ToString(), Module);
+        using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Cameras.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
     }
 
-    public async Task<CameraConfig?> GetCameraAsync(int index)
+    public async Task<IReadOnlyList<Camera>> GetEnabledAsync()
     {
-        var name = await config.GetSettingAsync($"camera-{index}-name", Module);
-        var ip = await config.GetSettingAsync($"camera-{index}-ip", Module);
-        if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(ip))
-            return null;
-        var portStr = await config.GetSettingAsync($"camera-{index}-port", Module);
-        var port = int.TryParse(portStr, out var p) ? p : 554;
-        return new CameraConfig(index, name, ip, port);
+        using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Cameras.AsNoTracking()
+            .Where(c => c.Enabled)
+            .OrderBy(c => c.Name)
+            .ToListAsync();
     }
 
-    public async Task<List<CameraConfig>> GetConfiguredCamerasAsync()
+    public async Task<Camera?> GetAsync(Guid id)
     {
-        var cameras = new List<CameraConfig>();
-        var count = await GetCameraCountAsync();
-        for (var i = 1; i <= count; i++)
-        {
-            var cam = await GetCameraAsync(i);
-            if (cam is not null)
-                cameras.Add(cam);
-        }
-        return cameras;
+        using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Cameras.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
     }
 
-    public async Task SaveCameraAsync(int index, string name, string ipAddress, int port)
+    public async Task<Camera> AddAsync(Camera camera, string username, string password)
     {
-        await config.SetSettingAsync($"camera-{index}-name", name, Module);
-        await config.SetSettingAsync($"camera-{index}-ip", ipAddress, Module);
-        await config.SetSettingAsync($"camera-{index}-port", port.ToString(), Module);
+        using var db = await _dbFactory.CreateDbContextAsync();
+        if (camera.Id == Guid.Empty) camera.Id = Guid.NewGuid();
+        db.Cameras.Add(camera);
+        await db.SaveChangesAsync();
+        await _config.SetSecretAsync($"camera-{camera.Id:N}-username", username, Module);
+        await _config.SetSecretAsync($"camera-{camera.Id:N}-password", password, Module);
+        _notifier.NotifyChanged();
+        return camera;
     }
 
-    public async Task SaveCredentialsAsync(int index, string username, string password)
+    public async Task UpdateAsync(Camera camera)
     {
-        await config.SetSecretAsync($"camera-{index}-username", username, Module);
-        await config.SetSecretAsync($"camera-{index}-password", password, Module);
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var existing = await db.Cameras.FindAsync(camera.Id)
+            ?? throw new InvalidOperationException($"Camera {camera.Id} not found.");
+        db.Entry(existing).CurrentValues.SetValues(camera);
+        await db.SaveChangesAsync();
+        _notifier.NotifyChanged();
     }
 
-    public async Task<(string Username, string Password)?> GetCredentialsAsync(int index)
+    public async Task SetCredentialsAsync(Guid id, string username, string password)
     {
-        var user = await config.GetSecretAsync($"camera-{index}-username", Module);
-        var pass = await config.GetSecretAsync($"camera-{index}-password", Module);
-        if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass))
-            return null;
-        return (user, pass);
+        await _config.SetSecretAsync($"camera-{id:N}-username", username, Module);
+        await _config.SetSecretAsync($"camera-{id:N}-password", password, Module);
+    }
+
+    public async Task<(string Username, string Password)?> GetCredentialsAsync(Guid id)
+    {
+        var user = await _config.GetSecretAsync($"camera-{id:N}-username", Module);
+        var pass = await _config.GetSecretAsync($"camera-{id:N}-password", Module);
+        return string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass) ? null : (user, pass);
+    }
+
+    public async Task DeleteAsync(Guid id)
+    {
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var camera = await db.Cameras.FindAsync(id);
+        if (camera is null) return;
+        db.Cameras.Remove(camera);
+        await db.SaveChangesAsync();
+        await _config.DeleteSettingAsync($"camera-{id:N}-username", Module);
+        await _config.DeleteSettingAsync($"camera-{id:N}-password", Module);
+        _notifier.NotifyChanged();
+    }
+
+    public async Task UpdateLastSeenAsync(Guid id)
+    {
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var camera = await db.Cameras.FindAsync(id);
+        if (camera is null) return;
+        camera.LastSeen = DateTime.UtcNow;
+        await db.SaveChangesAsync();
     }
 }

@@ -32,7 +32,7 @@ public class CamerasModule : IToolModule
     /// Set by Program.cs on startup from camera settings.
     /// Used by GetNavEntries() which can't do async.
     /// </summary>
-    public static int CameraCount { get; set; } = ICameraService.DefaultCameraCount;
+    public static int CameraCount { get; set; } = 0;
     public static Dictionary<int, string> CameraNames { get; set; } = new();
 
     public IEnumerable<ModuleDependency> Dependencies =>
