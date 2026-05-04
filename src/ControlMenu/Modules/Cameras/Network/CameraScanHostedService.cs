@@ -35,18 +35,18 @@ public class CameraScanHostedService : BackgroundService
     private const int DefaultIntervalMinutes = 15;
 
     private readonly ICameraScanService _scan;
-    private readonly IConfigurationService _config;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ICameraSubnetDetector _detect;
     private readonly ILogger<CameraScanHostedService> _logger;
     private DateTime _lastTick = DateTime.MinValue;
 
     public CameraScanHostedService(
         ICameraScanService scan,
-        IConfigurationService config,
+        IServiceScopeFactory scopeFactory,
         ICameraSubnetDetector detect,
         ILogger<CameraScanHostedService> logger)
     {
-        _scan = scan; _config = config; _detect = detect; _logger = logger;
+        _scan = scan; _scopeFactory = scopeFactory; _detect = detect; _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -67,7 +67,9 @@ public class CameraScanHostedService : BackgroundService
     {
         try
         {
-            var intervalStr = await _config.GetSettingAsync(IntervalKey, Module);
+            using var scope = _scopeFactory.CreateScope();
+            var config = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
+            var intervalStr = await config.GetSettingAsync(IntervalKey, Module);
             var interval = int.TryParse(intervalStr, out var i) ? i : DefaultIntervalMinutes;
             if (interval <= 0) return;
             if (_scan.Phase == ScanPhase.Scanning) return;
@@ -75,7 +77,7 @@ public class CameraScanHostedService : BackgroundService
             var elapsed = DateTime.UtcNow - _lastTick;
             if (elapsed < TimeSpan.FromMinutes(interval)) return;
 
-            var subnets = await ResolveSubnetsAsync(stoppingToken);
+            var subnets = await ResolveSubnetsAsync(config, stoppingToken);
             if (subnets.Count == 0)
             {
                 _logger.LogInformation("Camera scan: no subnets resolved, skipping tick");
@@ -92,7 +94,7 @@ public class CameraScanHostedService : BackgroundService
         }
     }
 
-    private async Task<IReadOnlyList<ParsedSubnet>> ResolveSubnetsAsync(CancellationToken ct)
+    private async Task<IReadOnlyList<ParsedSubnet>> ResolveSubnetsAsync(IConfigurationService config, CancellationToken ct)
     {
         var list = new List<ParsedSubnet>();
         var auto = await _detect.DetectAsync(ct);
@@ -103,7 +105,7 @@ public class CameraScanHostedService : BackgroundService
                 list.Add(result.Value);
         }
 
-        var userJson = await _config.GetSettingAsync(SubnetsKey, Module);
+        var userJson = await config.GetSettingAsync(SubnetsKey, Module);
         if (!string.IsNullOrEmpty(userJson))
         {
             try

@@ -3,6 +3,8 @@ using ControlMenu.Data;
 using ControlMenu.Modules;
 using ControlMenu.Modules.AndroidDevices.Services;
 using ControlMenu.Modules.Cameras;
+using ControlMenu.Modules.Cameras.Migrations;
+using ControlMenu.Modules.Cameras.Network;
 using ControlMenu.Modules.Cameras.Services;
 using ControlMenu.Modules.Jellyfin.Services;
 using ControlMenu.Modules.Utilities.Services;
@@ -79,6 +81,13 @@ builder.Services.AddSingleton<IFileUnblockService, FileUnblockService>();
 // Cameras module services
 builder.Services.AddSingleton<ICameraChangeNotifier, CameraChangeNotifier>();
 builder.Services.AddScoped<ICameraService, CameraService>();
+builder.Services.AddSingleton<IOnvifDiscoveryClient, OnvifDiscoveryClient>();
+builder.Services.AddScoped<IOnvifClient, OnvifClient>();
+builder.Services.AddSingleton<IRtspProbeClient, RtspProbeClient>();
+builder.Services.AddSingleton<ICameraScanService, CameraScanService>();
+builder.Services.AddSingleton<ICameraSubnetDetector, CameraSubnetDetector>();
+builder.Services.AddHostedService<CameraScanHostedService>();
+builder.Services.AddScoped<PurgeLegacyCameraSettingsMigration>();
 
 // go2rtc streaming service
 builder.Services.AddSingleton<IGo2RtcService, Go2RtcService>();
@@ -124,6 +133,9 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+
+    var purge = scope.ServiceProvider.GetRequiredService<PurgeLegacyCameraSettingsMigration>();
+    await purge.RunAsync();
 
     // Normalize any MAC addresses stored with colons or mixed case
     var devicesWithBadMac = db.Devices

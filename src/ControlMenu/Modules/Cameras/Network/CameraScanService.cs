@@ -16,7 +16,7 @@ public class CameraScanService : ICameraScanService
 
     private readonly IOnvifDiscoveryClient _onvif;
     private readonly IRtspProbeClient _rtsp;
-    private readonly ICameraService _cameraService;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<CameraScanService> _logger;
     private readonly List<Action<CameraScanEvent>> _subscribers = new();
     private readonly object _subscriberLock = new();
@@ -33,12 +33,12 @@ public class CameraScanService : ICameraScanService
     public CameraScanService(
         IOnvifDiscoveryClient onvif,
         IRtspProbeClient rtsp,
-        ICameraService cameraService,
+        IServiceScopeFactory scopeFactory,
         ILogger<CameraScanService> logger)
     {
         _onvif = onvif;
         _rtsp = rtsp;
-        _cameraService = cameraService;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -58,12 +58,14 @@ public class CameraScanService : ICameraScanService
 
         Emit(new CameraScanStartedEvent(subnets.Select(s => s.Normalized).ToList()));
 
-        var existingByIp = (await _cameraService.GetAllAsync())
+        using var scope = _scopeFactory.CreateScope();
+        var cameraService = scope.ServiceProvider.GetRequiredService<ICameraService>();
+        var existingByIp = (await cameraService.GetAllAsync())
             .ToDictionary(c => c.IpAddress, c => c.Id);
         var seenIps = new ConcurrentDictionary<string, byte>();
 
-        var onvifTask = RunOnvifBranchAsync(subnets, existingByIp, seenIps, _cts.Token);
-        var tcpTask = RunTcpSweepAsync(subnets, existingByIp, seenIps, _cts.Token);
+        var onvifTask = RunOnvifBranchAsync(subnets, existingByIp, seenIps, cameraService, _cts.Token);
+        var tcpTask = RunTcpSweepAsync(subnets, existingByIp, seenIps, cameraService, _cts.Token);
 
         await Task.WhenAll(onvifTask, tcpTask);
 
@@ -93,6 +95,7 @@ public class CameraScanService : ICameraScanService
         IReadOnlyList<ParsedSubnet> subnets,
         Dictionary<string, Guid> existing,
         ConcurrentDictionary<string, byte> seenIps,
+        ICameraService cameraService,
         CancellationToken ct)
     {
         try
@@ -104,7 +107,8 @@ public class CameraScanService : ICameraScanService
                 seenIps.TryAdd(r.IpAddress, 0);
                 await EmitHitOrBumpAsync(
                     new CameraScanHit(r.IpAddress, RtspPort, true, r.Manufacturer, r.Model, r.OnvifServiceUrl),
-                    existing);
+                    existing,
+                    cameraService);
             }
         }
         catch (OperationCanceledException) { throw; }
@@ -119,6 +123,7 @@ public class CameraScanService : ICameraScanService
         IReadOnlyList<ParsedSubnet> subnets,
         Dictionary<string, Guid> existing,
         ConcurrentDictionary<string, byte> seenIps,
+        ICameraService cameraService,
         CancellationToken ct)
     {
         var allIps = subnets.SelectMany(EnumerateAddresses).Distinct().ToList();
@@ -134,7 +139,8 @@ public class CameraScanService : ICameraScanService
                 if (!seenIps.TryAdd(ipStr, 0)) return; // ONVIF beat us to it
                 await EmitHitOrBumpAsync(
                     new CameraScanHit(ipStr, RtspPort, false, null, null, null),
-                    existing);
+                    existing,
+                    cameraService);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -155,11 +161,11 @@ public class CameraScanService : ICameraScanService
         }
     }
 
-    private async Task EmitHitOrBumpAsync(CameraScanHit hit, Dictionary<string, Guid> existing)
+    private async Task EmitHitOrBumpAsync(CameraScanHit hit, Dictionary<string, Guid> existing, ICameraService cameraService)
     {
         if (existing.TryGetValue(hit.IpAddress, out var id))
         {
-            await _cameraService.UpdateLastSeenAsync(id);
+            await cameraService.UpdateLastSeenAsync(id);
             return;
         }
         lock (_hitsLock) _hits.Add(hit);

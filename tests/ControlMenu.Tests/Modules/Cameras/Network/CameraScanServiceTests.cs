@@ -2,6 +2,7 @@ using ControlMenu.Modules.Cameras.Entities;
 using ControlMenu.Modules.Cameras.Network;
 using ControlMenu.Modules.Cameras.Services;
 using ControlMenu.Services.Network;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -13,10 +14,23 @@ public class CameraScanServiceTests
     private readonly Mock<IRtspProbeClient> _rtsp = new();
     private readonly Mock<ICameraService> _cameraSvc = new();
 
+    private IServiceScopeFactory BuildScopeFactory()
+    {
+        var sp = new Mock<IServiceProvider>();
+        sp.Setup(p => p.GetService(typeof(ICameraService))).Returns(_cameraSvc.Object);
+
+        var scope = new Mock<IServiceScope>();
+        scope.SetupGet(s => s.ServiceProvider).Returns(sp.Object);
+
+        var factory = new Mock<IServiceScopeFactory>();
+        factory.Setup(f => f.CreateScope()).Returns(scope.Object);
+        return factory.Object;
+    }
+
     private CameraScanService CreateSut()
     {
         _cameraSvc.Setup(s => s.GetAllAsync()).ReturnsAsync(Array.Empty<Camera>());
-        return new CameraScanService(_onvifDisc.Object, _rtsp.Object, _cameraSvc.Object, NullLogger<CameraScanService>.Instance);
+        return new CameraScanService(_onvifDisc.Object, _rtsp.Object, BuildScopeFactory(), NullLogger<CameraScanService>.Instance);
     }
 
     private static ParsedSubnet Subnet(string cidr) => new(cidr, cidr, 254);
