@@ -16,6 +16,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.*" />
+    <PackageReference Include="OnvifDiscovery" Version="2.1.1" />
     <PackageReference Include="SkiaSharp" Version="3.119.2" />
   </ItemGroup>
 
