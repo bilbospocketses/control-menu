@@ -1,0 +1,32 @@
+.toolbar {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.camera-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.camera-table td,
+.camera-table th {
+    white-space: nowrap;
+    padding: 0.5rem;
+    text-align: left;
+}
+
+.camera-table th {
+    border-bottom: 1px solid var(--border, #ddd);
+}
+
+.icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+}
+
+section {
+    margin-top: 1.5rem;
+}

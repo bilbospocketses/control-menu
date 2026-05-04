@@ -1,9 +1,179 @@
+@using ControlMenu.Modules.Cameras.Entities
+@using ControlMenu.Modules.Cameras.Network
 @using ControlMenu.Modules.Cameras.Services
+@using ControlMenu.Components.Shared.Scanner
+@using ControlMenu.Services
+@using ControlMenu.Services.Network
+@inject ICameraService CameraService
+@inject ICameraScanService ScanService
+@inject ICameraChangeNotifier ChangeNotifier
+@implements IDisposable
 
 <h2>Cameras</h2>
-<p>Camera settings migration in progress — new UI coming in T14.</p>
+
+<div class="toolbar">
+    <button class="btn btn-primary" @onclick="OpenScanModal">Scan Network</button>
+    <button class="btn btn-secondary" @onclick="OpenManualAddModal">Add Camera Manually</button>
+</div>
+
+<section>
+    <h3>Configured cameras</h3>
+    @if (_cameras.Count == 0)
+    {
+        <p style="color: var(--text-muted);">No cameras configured yet. Use "Scan Network" to discover cameras on your LAN.</p>
+    }
+    else
+    {
+        <table class="camera-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Address</th>
+                    <th>Mfr / Model</th>
+                    <th>ONVIF</th>
+                    <th>Enabled</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var cam in _cameras)
+                {
+                    <tr>
+                        <td>@cam.Name</td>
+                        <td>@cam.IpAddress:@cam.Port</td>
+                        <td>@(cam.Manufacturer ?? "—") @(cam.Model ?? "")</td>
+                        <td>@(cam.IsOnvif ? "✓" : "✗")</td>
+                        <td>
+                            <input type="checkbox" checked="@cam.Enabled"
+                                   @onchange="@(e => ToggleEnabled(cam, e))" />
+                        </td>
+                        <td class="actions">
+                            <button class="icon-btn" title="Edit" @onclick="@(() => OpenEditModal(cam))">✎</button>
+                            <button class="icon-btn" title="Delete" @onclick="@(() => ConfirmDelete(cam))">🗑</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</section>
+
+<section>
+    <h3>Discovered</h3>
+    <DiscoveredCamerasPanel OnCameraAdded="@RefreshCamerasAsync" />
+</section>
+
+@if (_scanModalOpen)
+{
+    <ScanNetworkModal SettingsKey="cameras-scan-subnets"
+                      Title="Scan for cameras"
+                      ScanInProgress="@(ScanService.Phase is ScanPhase.Scanning or ScanPhase.Draining)"
+                      OnStart="OnScanStart"
+                      OnClose="@(() => _scanModalOpen = false)" />
+}
+@if (_editTarget is not null)
+{
+    <EditCameraModal Camera="_editTarget" OnClosed="@OnEditClosed" />
+}
+@if (_addManualOpen)
+{
+    <AddTcpCameraModal Ip="" Port="554" OnClosed="@OnAddClosed" OnAdded="@RefreshCamerasAsync" />
+}
+
+@if (_showDeleteConfirm)
+{
+    <div class="dialog-overlay" @onclick="CloseDeleteConfirm">
+        <div class="dialog" @onclick:stopPropagation="true">
+            <h3>Delete Camera</h3>
+            <p>Are you sure you want to delete <strong>@_deleteTarget?.Name</strong>?</p>
+            <div class="dialog-actions">
+                <button class="btn btn-secondary" @onclick="CloseDeleteConfirm">Cancel</button>
+                <button class="btn btn-danger" @onclick="DeleteConfirmed">Delete</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
+        @_message
+    </div>
+}
 
 @code {
-    [Inject] private ICameraService CameraService { get; set; } = default!;
-    [Inject] private IGo2RtcService Go2Rtc { get; set; } = default!;
+    private List<Camera> _cameras = new();
+    private bool _scanModalOpen;
+    private bool _addManualOpen;
+    private Camera? _editTarget;
+    private bool _showDeleteConfirm;
+    private Camera? _deleteTarget;
+    private string? _message;
+    private bool _messageIsError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ChangeNotifier.CamerasChanged += OnCamerasChanged;
+        await RefreshCamerasAsync();
+    }
+
+    private async Task RefreshCamerasAsync()
+    {
+        var fresh = await CameraService.GetAllAsync();
+        _cameras = fresh.ToList();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnCamerasChanged() => _ = RefreshCamerasAsync();
+
+    private async Task ToggleEnabled(Camera cam, ChangeEventArgs e)
+    {
+        cam.Enabled = (bool)(e.Value ?? false);
+        await CameraService.UpdateAsync(cam);
+    }
+
+    private void ConfirmDelete(Camera cam)
+    {
+        _deleteTarget = cam;
+        _showDeleteConfirm = true;
+    }
+
+    private void CloseDeleteConfirm()
+    {
+        _showDeleteConfirm = false;
+        _deleteTarget = null;
+    }
+
+    private async Task DeleteConfirmed()
+    {
+        if (_deleteTarget is not null)
+        {
+            await CameraService.DeleteAsync(_deleteTarget.Id);
+            _showDeleteConfirm = false;
+            _deleteTarget = null;
+            await RefreshCamerasAsync();
+            await ShowMessage("Camera deleted.");
+        }
+    }
+
+    private void OpenScanModal() => _scanModalOpen = true;
+    private void OpenManualAddModal() => _addManualOpen = true;
+    private void OpenEditModal(Camera cam) => _editTarget = cam;
+    private void OnEditClosed() => _editTarget = null;
+    private void OnAddClosed() => _addManualOpen = false;
+
+    private Task OnScanStart(IReadOnlyList<ParsedSubnet> subnets)
+        => ScanService.StartScanAsync(subnets);
+
+    private async Task ShowMessage(string message, bool isError = false)
+    {
+        _message = message;
+        _messageIsError = isError;
+        StateHasChanged();
+        await Task.Delay(isError ? 10000 : 5000);
+        _message = null;
+        StateHasChanged();
+    }
+
+    public void Dispose() => ChangeNotifier.CamerasChanged -= OnCamerasChanged;
 }
