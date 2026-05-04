@@ -30,8 +30,6 @@ public class JellyfinService : IJellyfinService
         if (result.DbPath is not null)
             await _config.SetSettingAsync("jellyfin-db-path", result.DbPath);
 
-        await _config.SetSettingAsync("jellyfin-backup-dir", OperationLogger.GetBackupDirectory());
-
         return result;
     }
 
@@ -75,11 +73,11 @@ public class JellyfinService : IJellyfinService
     public async Task<string?> BackupDatabaseAsync(OperationLogger? logger = null, CancellationToken ct = default)
     {
         var dbPath = await _config.GetSettingAsync("jellyfin-db-path");
-        var backupDir = await _config.GetSettingAsync("jellyfin-backup-dir");
+        var backupDir = OperationLogger.GetBackupDirectory();
 
-        if (dbPath is null || backupDir is null)
+        if (dbPath is null)
         {
-            logger?.Fail($"Backup failed: dbPath={dbPath ?? "null"}, backupDir={backupDir ?? "null"}");
+            logger?.Fail("Backup failed: dbPath is not configured");
             return null;
         }
 
@@ -129,8 +127,8 @@ public class JellyfinService : IJellyfinService
 
     public async Task CleanupOldBackupsAsync(OperationLogger? logger = null, CancellationToken ct = default)
     {
-        var backupDir = await _config.GetSettingAsync("jellyfin-backup-dir");
-        if (backupDir is null || !Directory.Exists(backupDir)) return;
+        var backupDir = OperationLogger.GetBackupDirectory();
+        if (!Directory.Exists(backupDir)) return;
 
         var retentionStr = await _config.GetSettingAsync("jellyfin-backup-retention-days");
         var retentionDays = int.TryParse(retentionStr, out var d) ? d : 5;

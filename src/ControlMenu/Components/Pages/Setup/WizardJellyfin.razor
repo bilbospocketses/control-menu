@@ -131,8 +131,6 @@
                 await Config.SetSettingAsync("jellyfin-container-name", _containerName);
             if (!string.IsNullOrEmpty(result.DbPath))
                 await Config.SetSettingAsync("jellyfin-db-path", result.DbPath);
-            if (!string.IsNullOrEmpty(result.ConfigHostPath))
-                await Config.SetSettingAsync("jellyfin-backup-dir", OperationLogger.GetBackupDirectory());
         }
         UpdateState();
     }

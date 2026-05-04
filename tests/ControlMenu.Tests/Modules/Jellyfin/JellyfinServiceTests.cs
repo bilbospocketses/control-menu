@@ -76,8 +76,6 @@ public class JellyfinServiceTests
     {
         _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-db-path", null))
             .ReturnsAsync("D:/DockerData/jellyfin/config/data/jellyfin.db");
-        _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-backup-dir", null))
-            .ReturnsAsync("C:/scripts/tools-menu/jellyfin-db-bkup-and-logs");
 
         // The command differs by OS, but we test the Windows path here
         _mockExecutor.Setup(e => e.ExecuteAsync(
@@ -111,21 +109,19 @@ public class JellyfinServiceTests
     [Fact]
     public async Task CleanupOldBackupsAsync_RemovesOldFiles()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), "ControlMenu_Test_" + Guid.NewGuid());
-        Directory.CreateDirectory(tempDir);
+        // Backup dir is now derived from runtime (OperationLogger.GetBackupDirectory),
+        // not stored in settings. Test against the real runtime path with unique
+        // filenames to avoid cross-test contamination.
+        var backupDir = OperationLogger.GetBackupDirectory();
+        var testTag = Guid.NewGuid().ToString("N");
+        var oldFile = Path.Combine(backupDir, $"jellyfin_testold_{testTag}.db");
+        var newFile = Path.Combine(backupDir, $"jellyfin_testnew_{testTag}.db");
         try
         {
-            // Create an old backup file (10 days old)
-            var oldFile = Path.Combine(tempDir, "jellyfin_old.db");
             File.WriteAllText(oldFile, "old");
             File.SetLastWriteTimeUtc(oldFile, DateTime.UtcNow.AddDays(-10));
-
-            // Create a recent backup file
-            var newFile = Path.Combine(tempDir, "jellyfin_new.db");
             File.WriteAllText(newFile, "new");
 
-            _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-backup-dir", null))
-                .ReturnsAsync(tempDir);
             _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-backup-retention-days", null))
                 .ReturnsAsync("5");
 
@@ -137,7 +133,8 @@ public class JellyfinServiceTests
         }
         finally
         {
-            Directory.Delete(tempDir, recursive: true);
+            if (File.Exists(oldFile)) File.Delete(oldFile);
+            if (File.Exists(newFile)) File.Delete(newFile);
         }
     }
 }
