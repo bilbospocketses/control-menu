@@ -22,12 +22,6 @@
     color: var(--text-muted, #555);
 }
 
-.form-field input {
-    padding: 0.4rem 0.6rem;
-    width: 100%;
-    box-sizing: border-box;
-}
-
 .form-field-inline {
     flex-direction: row;
     align-items: center;

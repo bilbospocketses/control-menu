@@ -11,23 +11,23 @@
         <div class="form-body">
             <label class="form-field">
                 <span>Name</span>
-                <input type="text" @bind="_camera.Name" />
+                <input type="text" class="form-control" @bind="_camera.Name" />
             </label>
             <label class="form-field">
                 <span>IP</span>
-                <input type="text" @bind="_camera.IpAddress" />
+                <input type="text" class="form-control" @bind="_camera.IpAddress" />
             </label>
             <label class="form-field">
                 <span>Port</span>
-                <input type="number" @bind="_camera.Port" />
+                <input type="number" class="form-control" @bind="_camera.Port" />
             </label>
             <label class="form-field">
                 <span>Username</span>
-                <input type="text" @bind="_username" />
+                <input type="text" class="form-control" @bind="_username" />
             </label>
             <label class="form-field">
                 <span>Password</span>
-                <input type="password" @bind="_password" placeholder="(unchanged if blank)" />
+                <input type="password" class="form-control" @bind="_password" placeholder="(unchanged if blank)" />
             </label>
             <label class="form-field form-field-inline">
                 <input type="checkbox" @bind="_camera.Enabled" />
@@ -59,8 +59,8 @@
             }
         </div>
         <div class="dialog-actions">
-            <button @onclick="@CloseAsync">Cancel</button>
-            <button @onclick="@SaveAsync" disabled="@_busy">@(_busy ? "Saving..." : "Save")</button>
+            <button class="btn btn-secondary" @onclick="@CloseAsync">Cancel</button>
+            <button class="btn btn-primary" @onclick="@SaveAsync" disabled="@_busy">@(_busy ? "Saving..." : "Save")</button>
         </div>
     </div>
 </div>
