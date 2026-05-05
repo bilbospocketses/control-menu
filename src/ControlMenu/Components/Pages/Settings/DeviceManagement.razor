@@ -19,6 +19,7 @@
         <div style="display:flex; gap:0.5rem; align-items:center;">
             <input type="number" class="form-control" style="max-width:200px;" min="0" max="3600"
                    value="@_discoveryInterval" @onchange="OnDiscoveryIntervalChanged" />
+            <button class="btn btn-primary" @onclick="ScanNow">Scan Now</button>
             <button class="btn btn-primary" @onclick="RestoreDefaultInterval">Restore Default</button>
         </div>
         <div class="form-hint">How often to refresh device Status &amp; Last Seen by probing each registered device. Allowed: 0 (disabled) or 300–3600 seconds. Default 300.</div>
@@ -225,6 +226,12 @@
         await Config.SetSettingAsync("discovery-interval", DefaultDiscoveryInterval.ToString());
         IntervalSignal.Trigger(IntervalChangeSignal.AndroidLiveness);
         await ShowMessage($"Restored default ({DefaultDiscoveryInterval}s).");
+    }
+
+    private async Task ScanNow()
+    {
+        IntervalSignal.Trigger(IntervalChangeSignal.AndroidLiveness);
+        await ShowMessage("Liveness scan triggered.");
     }
 
     private async Task LoadDevices()
