@@ -4,146 +4,171 @@
 @inject NavigationManager Nav
 @inject IEmailService EmailService
 
-<div class="settings-section">
-    <h2>General</h2>
+<SettingsSection Title="General">
+    <SettingsGrid>
+        <SettingsGridCell>
+            <Label>Setup Wizard</Label>
+            <ChildContent>
+                <button class="btn btn-secondary" @onclick="RerunWizard">
+                    <i class="bi bi-arrow-counterclockwise"></i> Re-run Setup Wizard
+                </button>
+            </ChildContent>
+            <Hint>Walk through the initial setup again.</Hint>
+        </SettingsGridCell>
 
-    <div class="form-group">
-        <label>Theme</label>
-        <div style="display:flex;gap:8px;align-items:center;">
-            <button class="btn @(_theme == "dark" ? "btn-primary" : "btn-secondary")" @onclick='() => SetTheme("dark")'>
-                <i class="bi bi-moon-fill"></i> Dark
-            </button>
-            <button class="btn @(_theme == "light" ? "btn-primary" : "btn-secondary")" @onclick='() => SetTheme("light")'>
-                <i class="bi bi-sun-fill"></i> Light
-            </button>
-        </div>
-    </div>
+        <SettingsGridCell>
+            <Label>Timezone</Label>
+            <ChildContent>
+                <select class="form-control" value="@_timezone" @onchange="SaveTimezone">
+                    <option value="UTC">UTC (±00:00)</option>
+                    <option value="-12:00">UTC−12:00</option>
+                    <option value="-11:00">UTC−11:00</option>
+                    <option value="-10:00">UTC−10:00 (Hawaii)</option>
+                    <option value="-09:00">UTC−09:00 (Alaska)</option>
+                    <option value="-08:00">UTC−08:00 (Pacific)</option>
+                    <option value="-07:00">UTC−07:00 (Mountain)</option>
+                    <option value="-06:00">UTC−06:00 (Central)</option>
+                    <option value="-05:00">UTC−05:00 (Eastern)</option>
+                    <option value="-04:00">UTC−04:00 (Atlantic)</option>
+                    <option value="-03:30">UTC−03:30 (Newfoundland)</option>
+                    <option value="-03:00">UTC−03:00</option>
+                    <option value="-02:00">UTC−02:00</option>
+                    <option value="-01:00">UTC−01:00</option>
+                    <option value="+01:00">UTC+01:00 (Central Europe)</option>
+                    <option value="+02:00">UTC+02:00 (Eastern Europe)</option>
+                    <option value="+03:00">UTC+03:00 (Moscow)</option>
+                    <option value="+03:30">UTC+03:30 (Iran)</option>
+                    <option value="+04:00">UTC+04:00 (Gulf)</option>
+                    <option value="+04:30">UTC+04:30 (Afghanistan)</option>
+                    <option value="+05:00">UTC+05:00 (Pakistan)</option>
+                    <option value="+05:30">UTC+05:30 (India)</option>
+                    <option value="+05:45">UTC+05:45 (Nepal)</option>
+                    <option value="+06:00">UTC+06:00 (Bangladesh)</option>
+                    <option value="+06:30">UTC+06:30 (Myanmar)</option>
+                    <option value="+07:00">UTC+07:00 (Indochina)</option>
+                    <option value="+08:00">UTC+08:00 (China/Singapore)</option>
+                    <option value="+09:00">UTC+09:00 (Japan/Korea)</option>
+                    <option value="+09:30">UTC+09:30 (Australia Central)</option>
+                    <option value="+10:00">UTC+10:00 (Australia Eastern)</option>
+                    <option value="+11:00">UTC+11:00</option>
+                    <option value="+12:00">UTC+12:00 (New Zealand)</option>
+                    <option value="+13:00">UTC+13:00</option>
+                </select>
+            </ChildContent>
+            <Hint>Timezone used for log timestamps. Defaults to UTC.</Hint>
+        </SettingsGridCell>
 
-    <div class="form-group">
-        <label>Timezone</label>
-        <select class="form-control" style="max-width:300px;" value="@_timezone" @onchange="SaveTimezone">
-            <option value="UTC">UTC (±00:00)</option>
-            <option value="-12:00">UTC−12:00</option>
-            <option value="-11:00">UTC−11:00</option>
-            <option value="-10:00">UTC−10:00 (Hawaii)</option>
-            <option value="-09:00">UTC−09:00 (Alaska)</option>
-            <option value="-08:00">UTC−08:00 (Pacific)</option>
-            <option value="-07:00">UTC−07:00 (Mountain)</option>
-            <option value="-06:00">UTC−06:00 (Central)</option>
-            <option value="-05:00">UTC−05:00 (Eastern)</option>
-            <option value="-04:00">UTC−04:00 (Atlantic)</option>
-            <option value="-03:30">UTC−03:30 (Newfoundland)</option>
-            <option value="-03:00">UTC−03:00</option>
-            <option value="-02:00">UTC−02:00</option>
-            <option value="-01:00">UTC−01:00</option>
-            <option value="+01:00">UTC+01:00 (Central Europe)</option>
-            <option value="+02:00">UTC+02:00 (Eastern Europe)</option>
-            <option value="+03:00">UTC+03:00 (Moscow)</option>
-            <option value="+03:30">UTC+03:30 (Iran)</option>
-            <option value="+04:00">UTC+04:00 (Gulf)</option>
-            <option value="+04:30">UTC+04:30 (Afghanistan)</option>
-            <option value="+05:00">UTC+05:00 (Pakistan)</option>
-            <option value="+05:30">UTC+05:30 (India)</option>
-            <option value="+05:45">UTC+05:45 (Nepal)</option>
-            <option value="+06:00">UTC+06:00 (Bangladesh)</option>
-            <option value="+06:30">UTC+06:30 (Myanmar)</option>
-            <option value="+07:00">UTC+07:00 (Indochina)</option>
-            <option value="+08:00">UTC+08:00 (China/Singapore)</option>
-            <option value="+09:00">UTC+09:00 (Japan/Korea)</option>
-            <option value="+09:30">UTC+09:30 (Australia Central)</option>
-            <option value="+10:00">UTC+10:00 (Australia Eastern)</option>
-            <option value="+11:00">UTC+11:00</option>
-            <option value="+12:00">UTC+12:00 (New Zealand)</option>
-            <option value="+13:00">UTC+13:00</option>
-        </select>
-        <div class="form-hint">Timezone used for log timestamps. Defaults to UTC.</div>
-    </div>
+        <SettingsGridCell>
+            <Label>Theme</Label>
+            <ChildContent>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button class="btn @(_theme == "dark" ? "btn-primary" : "btn-secondary")" @onclick='() => SetTheme("dark")'>
+                        <i class="bi bi-moon-fill"></i> Dark
+                    </button>
+                    <button class="btn @(_theme == "light" ? "btn-primary" : "btn-secondary")" @onclick='() => SetTheme("light")'>
+                        <i class="bi bi-sun-fill"></i> Light
+                    </button>
+                </div>
+            </ChildContent>
+            <Hint>Also available from the icon in the top-right of every page.</Hint>
+        </SettingsGridCell>
 
-    <div class="form-group">
-        <label>Setup Wizard</label>
-        <button class="btn btn-secondary" @onclick="RerunWizard"><i class="bi bi-arrow-counterclockwise"></i> Re-run Setup Wizard</button>
-        <div class="form-hint">Walk through the initial setup again.</div>
-    </div>
-</div>
+        <SettingsGridCell />
+    </SettingsGrid>
+</SettingsSection>
 
-<div class="settings-section" style="margin-top:2rem;">
-    <h2>Email (SMTP)</h2>
-    <p>Configure SMTP for sending notification emails from any module.</p>
+<SettingsSection Title="Email (SMTP)">
+    <SettingsGrid>
+        <SettingsGridCell>
+            <Label>SMTP Server</Label>
+            <ChildContent>
+                <input class="form-control" value="@_smtpServer" placeholder="mail.smtp2go.com" @onchange="SaveSmtpServer" />
+            </ChildContent>
+        </SettingsGridCell>
 
-    <div class="form-group">
-        <label>SMTP Server</label>
-        <input class="form-control" style="max-width:300px;" value="@_smtpServer"
-               placeholder="mail.smtp2go.com" @onchange="SaveSmtpServer" />
-    </div>
-    <div class="form-group">
-        <label>SMTP Port</label>
-        <input type="number" class="form-control" style="max-width:100px;" value="@_smtpPort"
-               @onchange="SaveSmtpPort" />
-    </div>
-    <div class="form-group">
-        <label>Username</label>
-        <input class="form-control" style="max-width:300px;" value="@_smtpUsername"
-               @onchange="SaveSmtpUsername" />
-    </div>
-    <div class="form-group">
-        <label>Password</label>
-        <input type="password" class="form-control" style="max-width:300px;" value="@_smtpPassword"
-               @onchange="SaveSmtpPassword" />
-    </div>
-    <div class="form-group">
-        <label>From Email</label>
-        <input type="email" class="form-control" style="max-width:300px;" value="@_fromEmail"
-               placeholder="noreply@yourdomain.com" @onchange="SaveFromEmail" />
-        <div class="form-hint">Sender address for outgoing emails. Must be authorized by your SMTP provider.</div>
-    </div>
-    <div class="form-group">
-        <label>Notification Email</label>
-        <input type="email" class="form-control" style="max-width:300px;" value="@_notificationEmail"
-               placeholder="you@example.com" @onchange="SaveNotificationEmail" />
-        <div class="form-hint">Default recipient for all notification emails.</div>
-    </div>
-    <div class="form-group">
-        <button class="btn btn-secondary" @onclick="SendTestEmail" disabled="@_sendingTest">
-            <i class="bi bi-envelope"></i> @(_sendingTest ? "Sending..." : "Send Test Email")
-        </button>
-    </div>
-</div>
+        <SettingsGridCell>
+            <Label>SMTP Port</Label>
+            <ChildContent>
+                <input type="number" class="form-control" value="@_smtpPort" @onchange="SaveSmtpPort" />
+            </ChildContent>
+        </SettingsGridCell>
 
-<div class="settings-section" style="margin-top:2rem;">
-    <h2>ws-scrcpy-web deployment</h2>
-    <div class="form-group">
-        <label>Deployment mode</label>
-        <div class="radio-group">
-            <label>
-                <input type="radio" name="wsscrcpyMode" value="managed"
-                       checked="@(_wsscrcpyMode == "managed")"
-                       @onchange="SetModeManaged" />
-                Managed — Control Menu spawns and watches the node process on port 8000.
-            </label>
-            <label>
-                <input type="radio" name="wsscrcpyMode" value="external"
-                       checked="@(_wsscrcpyMode == "external")"
-                       @onchange="SetModeExternal" />
-                External — connect to an already-running ws-scrcpy-web at the URL below (Docker, remote host).
-            </label>
-        </div>
-    </div>
+        <SettingsGridCell>
+            <Label>Username</Label>
+            <ChildContent>
+                <input class="form-control" value="@_smtpUsername" @onchange="SaveSmtpUsername" />
+            </ChildContent>
+        </SettingsGridCell>
 
-    @if (_wsscrcpyMode == "external")
-    {
-        <div class="form-group">
-            <label>ws-scrcpy-web URL</label>
-            <input class="form-control" style="max-width:400px;"
-                   @bind="_wsscrcpyUrl" @bind:event="onchange"
-                   @onblur="SaveUrl" />
-            <div class="form-hint">
-                e.g. <code>http://localhost:8000</code> or <code>http://ws-scrcpy:8000</code>.
-                If running in Docker and you want mDNS discovery to work, the container needs
-                <code>--network host</code> (Linux) or the TCP sweep will work but mDNS will return zero hits.
-            </div>
-        </div>
-    }
-</div>
+        <SettingsGridCell>
+            <Label>Password</Label>
+            <ChildContent>
+                <input type="password" class="form-control" value="@_smtpPassword" @onchange="SaveSmtpPassword" />
+            </ChildContent>
+        </SettingsGridCell>
+
+        <SettingsGridCell>
+            <Label>From Email</Label>
+            <ChildContent>
+                <input type="email" class="form-control" value="@_fromEmail" placeholder="noreply@yourdomain.com" @onchange="SaveFromEmail" />
+            </ChildContent>
+            <Hint>Sender address for outgoing emails. Must be authorized by your SMTP provider.</Hint>
+        </SettingsGridCell>
+
+        <SettingsGridCell>
+            <Label>Notification Email</Label>
+            <ChildContent>
+                <input type="email" class="form-control" value="@_notificationEmail" placeholder="you@example.com" @onchange="SaveNotificationEmail" />
+            </ChildContent>
+            <Hint>Default recipient for all notification emails.</Hint>
+        </SettingsGridCell>
+
+        <SettingsGridCell>
+            <ChildContent>
+                <button class="btn btn-secondary" @onclick="SendTestEmail" disabled="@_sendingTest">
+                    <i class="bi bi-envelope"></i> @(_sendingTest ? "Sending..." : "Send Test Email")
+                </button>
+            </ChildContent>
+        </SettingsGridCell>
+
+        <SettingsGridCell />
+    </SettingsGrid>
+</SettingsSection>
+
+<SettingsSection Title="ws-scrcpy-web deployment">
+    <SettingsGrid>
+        <SettingsGridCell>
+            <Label>Deployment Mode</Label>
+            <ChildContent>
+                <div class="radio-group">
+                    <label>
+                        <input type="radio" name="wsscrcpyMode" value="managed"
+                               checked="@(_wsscrcpyMode == "managed")"
+                               @onchange="SetModeManaged" />
+                        <strong>Managed</strong> — Control Menu spawns and watches the node process on port 8000.
+                    </label>
+                    <label>
+                        <input type="radio" name="wsscrcpyMode" value="external"
+                               checked="@(_wsscrcpyMode == "external")"
+                               @onchange="SetModeExternal" />
+                        <strong>External</strong> — Connect to a running ws-scrcpy-web at the External URL.
+                    </label>
+                </div>
+            </ChildContent>
+        </SettingsGridCell>
+
+        <SettingsGridCell>
+            <Label>External URL</Label>
+            <ChildContent>
+                <input class="form-control"
+                       @bind="_wsscrcpyUrl" @bind:event="onchange"
+                       @onblur="SaveUrl"
+                       disabled="@(_wsscrcpyMode != "external")" />
+            </ChildContent>
+            <Hint>e.g. <code>http://localhost:8000</code> or <code>http://ws-scrcpy:8000</code>. Disabled until External mode is selected.</Hint>
+        </SettingsGridCell>
+    </SettingsGrid>
+</SettingsSection>
 
 @if (!string.IsNullOrEmpty(_message))
 {
