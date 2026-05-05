@@ -174,18 +174,26 @@ else
 
     private void HandleEvent(CameraScanEvent ev)
     {
-        switch (ev)
+        InvokeAsync(() =>
         {
-            case CameraScanStartedEvent:
-                _hits.Clear(); _errors.Clear(); _nameInputs.Clear();
-                break;
-            case CameraScanHitEvent hitEv:
-                var idx = _hits.FindIndex(h => h.IpAddress == hitEv.Hit.IpAddress);
-                if (idx >= 0) _hits[idx] = hitEv.Hit;
-                else _hits.Add(hitEv.Hit);
-                break;
-        }
-        InvokeAsync(StateHasChanged);
+            switch (ev)
+            {
+                case CameraScanStartedEvent:
+                    _hits.Clear();
+                    _errors.Clear();
+                    _nameInputs.Clear();
+                    _userInputs.Clear();
+                    _passInputs.Clear();
+                    _busy.Clear();
+                    break;
+                case CameraScanHitEvent hitEv:
+                    var idx = _hits.FindIndex(h => h.IpAddress == hitEv.Hit.IpAddress);
+                    if (idx >= 0) _hits[idx] = hitEv.Hit;
+                    else _hits.Add(hitEv.Hit);
+                    break;
+            }
+            StateHasChanged();
+        });
     }
 
     private string GetName(CameraScanHit hit)
