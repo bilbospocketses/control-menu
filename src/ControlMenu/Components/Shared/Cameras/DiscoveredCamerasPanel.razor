@@ -177,26 +177,33 @@ else
 
     private void HandleEvent(CameraScanEvent ev)
     {
-        InvokeAsync(() =>
+        try
         {
-            switch (ev)
+            InvokeAsync(() =>
             {
-                case CameraScanStartedEvent:
-                    _hits.Clear();
-                    _errors.Clear();
-                    _nameInputs.Clear();
-                    _userInputs.Clear();
-                    _passInputs.Clear();
-                    _busy.Clear();
-                    break;
-                case CameraScanHitEvent hitEv:
-                    var idx = _hits.FindIndex(h => h.IpAddress == hitEv.Hit.IpAddress);
-                    if (idx >= 0) _hits[idx] = hitEv.Hit;
-                    else _hits.Add(hitEv.Hit);
-                    break;
-            }
-            StateHasChanged();
-        });
+                switch (ev)
+                {
+                    case CameraScanStartedEvent:
+                        _hits.Clear();
+                        _errors.Clear();
+                        _nameInputs.Clear();
+                        _userInputs.Clear();
+                        _passInputs.Clear();
+                        _busy.Clear();
+                        break;
+                    case CameraScanHitEvent hitEv:
+                        var idx = _hits.FindIndex(h => h.IpAddress == hitEv.Hit.IpAddress);
+                        if (idx >= 0) _hits[idx] = hitEv.Hit;
+                        else _hits.Add(hitEv.Hit);
+                        break;
+                }
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+            // Component disposed mid-event; subscription already removed in Dispose().
+        }
     }
 
     private string GetName(CameraScanHit hit)
