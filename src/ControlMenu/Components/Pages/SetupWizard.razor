@@ -17,7 +17,7 @@
                 <WizardDevices State="_state" />
                 break;
             case WizardStep.Cameras:
-                <WizardCameras @ref="_camerasRef" />
+                <WizardCameras @ref="_camerasRef" State="_state" />
                 break;
             case WizardStep.Jellyfin:
                 <WizardJellyfin @ref="_jellyfinRef" State="_state" />
