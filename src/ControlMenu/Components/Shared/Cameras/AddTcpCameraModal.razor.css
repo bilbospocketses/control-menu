@@ -1,36 +1,15 @@
 .add-tcp-dialog {
-    min-width: 28rem;
+    min-width: 32rem;
+    max-width: 90vw;
     max-height: 90vh;
     overflow-y: auto;
 }
 
-.dialog-body {
-    display: flex;
-    flex-direction: column;
+.form-row {
+    display: grid;
     gap: 0.75rem;
 }
 
-.form-field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-.form-field input {
-    padding: 0.4rem 0.6rem;
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.form-field input:disabled {
-    background: var(--bg-disabled, #f0f0f0);
-    color: var(--text-muted, #666);
-}
-
-.error-banner {
-    background: var(--error-bg, #fee);
-    color: var(--error, #c00);
-    padding: 0.5rem 0.75rem;
-    border-radius: 4px;
-    font-size: 0.9em;
+.form-row-2col {
+    grid-template-columns: 1fr 1fr;
 }

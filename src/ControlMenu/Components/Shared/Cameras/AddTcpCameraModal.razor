@@ -9,34 +9,38 @@
         <div class="dialog-header">
             <h3>Add RTSP camera manually</h3>
         </div>
-        <div class="dialog-body">
-            <label class="form-field">
-                <span>IP</span>
-                <input type="text" value="@Ip" disabled />
-            </label>
-            <label class="form-field">
-                <span>Port</span>
-                <input type="number" value="@Port" disabled />
-            </label>
+        <div class="form-body">
+            <div class="form-row form-row-2col">
+                <label class="form-field">
+                    <span>IP</span>
+                    <input type="text" class="form-control" value="@Ip" disabled />
+                </label>
+                <label class="form-field">
+                    <span>Port</span>
+                    <input type="number" class="form-control" value="@Port" disabled />
+                </label>
+            </div>
             <label class="form-field">
                 <span>Display name</span>
-                <input type="text" @bind="_name" />
+                <input type="text" class="form-control" @bind="_name" />
             </label>
             <label class="form-field">
                 <span>Manufacturer</span>
-                <input type="text" @bind="_manufacturer" placeholder="optional" />
+                <input type="text" class="form-control" @bind="_manufacturer" placeholder="optional" />
             </label>
-            <label class="form-field">
-                <span>Username</span>
-                <input type="text" @bind="_username" />
-            </label>
-            <label class="form-field">
-                <span>Password</span>
-                <input type="password" @bind="_password" />
-            </label>
+            <div class="form-row form-row-2col">
+                <label class="form-field">
+                    <span>Username</span>
+                    <input type="text" class="form-control" @bind="_username" />
+                </label>
+                <label class="form-field">
+                    <span>Password</span>
+                    <input type="password" class="form-control" @bind="_password" />
+                </label>
+            </div>
             <label class="form-field">
                 <span>Stream path</span>
-                <input list="stream-path-hints" @bind="_streamPath" />
+                <input list="stream-path-hints" class="form-control" @bind="_streamPath" />
                 <datalist id="stream-path-hints">
                     <option value="/Streaming/Channels/101">Hikvision</option>
                     <option value="/cam/realmonitor?channel=1&subtype=0">Dahua</option>
@@ -49,8 +53,8 @@
             }
         </div>
         <div class="dialog-actions">
-            <button @onclick="@CloseAsync">Cancel</button>
-            <button @onclick="@SubmitAsync" disabled="@_busy">@(_busy ? "Validating..." : "Add")</button>
+            <button class="btn btn-secondary" @onclick="@CloseAsync">Cancel</button>
+            <button class="btn btn-primary" @onclick="@SubmitAsync" disabled="@_busy">@(_busy ? "Validating..." : "Add")</button>
         </div>
     </div>
 </div>
