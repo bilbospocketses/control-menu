@@ -32,14 +32,14 @@
     <p>Discover, register, and manage IP cameras. <strong>Quick Scan</strong> runs ONVIF WS-Discovery only against the auto-detected subnet — fast (~3-5s), finds ONVIF cameras with full metadata. <strong>Scan Network</strong> runs ONVIF + a TCP-554 sweep across user-selected subnets — slower, also finds non-ONVIF RTSP devices. <strong>Add Camera Manually</strong> opens a form for cameras that don't auto-discover.</p>
 
     <div class="toolbar">
-        <button class="btn btn-secondary" @onclick="QuickScan" disabled="@_quickScanInProgress">
-            <i class="bi bi-lightning-charge"></i> @(_quickScanInProgress ? "Scanning..." : "Quick Scan")
-        </button>
-        <button class="btn btn-primary" @onclick="OpenScanModal">
-            <i class="bi bi-broadcast"></i> Scan Network
-        </button>
-        <button class="btn btn-secondary" @onclick="OpenManualAddModal">
+        <button class="btn btn-primary" @onclick="OpenManualAddModal">
             <i class="bi bi-plus-lg"></i> Add Camera Manually
+        </button>
+        <button class="btn btn-secondary" @onclick="QuickScan" disabled="@_quickScanInProgress">
+            <i class="bi bi-lightning-charge"></i> @(_quickScanInProgress ? "Scanning..." : "Quick Scan…")
+        </button>
+        <button class="btn btn-secondary" @onclick="OpenScanModal">
+            <i class="bi bi-broadcast"></i> Scan Network…
         </button>
         @if (_cameras.Count > 0)
         {
