@@ -53,10 +53,10 @@ public class OperationLogger : IDisposable
     public void Fail(string message) => Log("FAIL", message);
     public void Done(string message) => Log("DONE", message);
 
-    public static string GetLogDirectory() =>
+    public static string GetDefaultLogDirectory() =>
         Path.Combine(AppContext.BaseDirectory, "jellyfin-data", "logging");
 
-    public static string GetBackupDirectory()
+    public static string GetDefaultBackupDirectory()
     {
         var dir = Path.Combine(AppContext.BaseDirectory, "jellyfin-data", "backups");
         Directory.CreateDirectory(dir);
@@ -65,7 +65,7 @@ public class OperationLogger : IDisposable
 
     public static IReadOnlyList<OperationLogEntry> GetRecentLogs(int count = 10)
     {
-        var logDir = GetLogDirectory();
+        var logDir = GetDefaultLogDirectory();
         if (!Directory.Exists(logDir)) return [];
 
         var entries = new List<OperationLogEntry>();
