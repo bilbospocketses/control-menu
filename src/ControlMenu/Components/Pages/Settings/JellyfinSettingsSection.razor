@@ -49,34 +49,26 @@
         <SettingsGridCell>
             <Label>Base URL</Label>
             <ChildContent>
-                <input class="form-control" @bind="_baseUrl" placeholder="http://127.0.0.1:8096" />
+                <input class="form-control" value="@_baseUrl" @onchange="SaveBaseUrl" placeholder="http://127.0.0.1:8096" />
             </ChildContent>
         </SettingsGridCell>
 
         <SettingsGridCell>
             <Label>API Key</Label>
             <ChildContent>
-                <input type="password" class="form-control" @bind="_apiKey" />
+                <input type="password" class="form-control" value="@_apiKey" @onchange="SaveApiKey" />
             </ChildContent>
         </SettingsGridCell>
 
         <SettingsGridCell>
             <Label>User ID</Label>
             <ChildContent>
-                <input class="form-control" @bind="_userId" />
+                <input class="form-control" value="@_userId" @onchange="SaveUserId" />
             </ChildContent>
             <Hint>Jellyfin user ID for API calls (used by Cast &amp; Crew updates).</Hint>
         </SettingsGridCell>
 
-        <SettingsGridCell>
-            <ChildContent>
-                <div style="display:flex;justify-content:flex-end;align-items:flex-end;height:100%;">
-                    <button class="btn btn-primary" @onclick="SaveJellyfinApi">
-                        <i class="bi bi-floppy"></i> Save Jellyfin API
-                    </button>
-                </div>
-            </ChildContent>
-        </SettingsGridCell>
+        <SettingsGridCell />
     </SettingsGrid>
 </SettingsSection>
 
@@ -86,44 +78,28 @@
             <tr>
                 <th style="text-align:left;width:130px;">Setting</th>
                 <th style="text-align:left;">Value</th>
-                <th style="width:90px;"></th>
             </tr>
         </thead>
         <tbody>
             <tr>
                 <td><strong>Backups</strong></td>
                 <td>
-                    <input class="form-control" @bind="_backupDirectory" />
+                    <input class="form-control" @bind="_backupDirectory" @bind:event="onchange" @onblur="SaveBackupDirectory" />
                     <span style="font-size:11px;color:var(--text-secondary);margin-top:4px;display:block;">@_backupCount files, @FormatSize(_backupSize)</span>
-                </td>
-                <td>
-                    <button class="btn btn-primary" @onclick="SaveBackupDirectory">
-                        <i class="bi bi-floppy"></i> Save
-                    </button>
                 </td>
             </tr>
             <tr>
                 <td><strong>Logs</strong></td>
                 <td>
-                    <input class="form-control" @bind="_logDirectory" />
+                    <input class="form-control" @bind="_logDirectory" @bind:event="onchange" @onblur="SaveLogDirectory" />
                     <span style="font-size:11px;color:var(--text-secondary);margin-top:4px;display:block;">@_logCount files</span>
-                </td>
-                <td>
-                    <button class="btn btn-primary" @onclick="SaveLogDirectory">
-                        <i class="bi bi-floppy"></i> Save
-                    </button>
                 </td>
             </tr>
             <tr>
                 <td><strong>Retention</strong></td>
                 <td>
-                    <input type="number" class="form-control" @bind="_retentionDays" min="1" max="365" style="width:120px;display:inline-block;" />
+                    <input type="number" class="form-control" @bind="_retentionDays" @bind:event="onchange" @onblur="SaveRetention" min="1" max="365" style="width:120px;display:inline-block;" />
                     <span style="margin-left:8px;color:var(--text-secondary);">days</span>
-                </td>
-                <td>
-                    <button class="btn btn-primary" @onclick="SaveRetention">
-                        <i class="bi bi-floppy"></i> Save
-                    </button>
                 </td>
             </tr>
         </tbody>
@@ -135,21 +111,13 @@
         <SettingsGridCell>
             <Label>Notification Email</Label>
             <ChildContent>
-                <input type="email" class="form-control" @bind="_castCrewEmail"
+                <input type="email" class="form-control" value="@_castCrewEmail" @onchange="SaveCastCrewEmail"
                        placeholder="Uses default from General if blank" />
             </ChildContent>
             <Hint>Receives completion alerts for Cast &amp; Crew updates. Leave blank to use the default notification email from General settings.</Hint>
         </SettingsGridCell>
 
-        <SettingsGridCell>
-            <ChildContent>
-                <div style="display:flex;justify-content:flex-end;align-items:flex-end;height:100%;">
-                    <button class="btn btn-primary" @onclick="SaveCastCrewEmail">
-                        <i class="bi bi-floppy"></i> Save Notification Email
-                    </button>
-                </div>
-            </ChildContent>
-        </SettingsGridCell>
+        <SettingsGridCell />
     </SettingsGrid>
 </SettingsSection>
 
@@ -217,27 +185,40 @@
         _parsing = false;
     }
 
-    private async Task SaveJellyfinApi()
+    private async Task SaveBaseUrl(ChangeEventArgs e)
     {
+        _baseUrl = e.Value?.ToString() ?? "";
         await Config.SetSettingAsync("jellyfin-base-url", _baseUrl);
+        ShowMessage("Saved.", false);
+    }
 
+    private async Task SaveApiKey(ChangeEventArgs e)
+    {
+        _apiKey = e.Value?.ToString() ?? "";
         if (!string.IsNullOrEmpty(_apiKey))
         {
             await Config.SetSecretAsync("jellyfin-api-key", _apiKey);
+            ShowMessage("Saved.", false);
         }
         else
         {
             await Config.DeleteSettingAsync("jellyfin-api-key");
+            ShowMessage("API key cleared.", false);
         }
-
-        await Config.SetSettingAsync("jellyfin-user-id", _userId);
-        ShowMessage("Jellyfin API saved.", false);
     }
 
-    private async Task SaveCastCrewEmail()
+    private async Task SaveUserId(ChangeEventArgs e)
     {
+        _userId = e.Value?.ToString() ?? "";
+        await Config.SetSettingAsync("jellyfin-user-id", _userId);
+        ShowMessage("Saved.", false);
+    }
+
+    private async Task SaveCastCrewEmail(ChangeEventArgs e)
+    {
+        _castCrewEmail = e.Value?.ToString() ?? "";
         await Config.SetSettingAsync("jellyfin-castcrew-notify-email", _castCrewEmail);
-        ShowMessage("Notification email saved.", false);
+        ShowMessage("Saved.", false);
     }
 
     private async Task SaveRetention()
