@@ -296,7 +296,7 @@ select.form-control { appearance: auto; }
 }
 
 .settings-section-intro {
-    padding: 10px 14px 0;
+    padding: 10px 14px;
     font-size: 13px;
     color: var(--text-secondary);
 }

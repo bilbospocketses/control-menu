@@ -3,6 +3,11 @@
     background: var(--surface-recessed);
     border-top: 1px solid var(--border-color);
     border-right: 1px solid var(--border-color);
+    transition: background-color 0.12s;
+}
+
+.settings-grid-cell:hover {
+    background-color: var(--hover-bg);
 }
 
 /* Cells in last column lose the right border (handled by sibling positioning).
