@@ -54,7 +54,7 @@ else
                         </td>
                         <td>@(hit.Manufacturer ?? "—") @(hit.Model ?? "")</td>
                         <td>@hit.IpAddress</td>
-                        <td><code style="font-size: 0.85em; color: var(--text-muted);">@(hit.MacAddress ?? "—")</code></td>
+                        <td>@(hit.MacAddress ?? "—")</td>
                         <td>
                             <input class="form-control form-control-sm" style="width: 100%;" size="1"
                                    value="@GetUser(hit.IpAddress)"
@@ -86,7 +86,7 @@ else
                         <td><span style="color: var(--text-muted);">—</span></td>
                         <td><span style="color: var(--text-muted);">—</span></td>
                         <td>@hit.IpAddress :@hit.Port</td>
-                        <td><code style="font-size: 0.85em; color: var(--text-muted);">@(hit.MacAddress ?? "—")</code></td>
+                        <td>@(hit.MacAddress ?? "—")</td>
                         <td colspan="2"><span style="color: var(--text-muted);">Manual entry required</span></td>
                         <td class="actions">
                             <button class="btn btn-secondary btn-sm" @onclick="@(() => OpenTcpModal(hit))">Add manually...</button>
@@ -199,9 +199,9 @@ else
     private static string DefaultNameFor(CameraScanHit hit)
     {
         if (!string.IsNullOrWhiteSpace(hit.Location)) return hit.Location;
+        if (!string.IsNullOrWhiteSpace(hit.FriendlyName)) return hit.FriendlyName;
         var mfrModel = $"{hit.Manufacturer} {hit.Model}".Trim();
         if (!string.IsNullOrWhiteSpace(mfrModel)) return mfrModel;
-        if (!string.IsNullOrWhiteSpace(hit.FriendlyName)) return hit.FriendlyName;
         return $"Camera at {hit.IpAddress}";
     }
 
