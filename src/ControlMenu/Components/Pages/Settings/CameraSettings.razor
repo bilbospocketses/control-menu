@@ -10,6 +10,7 @@
 @inject ICameraChangeNotifier ChangeNotifier
 @inject IConfigurationService Config
 @inject IntervalChangeSignal IntervalSignal
+@inject SubnetDetectionClient SubnetDetector
 @implements IDisposable
 
 <div class="settings-section">
@@ -28,9 +29,12 @@
 
 <div class="settings-section">
     <h2>Cameras</h2>
-    <p>Discover, register, and manage IP cameras. <strong>Scan Network</strong> runs ONVIF WS-Discovery + a TCP-554 sweep across configured subnets to find cameras on your LAN. <strong>Add Camera Manually</strong> opens a form for cameras that don't auto-discover.</p>
+    <p>Discover, register, and manage IP cameras. <strong>Quick Scan</strong> runs ONVIF WS-Discovery only against the auto-detected subnet — fast (~3-5s), finds ONVIF cameras with full metadata. <strong>Scan Network</strong> runs ONVIF + a TCP-554 sweep across user-selected subnets — slower, also finds non-ONVIF RTSP devices. <strong>Add Camera Manually</strong> opens a form for cameras that don't auto-discover.</p>
 
     <div class="toolbar">
+        <button class="btn btn-secondary" @onclick="QuickScan" disabled="@_quickScanInProgress">
+            <i class="bi bi-lightning-charge"></i> @(_quickScanInProgress ? "Scanning..." : "Quick Scan")
+        </button>
         <button class="btn btn-primary" @onclick="OpenScanModal">
             <i class="bi bi-broadcast"></i> Scan Network
         </button>
@@ -160,16 +164,66 @@
     private bool _showDeleteAllConfirm;
     private string? _message;
     private bool _messageIsError;
+    private bool _quickScanInProgress;
+    private IDisposable? _scanSubscription;
     private const int DefaultLivenessInterval = 300;
     private int _livenessInterval = DefaultLivenessInterval;
 
     protected override async Task OnInitializedAsync()
     {
         ChangeNotifier.CamerasChanged += OnCamerasChanged;
+        _scanSubscription = ScanService.Subscribe(OnScanEvent);
         var interval = await Config.GetSettingAsync("cameras-liveness-interval-seconds", "cameras");
         if (int.TryParse(interval, out var parsed))
             _livenessInterval = parsed;
         await RefreshCamerasAsync();
+    }
+
+    private void OnScanEvent(CameraScanEvent ev)
+    {
+        try
+        {
+            _ = InvokeAsync(() =>
+            {
+                switch (ev)
+                {
+                    case CameraScanStartedEvent:
+                        _quickScanInProgress = true;
+                        break;
+                    case CameraScanCompletedEvent or CameraScanCancelledEvent:
+                        _quickScanInProgress = false;
+                        break;
+                }
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+            // Component disposed mid-event; subscription already removed in Dispose().
+        }
+    }
+
+    private async Task QuickScan()
+    {
+        _message = null;
+        _messageIsError = false;
+        StateHasChanged();
+
+        var detected = await SubnetDetector.DetectAsync();
+        if (detected is null)
+        {
+            await ShowMessage("Could not auto-detect a network subnet — verify ws-scrcpy-web is running. Use Scan Network to enter a subnet manually.", true);
+            return;
+        }
+
+        var parseResult = SubnetParser.Parse(detected.Cidr);
+        if (!parseResult.IsSuccess || parseResult.Value is null)
+        {
+            await ShowMessage($"Auto-detected subnet '{detected.Cidr}' could not be parsed. Use Scan Network to enter a subnet manually.", true);
+            return;
+        }
+
+        await ScanService.StartOnvifOnlyScanAsync(new[] { parseResult.Value });
     }
 
     private async Task OnLivenessIntervalChanged(ChangeEventArgs e)
@@ -292,5 +346,9 @@
         StateHasChanged();
     }
 
-    public void Dispose() => ChangeNotifier.CamerasChanged -= OnCamerasChanged;
+    public void Dispose()
+    {
+        ChangeNotifier.CamerasChanged -= OnCamerasChanged;
+        _scanSubscription?.Dispose();
+    }
 }
