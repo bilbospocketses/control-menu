@@ -10,4 +10,6 @@ public interface IDeviceService
     Task UpdateDeviceAsync(Device device);
     Task DeleteDeviceAsync(Guid id);
     Task UpdateLastSeenAsync(Guid id, string ipAddress);
+    /// <summary>Deletes all devices. Fires the change notifier exactly once.</summary>
+    Task<int> DeleteAllDevicesAsync();
 }

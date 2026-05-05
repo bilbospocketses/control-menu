@@ -34,6 +34,12 @@
         <button class="btn btn-secondary" @onclick="OpenScanModal">
             <i class="bi bi-broadcast"></i> Scan Network…
         </button>
+        @if (_devices.Count > 0)
+        {
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAll">
+                <i class="bi bi-trash"></i> Delete All
+            </button>
+        }
     </div>
 
     @if (_devices.Count == 0)
@@ -131,6 +137,20 @@
     </div>
 }
 
+@if (_showDeleteAllConfirm)
+{
+    <div class="dialog-overlay" @onclick="CloseDeleteAllConfirm">
+        <div class="dialog" @onclick:stopPropagation="true">
+            <h3>Delete all devices?</h3>
+            <p>All @_devices.Count registered devices will be removed. This cannot be undone.</p>
+            <div class="dialog-actions">
+                <button class="btn btn-secondary" @onclick="CloseDeleteAllConfirm">Cancel</button>
+                <button class="btn btn-danger" @onclick="DeleteAllConfirmedAsync">Delete All</button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (!string.IsNullOrEmpty(_message))
 {
     <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
@@ -150,6 +170,7 @@
     private string _formPin = "";
     private bool _showDeleteConfirm;
     private ControlMenu.Data.Entities.Device? _deleteTarget;
+    private bool _showDeleteAllConfirm;
     private bool _scanning;
     private bool _showScanModal;
     private string? _message;
@@ -439,6 +460,17 @@
         if (age.TotalMinutes < 60) return $"{(int)age.TotalMinutes}m ago";
         if (age.TotalHours < 24) return $"{(int)age.TotalHours}h ago";
         return lastSeen.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+    }
+
+    private void ConfirmDeleteAll() => _showDeleteAllConfirm = true;
+    private void CloseDeleteAllConfirm() => _showDeleteAllConfirm = false;
+
+    private async Task DeleteAllConfirmedAsync()
+    {
+        _showDeleteAllConfirm = false;
+        var n = await DeviceService.DeleteAllDevicesAsync();
+        await LoadDevices();
+        await ShowMessage($"{n} device(s) deleted.");
     }
 
     private void OpenScanModal() => _showScanModal = true;

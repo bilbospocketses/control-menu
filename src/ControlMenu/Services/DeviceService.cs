@@ -73,4 +73,16 @@ public class DeviceService : IDeviceService
             await db.SaveChangesAsync();
         }
     }
+
+    public async Task<int> DeleteAllDevicesAsync()
+    {
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var devices = await db.Devices.ToListAsync();
+        if (devices.Count == 0) return 0;
+
+        db.Devices.RemoveRange(devices);
+        await db.SaveChangesAsync();
+        _notifier.NotifyChanged();
+        return devices.Count;
+    }
 }
