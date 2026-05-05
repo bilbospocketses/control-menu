@@ -1,14 +1,17 @@
-@page "/cameras/{Index:int}"
+@page "/cameras/{CameraId}"
+@using ControlMenu.Modules.Cameras.Entities
 @using ControlMenu.Modules.Cameras.Services
+@using ControlMenu.Services
+@implements IDisposable
 
-<PageTitle>@(_camera?.Name ?? $"Camera {Index}") - Control Menu</PageTitle>
+<PageTitle>@(_camera?.Name ?? "Camera") - Control Menu</PageTitle>
 
 @if (_camera is null)
 {
     <div class="camera-not-configured">
         <i class="bi bi-camera-video-off"></i>
-        <h2>Camera @Index not configured</h2>
-        <p>Set up this camera in <a href="/settings/cameras">Settings &gt; Cameras</a>.</p>
+        <h2>Camera not found</h2>
+        <p>This camera may have been removed. See <a href="/settings/cameras">Settings &gt; Cameras</a>.</p>
     </div>
 }
 else if (!Go2Rtc.IsRunning)
@@ -22,19 +25,47 @@ else if (!Go2Rtc.IsRunning)
 else
 {
     <div class="camera-container">
-        <iframe src="@($"{Go2Rtc.BaseUrl}/api/stream.mp4?src=camera-{Index}")" class="camera-iframe" allow="autoplay; fullscreen"></iframe>
+        <iframe src="@($"{Go2Rtc.BaseUrl}/stream.html?src=camera-{_camera.Id:N}")" class="camera-iframe" allow="autoplay; fullscreen"></iframe>
     </div>
 }
 
 @code {
-    [Parameter] public int Index { get; set; }
+    [Parameter] public string CameraId { get; set; } = "";
+
     [Inject] private ICameraService CameraService { get; set; } = default!;
     [Inject] private IGo2RtcService Go2Rtc { get; set; } = default!;
+    [Inject] private ICameraChangeNotifier CameraNotifier { get; set; } = default!;
 
-    private CameraConfig? _camera;
+    private Camera? _camera;
 
     protected override async Task OnInitializedAsync()
     {
-        _camera = await CameraService.GetCameraAsync(Index);
+        CameraNotifier.CamerasChanged += OnCamerasChanged;
+        await RefreshAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (Guid.TryParse(CameraId, out var id))
+        {
+            _camera = await CameraService.GetAsync(id);
+        }
+        else
+        {
+            _camera = null;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnCamerasChanged() => _ = RefreshAsync();
+
+    public void Dispose()
+    {
+        CameraNotifier.CamerasChanged -= OnCamerasChanged;
     }
 }

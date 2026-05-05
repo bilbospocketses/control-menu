@@ -1,114 +1,11 @@
-@using ControlMenu.Modules.Cameras
 @using ControlMenu.Modules.Cameras.Services
 @inject ICameraService CameraService
 
 <div class="settings-section">
     <h2>Cameras</h2>
-    <p>Configure your CCTV cameras. Each camera needs a name, IP address, and login credentials. You can add or change these later in Settings.</p>
-
-    <div class="form-group" style="margin-bottom: 1rem;">
-        <label>Number of cameras</label>
-        <input class="form-control" type="number" min="1" @bind="_cameraCount" style="width: 80px;" />
-    </div>
-
-    @for (var i = 1; i <= _cameraCount; i++)
-    {
-        var index = i;
-        <details class="camera-wizard-slot">
-            <summary>Camera @index @(string.IsNullOrEmpty(_names[index]) ? "" : $"— {_names[index]}")</summary>
-            <div class="camera-wizard-fields">
-                <div class="form-group">
-                    <label>Name</label>
-                    <input class="form-control" @bind="_names[index]" placeholder="e.g. Front Door" />
-                </div>
-                <div class="form-group">
-                    <label>IP Address</label>
-                    <input class="form-control" @bind="_ips[index]" placeholder="e.g. 192.168.86.101" />
-                </div>
-                <div class="form-group">
-                    <label>RTSP Port</label>
-                    <input class="form-control" type="number" @bind="_ports[index]" />
-                </div>
-                <div class="form-group">
-                    <label>Username</label>
-                    <input class="form-control" @bind="_usernames[index]" placeholder="admin" />
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <input class="form-control" type="password" @bind="_passwords[index]" placeholder="password" />
-                </div>
-            </div>
-        </details>
-    }
+    <p>Camera setup migration in progress — full wizard coming in T14/T17.</p>
 </div>
 
 @code {
-    private int _cameraCount;
-    private readonly Dictionary<int, string> _names = new();
-    private readonly Dictionary<int, string> _ips = new();
-    private readonly Dictionary<int, int> _ports = new();
-    private readonly Dictionary<int, string> _usernames = new();
-    private readonly Dictionary<int, string> _passwords = new();
-
-    protected override async Task OnInitializedAsync()
-    {
-        _cameraCount = await CameraService.GetCameraCountAsync();
-        for (var i = 1; i <= _cameraCount; i++)
-        {
-            var cam = await CameraService.GetCameraAsync(i);
-            _names[i] = cam?.Name ?? "";
-            _ips[i] = cam?.IpAddress ?? "";
-            _ports[i] = cam?.Port ?? 554;
-
-            var creds = await CameraService.GetCredentialsAsync(i);
-            _usernames[i] = creds?.Username ?? "";
-            _passwords[i] = creds?.Password ?? "";
-        }
-    }
-
-    public async Task SaveAsync()
-    {
-        await CameraService.SetCameraCountAsync(_cameraCount);
-        CamerasModule.CameraCount = _cameraCount;
-
-        for (var i = 1; i <= _cameraCount; i++)
-        {
-            if (_names.TryGetValue(i, out var name) && _ips.TryGetValue(i, out var ip)
-                && !string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(ip))
-            {
-                await CameraService.SaveCameraAsync(i, name.Trim(), ip.Trim(), _ports.GetValueOrDefault(i, 554));
-            }
-            if (_usernames.TryGetValue(i, out var user) && _passwords.TryGetValue(i, out var pass)
-                && !string.IsNullOrWhiteSpace(user) && !string.IsNullOrWhiteSpace(pass))
-            {
-                await CameraService.SaveCredentialsAsync(i, user, pass);
-            }
-        }
-    }
+    public Task SaveAsync() => Task.CompletedTask;
 }
-
-<style>
-    .camera-wizard-slot {
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        padding: 0.5rem 1rem;
-        margin-bottom: 0.5rem;
-    }
-
-    .camera-wizard-slot summary {
-        cursor: pointer;
-        font-weight: 500;
-        padding: 0.4rem 0;
-    }
-
-    .camera-wizard-fields {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 0.75rem;
-        padding: 0.75rem 0;
-    }
-
-    .camera-wizard-fields .form-group:first-child {
-        grid-column: 1 / -1;
-    }
-</style>

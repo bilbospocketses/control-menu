@@ -16,16 +16,24 @@ public class CamerasModuleTests
     public void SortOrder_Is4() => Assert.Equal(4, _sut.SortOrder);
 
     [Fact]
-    public void GetNavEntries_ReturnsEntriesBasedOnCameraCount()
+    public void GetNavEntries_ReturnsEntriesFromEnabledCameras()
     {
-        CamerasModule.CameraCount = 3;
+        var id1 = Guid.NewGuid();
+        var id2 = Guid.NewGuid();
+        var id3 = Guid.NewGuid();
+        CamerasModule.EnabledCameras = new()
+        {
+            (id1, "Front Door"),
+            (id2, "Backyard"),
+            (id3, "Garage"),
+        };
         var entries = _sut.GetNavEntries().ToList();
         Assert.Equal(3, entries.Count);
-        Assert.Equal("Camera 1", entries[0].Title);
-        Assert.Equal("/cameras/1", entries[0].Href);
-        Assert.Equal("Camera 3", entries[2].Title);
-        Assert.Equal("/cameras/3", entries[2].Href);
-        CamerasModule.CameraCount = 8; // reset
+        Assert.Equal("Front Door", entries[0].Title);
+        Assert.Equal($"/cameras/{id1:N}", entries[0].Href);
+        Assert.Equal("Garage", entries[2].Title);
+        Assert.Equal($"/cameras/{id3:N}", entries[2].Href);
+        CamerasModule.EnabledCameras = new(); // reset
     }
 
     [Fact]

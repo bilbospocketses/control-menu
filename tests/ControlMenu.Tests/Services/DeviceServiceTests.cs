@@ -133,7 +133,7 @@ public class DeviceServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task UpdateLastSeenAsync_DoesNotNotify()
+    public async Task UpdateLastSeenAsync_NotifiesOnce()
     {
         var device = MakeDevice();
         await _service.AddDeviceAsync(device);
@@ -141,6 +141,30 @@ public class DeviceServiceTests : IDisposable
 
         await _service.UpdateLastSeenAsync(device.Id, "192.168.1.100");
 
+        Assert.Equal(1, _notifier.NotifyChangedCallCount);
+    }
+
+    [Fact]
+    public async Task DeleteAllDevicesAsync_RemovesAllRows_NotifiesOnce()
+    {
+        var d1 = MakeDevice("A", "aa-aa-aa-aa-aa-aa");
+        var d2 = MakeDevice("B", "bb-bb-bb-bb-bb-bb");
+        await _service.AddDeviceAsync(d1);
+        await _service.AddDeviceAsync(d2);
+        _notifier.NotifyChangedCallCount = 0;
+
+        var deleted = await _service.DeleteAllDevicesAsync();
+
+        Assert.Equal(2, deleted);
+        Assert.Empty(await _service.GetAllDevicesAsync());
+        Assert.Equal(1, _notifier.NotifyChangedCallCount);
+    }
+
+    [Fact]
+    public async Task DeleteAllDevicesAsync_ReturnsZero_WhenEmpty()
+    {
+        var deleted = await _service.DeleteAllDevicesAsync();
+        Assert.Equal(0, deleted);
         Assert.Equal(0, _notifier.NotifyChangedCallCount);
     }
 }

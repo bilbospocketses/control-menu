@@ -1,0 +1,55 @@
+.edit-camera-dialog {
+    min-width: 28rem;
+    max-width: 90vw;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.form-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.form-field span {
+    font-size: 0.9em;
+    color: var(--text-muted, #555);
+}
+
+.form-field-inline {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.error-banner {
+    background: var(--error-bg, #fee);
+    color: var(--error, #c00);
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.device-info-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+    margin: 0;
+}
+.device-info-grid dt {
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+.device-info-grid dd {
+    margin: 0;
+    font-size: 0.9em;
+}
+.device-info-grid code {
+    font-size: 0.95em;
+}

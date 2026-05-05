@@ -1,0 +1,360 @@
+@using ControlMenu.Modules.Cameras.Network
+@using ControlMenu.Modules.Cameras.Entities
+@using ControlMenu.Modules.Cameras.Services
+@inject ICameraScanService ScanService
+@inject IOnvifClient OnvifClient
+@inject ICameraService CameraService
+@inject IHikvisionIsapiClient HikvisionClient
+@implements IDisposable
+
+@if (_hits.Count == 0)
+{
+    <p style="color: var(--text-muted);">No new cameras discovered. Run a scan to look for cameras on your network.</p>
+}
+else
+{
+    @if (HasOnvifRows)
+    {
+        <div class="bulk-creds-panel">
+            <p>All cameras use the same credentials? Enter once and submit to add all discovered ONVIF cameras.</p>
+            <div class="bulk-creds-form">
+                <input class="form-control form-control-sm" @bind="_bulkUser" placeholder="username" />
+                <input type="password" class="form-control form-control-sm" @bind="_bulkPass" placeholder="password" />
+                <button class="btn btn-primary btn-sm" @onclick="@AddAllOnvifAsync" disabled="@_bulkBusy">@BulkButtonLabel</button>
+            </div>
+            @if (_bulkError is not null) { <div class="hit-error" style="margin-top: 0.5rem;">⚠ @_bulkError</div> }
+        </div>
+    }
+
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>SOURCE</th>
+                <th>NAME</th>
+                <th>MFR / MODEL</th>
+                <th>ADDRESS</th>
+                <th>MAC</th>
+                <th>USERNAME</th>
+                <th>PASSWORD</th>
+                <th>ACTIONS</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var hit in _hits)
+            {
+                @if (hit.IsOnvif)
+                {
+                    <tr @key="hit.IpAddress">
+                        <td><span class="source-badge" title="Discovery source">ONVIF</span></td>
+                        <td>
+                            <input class="form-control form-control-sm" style="width: 100%;" size="1"
+                                   value="@GetName(hit)"
+                                   @oninput="@(e => SetName(hit.IpAddress, e.Value?.ToString() ?? ""))"
+                                   placeholder="Name" />
+                        </td>
+                        <td>@(hit.Manufacturer ?? "—") @(hit.Model ?? "")</td>
+                        <td>@hit.IpAddress</td>
+                        <td>@(hit.MacAddress ?? "—")</td>
+                        <td>
+                            <input class="form-control form-control-sm" style="width: 100%;" size="1"
+                                   value="@GetUser(hit.IpAddress)"
+                                   @oninput="@(e => SetUser(hit.IpAddress, e.Value?.ToString() ?? ""))"
+                                   placeholder="username" />
+                        </td>
+                        <td>
+                            <input type="password" class="form-control form-control-sm" style="width: 100%;" size="1"
+                                   value="@GetPass(hit.IpAddress)"
+                                   @oninput="@(e => SetPass(hit.IpAddress, e.Value?.ToString() ?? ""))"
+                                   placeholder="password" />
+                        </td>
+                        <td class="actions">
+                            <button class="btn btn-success btn-sm" @onclick="@(() => AddOnvifAsync(hit))" disabled="@_busy.Contains(hit.IpAddress)">Add</button>
+                            <button class="btn btn-danger btn-sm" @onclick="@(() => DismissHit(hit))" title="Dismiss — remove from this list">× Close</button>
+                        </td>
+                    </tr>
+                    @if (_errors.TryGetValue(hit.IpAddress, out var err))
+                    {
+                        <tr class="discovered-error-row">
+                            <td colspan="8"><span class="hit-error">⚠ @err</span></td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr @key="hit.IpAddress">
+                        <td><span class="source-badge" title="Discovery source">RTSP</span></td>
+                        <td><span style="color: var(--text-muted);">—</span></td>
+                        <td><span style="color: var(--text-muted);">—</span></td>
+                        <td>@hit.IpAddress :@hit.Port</td>
+                        <td>@(hit.MacAddress ?? "—")</td>
+                        <td colspan="2"><span style="color: var(--text-muted);">Manual entry required</span></td>
+                        <td class="actions">
+                            <button class="btn btn-secondary btn-sm" @onclick="@(() => OpenTcpModal(hit))">Add manually...</button>
+                            <button class="btn btn-danger btn-sm" @onclick="@(() => DismissHit(hit))" title="Dismiss — remove from this list">× Close</button>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+}
+
+@if (_tcpModalHit is not null)
+{
+    <AddTcpCameraModal Ip="@_tcpModalHit.IpAddress"
+                       Port="@_tcpModalHit.Port"
+                       OnClosed="@(() => _tcpModalHit = null)"
+                       OnAdded="@OnTcpAdded" />
+}
+
+@code {
+    [Parameter] public EventCallback OnCameraAdded { get; set; }
+
+    private IDisposable? _subscription;
+    private readonly List<CameraScanHit> _hits = new();
+    private readonly Dictionary<string, string> _nameInputs = new();
+    private readonly Dictionary<string, string> _userInputs = new();
+    private readonly Dictionary<string, string> _passInputs = new();
+    private readonly Dictionary<string, string> _errors = new();
+    private readonly HashSet<string> _busy = new();
+    private CameraScanHit? _tcpModalHit;
+
+    private string _bulkUser = "";
+    private string _bulkPass = "";
+    private bool _bulkBusy;
+    private int _bulkProgress;
+    private int _bulkTotal;
+    private string? _bulkError;
+
+    private bool HasOnvifRows => _hits.Any(h => h.IsOnvif);
+
+    private string BulkButtonLabel
+    {
+        get
+        {
+            if (_bulkBusy) return $"Adding... ({_bulkProgress}/{_bulkTotal})";
+            var n = _hits.Count(h => h.IsOnvif);
+            return $"Add all ({n})";
+        }
+    }
+
+    private async Task AddAllOnvifAsync()
+    {
+        _bulkError = null;
+        if (string.IsNullOrEmpty(_bulkUser) && string.IsNullOrEmpty(_bulkPass))
+        {
+            _bulkError = "Enter username and password";
+            return;
+        }
+
+        var snapshot = _hits.Where(h => h.IsOnvif).ToList();
+        _bulkTotal = snapshot.Count;
+        _bulkProgress = 0;
+        _bulkBusy = true;
+        StateHasChanged();
+
+        foreach (var hit in snapshot)
+        {
+            _userInputs[hit.IpAddress] = _bulkUser;
+            _passInputs[hit.IpAddress] = _bulkPass;
+            await AddOnvifAsync(hit);
+            _bulkProgress++;
+            StateHasChanged();
+        }
+
+        _bulkBusy = false;
+        StateHasChanged();
+    }
+
+    protected override void OnInitialized()
+    {
+        _hits.AddRange(ScanService.Hits);
+        _subscription = ScanService.Subscribe(HandleEvent);
+    }
+
+    private void HandleEvent(CameraScanEvent ev)
+    {
+        InvokeAsync(() =>
+        {
+            switch (ev)
+            {
+                case CameraScanStartedEvent:
+                    _hits.Clear();
+                    _errors.Clear();
+                    _nameInputs.Clear();
+                    _userInputs.Clear();
+                    _passInputs.Clear();
+                    _busy.Clear();
+                    break;
+                case CameraScanHitEvent hitEv:
+                    var idx = _hits.FindIndex(h => h.IpAddress == hitEv.Hit.IpAddress);
+                    if (idx >= 0) _hits[idx] = hitEv.Hit;
+                    else _hits.Add(hitEv.Hit);
+                    break;
+            }
+            StateHasChanged();
+        });
+    }
+
+    private string GetName(CameraScanHit hit)
+    {
+        if (_nameInputs.TryGetValue(hit.IpAddress, out var typed)) return typed;
+        return DefaultNameFor(hit);
+    }
+
+    private void SetName(string ip, string val) => _nameInputs[ip] = val;
+
+    private static string DefaultNameFor(CameraScanHit hit)
+    {
+        if (!string.IsNullOrWhiteSpace(hit.Location)) return hit.Location;
+        if (!string.IsNullOrWhiteSpace(hit.FriendlyName)) return hit.FriendlyName;
+        var mfrModel = $"{hit.Manufacturer} {hit.Model}".Trim();
+        if (!string.IsNullOrWhiteSpace(mfrModel)) return mfrModel;
+        return $"Camera at {hit.IpAddress}";
+    }
+
+    private bool IsNameUserOverridden(CameraScanHit hit)
+    {
+        if (!_nameInputs.TryGetValue(hit.IpAddress, out var typed)) return false;
+        if (string.IsNullOrWhiteSpace(typed)) return false;
+        return typed != DefaultNameFor(hit);
+    }
+
+    private string GetUser(string ip) => _userInputs.GetValueOrDefault(ip, "");
+    private string GetPass(string ip) => _passInputs.GetValueOrDefault(ip, "");
+    private void SetUser(string ip, string val) => _userInputs[ip] = val;
+    private void SetPass(string ip, string val) => _passInputs[ip] = val;
+
+    private void DismissHit(CameraScanHit hit)
+    {
+        _hits.Remove(hit);
+        _nameInputs.Remove(hit.IpAddress);
+        _userInputs.Remove(hit.IpAddress);
+        _passInputs.Remove(hit.IpAddress);
+        _errors.Remove(hit.IpAddress);
+        _busy.Remove(hit.IpAddress);
+    }
+
+    private async Task AddOnvifAsync(CameraScanHit hit)
+    {
+        _errors.Remove(hit.IpAddress);
+        _busy.Add(hit.IpAddress);
+        StateHasChanged();
+        try
+        {
+            var user = GetUser(hit.IpAddress);
+            var pass = GetPass(hit.IpAddress);
+
+            var profiles = await OnvifClient.GetProfilesAsync(hit.OnvifServiceUrl!, user, pass, default);
+            if (profiles.Count == 0)
+                throw new InvalidOperationException("No media profiles returned");
+            var streamUri = await OnvifClient.GetStreamUriAsync(hit.OnvifServiceUrl!, profiles[0].Token, user, pass, default);
+
+            // Best-effort device info (some firmware rejects, that's fine)
+            string? firmwareVersion = null;
+            string? serialNumber = null;
+            string? hardwareId = null;
+            string? onvifManufacturer = null;
+            string? onvifModel = null;
+            try
+            {
+                var info = await OnvifClient.GetDeviceInformationAsync(hit.OnvifServiceUrl!, user, pass, default);
+                firmwareVersion = info.FirmwareVersion;
+                serialNumber = info.SerialNumber;
+                hardwareId = info.HardwareId;
+                onvifManufacturer = info.Manufacturer;
+                onvifModel = info.Model;
+            }
+            catch { /* best-effort */ }
+
+            // Combined manufacturer/model — ONVIF preferred, Scopes fallback.
+            // ONVIF GetDeviceInformation is more reliable than WS-Discovery Scopes
+            // (some vendors omit /manufacturer/ scope entirely).
+            var manufacturer = !string.IsNullOrWhiteSpace(onvifManufacturer) ? onvifManufacturer : hit.Manufacturer;
+            var model = !string.IsNullOrWhiteSpace(onvifModel) ? onvifModel : hit.Model;
+
+            var name = GetName(hit);
+            if (string.IsNullOrWhiteSpace(name) || name == DefaultNameFor(hit))
+            {
+                name = !string.IsNullOrWhiteSpace(hit.Location) ? hit.Location
+                    : !string.IsNullOrWhiteSpace(hit.FriendlyName) ? hit.FriendlyName
+                    : !string.IsNullOrWhiteSpace($"{manufacturer} {model}".Trim()) ? $"{manufacturer} {model}".Trim()
+                    : $"Camera at {hit.IpAddress}";
+            }
+
+            string? macAddress = hit.MacAddress;
+            int? cameraNumber = null;
+
+            // Try Hikvision ISAPI for any ONVIF camera. Many vendors (LTS, Honeywell,
+            // W Box, Annke, dozens of OEM rebrands) ship Hikvision firmware. The parser
+            // returns null for cameras that aren't Hikvision-firmware-derived, so this
+            // is safe to always attempt — no per-vendor gating needed.
+            try
+            {
+                var onvifUri = new Uri(hit.OnvifServiceUrl!);
+                var hik = await HikvisionClient.GetDeviceInfoAsync(
+                    onvifUri.Host, onvifUri.Port == -1 ? 80 : onvifUri.Port, user, pass, default);
+                if (hik is not null)
+                {
+                    if (!string.IsNullOrWhiteSpace(hik.MacAddress)) macAddress = hik.MacAddress;
+                    cameraNumber = hik.TelecontrolId;
+                    if (!IsNameUserOverridden(hit) && !string.IsNullOrWhiteSpace(hik.DeviceName))
+                        name = hik.DeviceName;
+                }
+            }
+            catch { /* best-effort */ }
+
+            var cam = new Camera
+            {
+                Name = name,
+                IpAddress = hit.IpAddress,
+                Port = hit.Port,
+                Manufacturer = manufacturer,
+                Model = model,
+                RtspStreamUrl = streamUri,
+                OnvifServiceUrl = hit.OnvifServiceUrl,
+                IsOnvif = true,
+                Enabled = true,
+                MacAddress = macAddress,
+                CameraNumber = cameraNumber,
+                FirmwareVersion = firmwareVersion,
+                SerialNumber = serialNumber,
+                HardwareId = hardwareId,
+            };
+            await CameraService.AddAsync(cam, user, pass);
+
+            _hits.Remove(hit);
+            _nameInputs.Remove(hit.IpAddress);
+            _userInputs.Remove(hit.IpAddress);
+            _passInputs.Remove(hit.IpAddress);
+            await OnCameraAdded.InvokeAsync();
+        }
+        catch (OnvifAuthenticationException)
+        {
+            _errors[hit.IpAddress] = $"Authentication failed at {DateTime.Now:HH:mm:ss}";
+        }
+        catch (Exception ex)
+        {
+            _errors[hit.IpAddress] = $"Add failed: {ex.Message}";
+        }
+        finally
+        {
+            _busy.Remove(hit.IpAddress);
+            StateHasChanged();
+        }
+    }
+
+    private void OpenTcpModal(CameraScanHit hit) => _tcpModalHit = hit;
+
+    private async Task OnTcpAdded()
+    {
+        if (_tcpModalHit is not null)
+        {
+            _hits.Remove(_tcpModalHit);
+        }
+        _tcpModalHit = null;
+        await OnCameraAdded.InvokeAsync();
+    }
+
+    public void Dispose() => _subscription?.Dispose();
+}

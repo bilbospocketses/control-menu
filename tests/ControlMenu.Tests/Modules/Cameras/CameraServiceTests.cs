@@ -1,93 +1,150 @@
-using ControlMenu.Modules.Cameras;
+using ControlMenu.Data;
+using ControlMenu.Modules.Cameras.Entities;
 using ControlMenu.Modules.Cameras.Services;
 using ControlMenu.Services;
+using ControlMenu.Tests.Data;
 using Moq;
 
 namespace ControlMenu.Tests.Modules.Cameras;
 
-public class CameraServiceTests
+public class CameraServiceTests : IDisposable
 {
+    private readonly InMemoryDbContextFactory _dbFactory;
     private readonly Mock<IConfigurationService> _config = new();
+    private readonly Mock<ICameraChangeNotifier> _notifier = new();
     private readonly CameraService _sut;
 
-    public CameraServiceTests() => _sut = new CameraService(_config.Object);
+    public CameraServiceTests()
+    {
+        _dbFactory = TestDbContextFactory.CreateFactory();
+        _sut = new CameraService(_dbFactory, _config.Object, _notifier.Object);
+    }
+
+    public void Dispose() => _dbFactory.Dispose();
+
+    private static Camera NewCamera(string name = "Test", string ip = "192.168.1.50") => new()
+    {
+        Name = name, IpAddress = ip, Port = 554, IsOnvif = true, Enabled = true,
+    };
 
     [Fact]
-    public async Task GetCameraAsync_ReturnsNull_WhenNotConfigured()
+    public async Task AddAsync_AssignsId_PersistsRow_StoresCredentials_NotifiesChange()
     {
-        _config.Setup(c => c.GetSettingAsync("camera-1-name", "cameras")).ReturnsAsync((string?)null);
-        _config.Setup(c => c.GetSettingAsync("camera-1-ip", "cameras")).ReturnsAsync((string?)null);
-        var result = await _sut.GetCameraAsync(1);
-        Assert.Null(result);
+        var saved = await _sut.AddAsync(NewCamera(), "admin", "secret");
+
+        Assert.NotEqual(Guid.Empty, saved.Id);
+        var fetched = await _sut.GetAsync(saved.Id);
+        Assert.NotNull(fetched);
+        Assert.Equal("Test", fetched.Name);
+        _config.Verify(c => c.SetSecretAsync($"camera-{saved.Id:N}-username", "admin", "cameras"), Times.Once);
+        _config.Verify(c => c.SetSecretAsync($"camera-{saved.Id:N}-password", "secret", "cameras"), Times.Once);
+        _notifier.Verify(n => n.NotifyChanged(), Times.Once);
     }
 
     [Fact]
-    public async Task GetCameraAsync_ReturnsConfig_WhenConfigured()
+    public async Task GetEnabledAsync_FiltersDisabled()
     {
-        _config.Setup(c => c.GetSettingAsync("camera-1-name", "cameras")).ReturnsAsync("Front Door");
-        _config.Setup(c => c.GetSettingAsync("camera-1-ip", "cameras")).ReturnsAsync("192.168.86.101");
-        _config.Setup(c => c.GetSettingAsync("camera-1-port", "cameras")).ReturnsAsync("554");
-        var result = await _sut.GetCameraAsync(1);
-        Assert.NotNull(result);
-        Assert.Equal("Front Door", result.Name);
-        Assert.Equal("192.168.86.101", result.IpAddress);
-        Assert.Equal(554, result.Port);
-    }
+        var enabled = NewCamera("Enabled");
+        var disabled = NewCamera("Disabled", "192.168.1.51");
+        disabled.Enabled = false;
+        await _sut.AddAsync(enabled, "u", "p");
+        await _sut.AddAsync(disabled, "u", "p");
 
-    [Fact]
-    public async Task GetCameraAsync_DefaultsPort554_WhenNotSet()
-    {
-        _config.Setup(c => c.GetSettingAsync("camera-3-name", "cameras")).ReturnsAsync("Garage");
-        _config.Setup(c => c.GetSettingAsync("camera-3-ip", "cameras")).ReturnsAsync("192.168.86.103");
-        _config.Setup(c => c.GetSettingAsync("camera-3-port", "cameras")).ReturnsAsync((string?)null);
-        var result = await _sut.GetCameraAsync(3);
-        Assert.NotNull(result);
-        Assert.Equal(554, result.Port);
-    }
-
-    [Fact]
-    public async Task GetConfiguredCamerasAsync_ReturnsOnlyConfigured()
-    {
-        _config.Setup(c => c.GetSettingAsync("camera-1-name", "cameras")).ReturnsAsync("Front Door");
-        _config.Setup(c => c.GetSettingAsync("camera-1-ip", "cameras")).ReturnsAsync("192.168.86.101");
-        _config.Setup(c => c.GetSettingAsync("camera-1-port", "cameras")).ReturnsAsync("554");
-        var result = await _sut.GetConfiguredCamerasAsync();
+        var result = await _sut.GetEnabledAsync();
         Assert.Single(result);
-        Assert.Equal("Front Door", result[0].Name);
+        Assert.Equal("Enabled", result[0].Name);
     }
 
     [Fact]
-    public async Task SaveCameraAsync_StoresAllFields()
+    public async Task DeleteAsync_RemovesRow_RemovesSecrets_NotifiesChange()
     {
-        await _sut.SaveCameraAsync(2, "Garage", "192.168.86.102", 8080);
-        _config.Verify(c => c.SetSettingAsync("camera-2-name", "Garage", "cameras"));
-        _config.Verify(c => c.SetSettingAsync("camera-2-ip", "192.168.86.102", "cameras"));
-        _config.Verify(c => c.SetSettingAsync("camera-2-port", "8080", "cameras"));
+        var saved = await _sut.AddAsync(NewCamera(), "u", "p");
+        _notifier.Reset();
+
+        await _sut.DeleteAsync(saved.Id);
+
+        Assert.Null(await _sut.GetAsync(saved.Id));
+        _config.Verify(c => c.DeleteSettingAsync($"camera-{saved.Id:N}-username", "cameras"), Times.Once);
+        _config.Verify(c => c.DeleteSettingAsync($"camera-{saved.Id:N}-password", "cameras"), Times.Once);
+        _notifier.Verify(n => n.NotifyChanged(), Times.Once);
     }
 
     [Fact]
-    public async Task SaveCredentialsAsync_StoresAsSecrets()
+    public async Task UpdateAsync_PersistsChanges_NotifiesChange()
     {
-        await _sut.SaveCredentialsAsync(1, "admin", "secret123");
-        _config.Verify(c => c.SetSecretAsync("camera-1-username", "admin", "cameras"));
-        _config.Verify(c => c.SetSecretAsync("camera-1-password", "secret123", "cameras"));
+        var saved = await _sut.AddAsync(NewCamera(), "u", "p");
+        _notifier.Reset();
+
+        saved.Name = "Renamed";
+        saved.Enabled = false;
+        await _sut.UpdateAsync(saved);
+
+        var fetched = await _sut.GetAsync(saved.Id);
+        Assert.Equal("Renamed", fetched!.Name);
+        Assert.False(fetched.Enabled);
+        _notifier.Verify(n => n.NotifyChanged(), Times.Once);
     }
 
     [Fact]
-    public async Task GetCredentialsAsync_ReturnsNull_WhenNotSet()
+    public async Task UpdateLastSeenAsync_BumpsTimestamp()
     {
-        var result = await _sut.GetCredentialsAsync(1);
+        var saved = await _sut.AddAsync(NewCamera(), "u", "p");
+        var seededTimestamp = saved.LastSeen;
+        Assert.NotNull(seededTimestamp);
+
+        await Task.Delay(10);
+        await _sut.UpdateLastSeenAsync(saved.Id);
+
+        var fetched = await _sut.GetAsync(saved.Id);
+        Assert.NotNull(fetched!.LastSeen);
+        Assert.True(fetched.LastSeen > seededTimestamp);
+    }
+
+    [Fact]
+    public async Task GetCredentialsAsync_ReturnsNull_WhenAnyMissing()
+    {
+        var id = Guid.NewGuid();
+        _config.Setup(c => c.GetSecretAsync($"camera-{id:N}-username", "cameras")).ReturnsAsync("admin");
+        _config.Setup(c => c.GetSecretAsync($"camera-{id:N}-password", "cameras")).ReturnsAsync((string?)null);
+
+        var result = await _sut.GetCredentialsAsync(id);
         Assert.Null(result);
     }
 
     [Fact]
-    public async Task GetCredentialsAsync_ReturnsTuple_WhenSet()
+    public async Task GetCredentialsAsync_ReturnsTuple_WhenBothPresent()
     {
-        _config.Setup(c => c.GetSecretAsync("camera-1-username", "cameras")).ReturnsAsync("admin");
-        _config.Setup(c => c.GetSecretAsync("camera-1-password", "cameras")).ReturnsAsync("secret123");
-        var result = await _sut.GetCredentialsAsync(1);
+        var id = Guid.NewGuid();
+        _config.Setup(c => c.GetSecretAsync($"camera-{id:N}-username", "cameras")).ReturnsAsync("admin");
+        _config.Setup(c => c.GetSecretAsync($"camera-{id:N}-password", "cameras")).ReturnsAsync("secret");
+
+        var result = await _sut.GetCredentialsAsync(id);
         Assert.NotNull(result);
         Assert.Equal("admin", result.Value.Username);
-        Assert.Equal("secret123", result.Value.Password);
+        Assert.Equal("secret", result.Value.Password);
+    }
+
+    [Fact]
+    public async Task DeleteAllAsync_RemovesAllRows_RemovesSecrets_NotifiesOnce()
+    {
+        await _sut.AddAsync(NewCamera("A", "192.168.1.50"), "u1", "p1");
+        await _sut.AddAsync(NewCamera("B", "192.168.1.51"), "u2", "p2");
+        _notifier.Reset();
+
+        var deleted = await _sut.DeleteAllAsync();
+
+        Assert.Equal(2, deleted);
+        Assert.Empty(await _sut.GetAllAsync());
+        _config.Verify(c => c.DeleteSettingAsync(It.Is<string>(s => s.StartsWith("camera-")), "cameras"),
+            Times.Exactly(4)); // 2 cameras x (username + password)
+        _notifier.Verify(n => n.NotifyChanged(), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAllAsync_ReturnsZero_WhenEmpty()
+    {
+        var deleted = await _sut.DeleteAllAsync();
+        Assert.Equal(0, deleted);
+        _notifier.Verify(n => n.NotifyChanged(), Times.Never);
     }
 }

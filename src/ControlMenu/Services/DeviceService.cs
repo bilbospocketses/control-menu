@@ -71,6 +71,19 @@ public class DeviceService : IDeviceService
             device.LastKnownIp = ipAddress;
             device.LastSeen = DateTime.UtcNow;
             await db.SaveChangesAsync();
+            _notifier.NotifyChanged();
         }
+    }
+
+    public async Task<int> DeleteAllDevicesAsync()
+    {
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var devices = await db.Devices.ToListAsync();
+        if (devices.Count == 0) return 0;
+
+        db.Devices.RemoveRange(devices);
+        await db.SaveChangesAsync();
+        _notifier.NotifyChanged();
+        return devices.Count;
     }
 }

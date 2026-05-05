@@ -30,4 +30,11 @@ public sealed class FakeDeviceService : IDeviceService
 
     public Task UpdateLastSeenAsync(Guid id, string ipAddress)
         => Task.CompletedTask;
+
+    public Task<int> DeleteAllDevicesAsync()
+    {
+        var count = Devices.Count;
+        Devices.Clear();
+        return Task.FromResult(count);
+    }
 }

@@ -1,4 +1,5 @@
 using ControlMenu.Data.Entities;
+using ControlMenu.Modules.Cameras.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace ControlMenu.Data;
@@ -11,6 +12,7 @@ public class AppDbContext : DbContext
     public DbSet<Job> Jobs => Set<Job>();
     public DbSet<Dependency> Dependencies => Set<Dependency>();
     public DbSet<Setting> Settings => Set<Setting>();
+    public DbSet<Camera> Cameras => Set<Camera>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -37,6 +39,12 @@ public class AppDbContext : DbContext
         {
             e.HasKey(s => s.Id);
             e.HasIndex(s => new { s.ModuleId, s.Key }).IsUnique();
+        });
+
+        modelBuilder.Entity<Camera>(e =>
+        {
+            e.HasKey(c => c.Id);
+            e.HasIndex(c => c.IpAddress);
         });
     }
 }

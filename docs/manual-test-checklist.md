@@ -133,15 +133,35 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 
 ## 6. Settings > Cameras
 
-- [ ] Page loads at `/settings/cameras` with camera slots (default 8)
-- [ ] Each camera slot has: Name, IP Address, RTSP Port (default 554), Username, Password
-- [ ] Fill Camera 1: name + IP + credentials, click "Save Camera 1" — "Saved" appears
-- [ ] Reload page — saved values restored
-- [ ] Save camera with name + IP but no credentials — config saves, camera not added to go2rtc
-- [ ] Change camera count, save — "Saved — refresh page to update sidebar" message
-- [ ] Refresh page — sidebar shows correct number of camera entries
-- [ ] Camera names appear in sidebar (e.g., "Front Door" instead of "Camera 1")
-- [ ] Password field obscures input
+### 6a. Configured cameras table
+
+- [ ] Page loads at `/settings/cameras` with Configured cameras table (empty on first-run after legacy purge)
+- [ ] Click "Add Camera" — camera form appears
+- [ ] Fill form (Name, IP, Port, Username, Password), click Save — camera appears in table
+- [ ] Reload page — saved camera appears in table
+- [ ] Configured camera shows in sidebar with custom name (e.g., "Front Door")
+- [ ] Click "✎" (Edit) on a camera — edit modal opens with current data pre-filled
+- [ ] Edit a field, click Cancel — original value unchanged in table
+- [ ] Edit a field, click Save — change persists in table
+- [ ] Toggle the Enabled checkbox off on a camera — camera disappears from live-view (within seconds)
+- [ ] Toggle back on — camera reappears in live-view
+- [ ] Delete a camera — confirmation dialog appears, accepting removes it from table
+- [ ] After deletion, verify no orphan secret rows in database
+
+#### Camera scanner
+
+- [ ] Open Settings → Cameras. Configured-cameras table shows current cameras (or empty if first-run after legacy purge).
+- [ ] Click "Scan Network". Subnet modal opens; auto-detected subnet is pre-filled.
+- [ ] Run scan against `192.168.1.0/24` (or whatever your LAN is). Verify Hikvision/LTS cameras appear in the Discovered panel within ~5 seconds with manufacturer + model populated.
+- [ ] In a discovered ONVIF row, type a known-good username + password and click Add. Camera moves to the Configured table. Open Cameras live-view: stream plays.
+- [ ] Repeat with a wrong password. Inline error "Authentication failed at HH:MM:SS" appears, row stays in panel.
+- [ ] Manually configure a non-ONVIF RTSP camera (or temporarily disable ONVIF on a test camera). Discovered panel shows it as "RTSP only". Click "Add manually...". Modal appears with IP pre-filled. Enter name, manufacturer, creds, stream path. Submit; camera saves and streams.
+- [ ] In the Configured table, click ✎ on a camera. Edit modal opens. Rename + save; verify renamed in the table and (if applicable) in the live-view label.
+- [ ] Toggle the Enabled checkbox off on a camera. Verify it disappears from the live view (within seconds — go2rtc restarts via notifier-driven regen).
+- [ ] Delete a camera. Verify it's gone from the table; no orphan secret rows in the DB.
+- [ ] Set `cameras-scan-interval-minutes` to `1`; wait ~90 seconds; verify periodic-scan log line appears. Set to `0`; verify scans stop within 1 minute.
+- [ ] Add a subnet via the AddSubnetModal; verify next scan covers it.
+- [ ] Cancel a long-running scan via the modal's Cancel button. Verify partial Hits remain visible; Phase returns to Idle.
 
 ## 7. Settings > Jellyfin
 

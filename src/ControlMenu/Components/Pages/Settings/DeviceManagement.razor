@@ -2,21 +2,26 @@
 @using ControlMenu.Data.Entities
 @using ControlMenu.Data.Enums
 @using ControlMenu.Modules.AndroidDevices.Services
+@using ControlMenu.Services
 @using ControlMenu.Services.Network
 @inject IDeviceService DeviceService
 @inject INetworkDiscoveryService NetworkDiscovery
 @inject IAdbService AdbService
 @inject IConfigurationService Config
 @inject IScanLifecycleHandler Handler
+@inject IntervalChangeSignal IntervalSignal
 @implements IDisposable
 
 <div class="settings-section">
     <h2>Device Discovery</h2>
     <div class="form-group" style="margin-bottom:1.5rem;">
-        <label>Discovery Interval (seconds)</label>
-        <input type="number" class="form-control" style="max-width:200px;" min="30" max="3600"
-               value="@_discoveryInterval" @onchange="OnDiscoveryIntervalChanged" />
-        <div class="form-hint">How often to scan the network for device IP changes. Min 30s, max 3600s.</div>
+        <label>Liveness Interval (seconds)</label>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+            <input type="number" class="form-control" style="max-width:200px;" min="0" max="3600"
+                   value="@_discoveryInterval" @onchange="OnDiscoveryIntervalChanged" />
+            <button class="btn btn-primary" @onclick="RestoreDefaultInterval">Restore Default</button>
+        </div>
+        <div class="form-hint">How often to refresh device Status &amp; Last Seen by probing each registered device. Allowed: 0 (disabled) or 300–3600 seconds. Default 300.</div>
     </div>
 </div>
 
@@ -34,6 +39,12 @@
         <button class="btn btn-secondary" @onclick="OpenScanModal">
             <i class="bi bi-broadcast"></i> Scan Network…
         </button>
+        @if (_devices.Count > 0)
+        {
+            <button class="btn btn-danger" @onclick="ConfirmDeleteAll">
+                <i class="bi bi-trash"></i> Delete All
+            </button>
+        }
     </div>
 
     @if (_devices.Count == 0)
@@ -131,6 +142,20 @@
     </div>
 }
 
+@if (_showDeleteAllConfirm)
+{
+    <div class="dialog-overlay" @onclick="CloseDeleteAllConfirm">
+        <div class="dialog" @onclick:stopPropagation="true">
+            <h3>Delete all devices?</h3>
+            <p>All @_devices.Count registered devices will be removed. This cannot be undone.</p>
+            <div class="dialog-actions">
+                <button class="btn btn-secondary" @onclick="CloseDeleteAllConfirm">Cancel</button>
+                <button class="btn btn-danger" @onclick="DeleteAllConfirmedAsync">Delete All</button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (!string.IsNullOrEmpty(_message))
 {
     <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
@@ -150,12 +175,14 @@
     private string _formPin = "";
     private bool _showDeleteConfirm;
     private ControlMenu.Data.Entities.Device? _deleteTarget;
+    private bool _showDeleteAllConfirm;
     private bool _scanning;
     private bool _showScanModal;
     private string? _message;
 
     private bool _messageIsError;
-    private int _discoveryInterval = 300;
+    private const int DefaultDiscoveryInterval = 300;
+    private int _discoveryInterval = DefaultDiscoveryInterval;
 
     protected override async Task OnInitializedAsync()
     {
@@ -179,16 +206,25 @@
 
     private async Task OnDiscoveryIntervalChanged(ChangeEventArgs e)
     {
-        if (int.TryParse(e.Value?.ToString(), out var val) && val >= 30 && val <= 3600)
+        if (int.TryParse(e.Value?.ToString(), out var val) && (val == 0 || (val >= 300 && val <= 3600)))
         {
             _discoveryInterval = val;
             await Config.SetSettingAsync("discovery-interval", val.ToString());
+            IntervalSignal.Trigger(IntervalChangeSignal.AndroidLiveness);
             await ShowMessage("Saved.");
         }
         else
         {
-            await ShowMessage("Must be between 30 and 3600 seconds.", true);
+            await ShowMessage("Must be 0 (disabled) or between 300 and 3600 seconds.", true);
         }
+    }
+
+    private async Task RestoreDefaultInterval()
+    {
+        _discoveryInterval = DefaultDiscoveryInterval;
+        await Config.SetSettingAsync("discovery-interval", DefaultDiscoveryInterval.ToString());
+        IntervalSignal.Trigger(IntervalChangeSignal.AndroidLiveness);
+        await ShowMessage($"Restored default ({DefaultDiscoveryInterval}s).");
     }
 
     private async Task LoadDevices()
@@ -439,6 +475,17 @@
         if (age.TotalMinutes < 60) return $"{(int)age.TotalMinutes}m ago";
         if (age.TotalHours < 24) return $"{(int)age.TotalHours}h ago";
         return lastSeen.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+    }
+
+    private void ConfirmDeleteAll() => _showDeleteAllConfirm = true;
+    private void CloseDeleteAllConfirm() => _showDeleteAllConfirm = false;
+
+    private async Task DeleteAllConfirmedAsync()
+    {
+        _showDeleteAllConfirm = false;
+        var n = await DeviceService.DeleteAllDevicesAsync();
+        await LoadDevices();
+        await ShowMessage($"{n} device(s) deleted.");
     }
 
     private void OpenScanModal() => _showScanModal = true;
