@@ -338,3 +338,35 @@ If you're short on time, just hit these:
 8. [ ] Edit a device, cancel — verify original values unchanged
 9. [ ] Google TV mirror: clicks work, survive stream refresh
 10. [ ] Cast & Crew update sends email on completion (if notification email set)
+
+## Settings Grid Redesign (2026-05-05)
+
+### Sub-nav order
+
+- [ ] `/settings` left rail order: General → Jellyfin → Android Devices → Cameras → Dependencies.
+
+### General page
+
+- [ ] General section row order: Re-run Setup Wizard, Timezone, Theme.
+- [ ] Theme cell shows the hint "Also available from the icon in the top-right of every page."
+- [ ] Theme buttons toggle theme immediately.
+- [ ] Email (SMTP) renders as 4-row 2-col grid; per-field auto-save still works.
+- [ ] Test Email button alone in the bottom row.
+- [ ] ws-scrcpy-web URL field disabled in Managed mode.
+- [ ] Switch to External → URL editable; blur saves with "Restart to apply" notification.
+
+### Jellyfin page — non-migration sections
+
+- [ ] Docker Compose parse-result table shows only Container Name + Database Path (no Backup Directory).
+- [ ] Jellyfin API has a single bottom-right Save button (bi-floppy icon). Edit + Save persists all three fields (verify via reload).
+- [ ] Cast & Crew Notifications has a single Save Notification Email button.
+
+### Jellyfin page — Logging, Backup & Retention
+
+- [ ] Section title reads "Logging, Backup & Retention".
+- [ ] Three rows: Backups, Logs, Retention. Each row has its own Save button.
+- [ ] Stats show file count + total size for Backups, file count for Logs.
+- [ ] Backups path migration: change path to a new empty dir → existing `.db` files move; notification confirms count.
+- [ ] Logs path migration: at least one log file likely locked → partial-success notification mentions the locked file by name.
+- [ ] Retry-after-restart-or-rotation: re-clicking Save migrates remaining files.
+- [ ] Retention save persists the new day count.
