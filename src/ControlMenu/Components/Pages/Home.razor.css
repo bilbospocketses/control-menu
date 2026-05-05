@@ -2,6 +2,14 @@
 .home-root {
     display: flex;
     flex-direction: column;
+    min-height: 100%;
+}
+
+/* Sticky-footer pattern: module tiles anchor to the bottom of the viewable
+   area when content above is short, but scroll naturally with the page once
+   the discovery sections grow tall enough to push them off-screen. */
+.home-tiles-anchor {
+    margin-top: auto;
 }
 
 .home-header {
