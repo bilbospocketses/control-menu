@@ -75,9 +75,11 @@ src/ControlMenu/
   Components/
     Layout/                 # MainLayout, Sidebar, TopBar
     Pages/                  # Home, Settings, Setup Wizard
+      Home.razor            # Discovery-dashboard composition (HomeSections children)
+      HomeSections/         # HomeScanBand, HomeDiscoveredAndroid, HomeDiscoveredCameras, HomeModuleTiles
       Settings/             # SettingsPage, tabs: General, Devices, Cameras, Jellyfin, Dependencies
       Setup/                # Wizard steps: Welcome, Android Devices, Cameras, Jellyfin, Email, Dependencies, Done
-    Shared/                 # ScrcpyMirror
+    Shared/                 # ScrcpyMirror, Scanner/DiscoveredPanel, Cameras/DiscoveredCamerasPanel
   Data/
     AppDbContext.cs          # EF Core DbContext
     Entities/                # Device, Job, Dependency, Setting

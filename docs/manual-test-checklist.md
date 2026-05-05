@@ -7,12 +7,21 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 ## 1. Startup & Home Page
 
 - [ ] App starts without errors in console
-- [ ] Home page loads with hero section (app icon, title, subtitle)
-- [ ] Module cards display: Android Devices, Cameras, Jellyfin, Utilities
-- [ ] Settings card displays with links to: General, Devices, Jellyfin, Dependencies, Cameras
-- [ ] Each module card shows brand logo (Android robot SVG, Jellyfin logo SVG, etc.)
-- [ ] Pill-button navigation inside each card works (links to correct pages)
+- [ ] Home page loads with header band: brand icon (small, top-left) + "Control Menu" title + status line + three Quick Scan buttons (Scan Android / Scan Cameras / Scan All) at fixed width on the right
+- [ ] Cold state status line reads "Find devices and cameras on your network, then manage them."
+- [ ] DISCOVERED — ANDROID and DISCOVERED — CAMERAS sections render below the header with outlined dashed-border placeholder cards when no devices are discovered
+- [ ] Each placeholder card prompts the user to run a scan (Android: "No Android devices found on the last scan. Run a scan to look for Androids on your network."; Cameras: "No new cameras discovered. Run a scan to look for cameras on your network.")
+- [ ] Module-tile nav row pinned to bottom of viewport: Android Devices · Power Tools · Jellyfin · Cameras · Utilities · Settings
+- [ ] Each module tile routes to its module's first nav entry (e.g., Android Devices → /android/devices, Settings → /settings/general); Cameras tile falls back to /settings/cameras when no cameras are registered
+- [ ] Click Scan Android — only that button shows ⏳ Scanning Android…; on completion the Discovered — Android section populates (or shows the empty placeholder if nothing found); status-line "last scan Xs ago" updates
+- [ ] Click Scan Cameras — symmetric behavior; if subnet detection fails, an inline error renders in the header band and Cameras section does NOT mark itself scanned
+- [ ] Click Scan All — all three buttons enter Running state simultaneously; Android + Cameras scan in parallel; both Discovered sections populate on completion
+- [ ] Scan All while Android scan already running — Scan All immediately enters Running state; Cameras kicks off in tandem; Android scan continues uninterrupted
+- [ ] Inline + Add a Discovered Android device → row disappears from Discovered, status line registered count bumps
+- [ ] Inline + Add a Discovered Camera → same behavior via the embedded DiscoveredCamerasPanel
+- [ ] Cameras count badge reflects FILTERED hits (not raw `Hits.Count`): when all hits are already-registered, badge shows 0 and outlined placeholder card renders (not the panel's own bare empty message)
 - [ ] "No modules loaded" message does NOT show (verifies module discovery works)
+- [ ] Setup-wizard guard: if `setup-completed` setting is cleared, Home renders the SetupWizard exclusively (none of the dashboard surfaces visible)
 
 ## 2. Theme & Layout
 
@@ -328,7 +337,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 
 If you're short on time, just hit these:
 
-1. [ ] App starts, home page shows hero + module cards with pill buttons
+1. [ ] App starts, home page shows the discovery dashboard (header band + Quick Scan buttons + Discovered sections + module-tile nav)
 2. [ ] Theme toggle works, page title updates on navigation
 3. [ ] Sidebar expand/collapse persists across refresh
 4. [ ] Settings > General: SMTP fields save without reverting
