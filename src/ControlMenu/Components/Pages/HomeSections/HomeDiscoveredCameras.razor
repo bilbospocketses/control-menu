@@ -1,0 +1,19 @@
+@* HomeDiscoveredCameras.razor *@
+@using ControlMenu.Components.Shared.Cameras
+
+@if (HasScanned)
+{
+    <section class="home-disc-section">
+        <div class="home-disc-header">
+            <span class="home-disc-label">DISCOVERED — CAMERAS</span>
+        </div>
+        <DiscoveredCamerasPanel OnCameraAdded="HandleCameraAdded" />
+    </section>
+}
+
+@code {
+    [Parameter] public bool HasScanned { get; set; }
+    [Parameter] public EventCallback OnCameraAdded { get; set; }
+
+    private async Task HandleCameraAdded() => await OnCameraAdded.InvokeAsync();
+}

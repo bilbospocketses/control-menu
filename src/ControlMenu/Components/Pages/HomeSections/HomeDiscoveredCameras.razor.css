@@ -1,0 +1,19 @@
+/* HomeDiscoveredCameras.razor.css */
+.home-disc-section {
+    padding: 1rem 1.5rem;
+    background: var(--bg-elevated, #1a1a1a);
+    border-bottom: 1px solid var(--border-subtle, #2a2a2a);
+}
+
+.home-disc-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.625rem;
+}
+
+.home-disc-label {
+    font-size: 0.6875rem;
+    color: var(--text-muted, #888);
+    letter-spacing: 0.5px;
+}
