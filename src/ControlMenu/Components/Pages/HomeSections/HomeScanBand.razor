@@ -1,0 +1,32 @@
+@* HomeScanBand.razor *@
+<div class="scan-band">
+    <button class="scan-button scan-button-android" type="button"
+            disabled="@AndroidRunning" @onclick="HandleScanAndroid">
+        @AndroidLabel
+    </button>
+    <button class="scan-button scan-button-cameras" type="button"
+            disabled="@CamerasRunning" @onclick="HandleScanCameras">
+        @CamerasLabel
+    </button>
+    <button class="scan-button scan-button-all" type="button"
+            disabled="@AllRunning" @onclick="HandleScanAll">
+        @AllLabel
+    </button>
+</div>
+
+@code {
+    [Parameter] public bool AndroidRunning { get; set; }
+    [Parameter] public bool CamerasRunning { get; set; }
+    [Parameter] public bool AllRunning { get; set; }
+    [Parameter] public EventCallback OnScanAndroid { get; set; }
+    [Parameter] public EventCallback OnScanCameras { get; set; }
+    [Parameter] public EventCallback OnScanAll { get; set; }
+
+    private string AndroidLabel => AndroidRunning ? "⏳ Scanning Android…" : "⚡ Scan Android";
+    private string CamerasLabel => CamerasRunning ? "⏳ Scanning Cameras…" : "⚡ Scan Cameras";
+    private string AllLabel => AllRunning ? "⏳ Scanning All…" : "⚡ Scan All";
+
+    private Task HandleScanAndroid() => OnScanAndroid.InvokeAsync();
+    private Task HandleScanCameras() => OnScanCameras.InvokeAsync();
+    private Task HandleScanAll() => OnScanAll.InvokeAsync();
+}
