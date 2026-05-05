@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using ControlMenu.Modules.Cameras.Network;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Moq.Protected;
@@ -10,7 +11,15 @@ namespace ControlMenu.Tests.Modules.Cameras.Network;
 
 public class HikvisionIsapiClientTests
 {
-    private static (HikvisionIsapiClient Sut, List<HttpRequestMessage> Sent) CreateClient(HttpResponseMessage response)
+    private sealed class TestableHikvisionIsapiClient : HikvisionIsapiClient
+    {
+        private readonly HttpClient _httpClient;
+        public TestableHikvisionIsapiClient(HttpClient httpClient, ILogger<HikvisionIsapiClient> logger)
+            : base(logger) => _httpClient = httpClient;
+        protected override HttpClient CreateHttpClient(string username, string password) => _httpClient;
+    }
+
+    private static (TestableHikvisionIsapiClient Sut, List<HttpRequestMessage> Sent) CreateClient(HttpResponseMessage response)
     {
         var captured = new List<HttpRequestMessage>();
         var handler = new Mock<HttpMessageHandler>();
@@ -23,9 +32,7 @@ public class HikvisionIsapiClientTests
                 return response;
             });
         var http = new HttpClient(handler.Object);
-        var factory = new Mock<IHttpClientFactory>();
-        factory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(http);
-        return (new HikvisionIsapiClient(factory.Object, NullLogger<HikvisionIsapiClient>.Instance), captured);
+        return (new TestableHikvisionIsapiClient(http, NullLogger<HikvisionIsapiClient>.Instance), captured);
     }
 
     [Fact]
@@ -68,22 +75,6 @@ public class HikvisionIsapiClientTests
         Assert.Equal("Cam", info.DeviceName);
         Assert.Null(info.MacAddress);
         Assert.Null(info.TelecontrolId);
-    }
-
-    [Fact]
-    public async Task GetDeviceInfoAsync_AddsBasicAuthHeader()
-    {
-        var (sut, captured) = CreateClient(new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent("<DeviceInfo/>")
-        });
-
-        await sut.GetDeviceInfoAsync("192.168.86.10", 80, "admin", "secret", default);
-
-        Assert.Single(captured);
-        Assert.Equal("Basic", captured[0].Headers.Authorization?.Scheme);
-        var decoded = Encoding.UTF8.GetString(Convert.FromBase64String(captured[0].Headers.Authorization!.Parameter!));
-        Assert.Equal("admin:secret", decoded);
     }
 
     [Fact]
