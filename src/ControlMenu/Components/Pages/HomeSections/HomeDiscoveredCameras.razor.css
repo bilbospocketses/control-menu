@@ -17,3 +17,13 @@
     color: var(--text-muted, #888);
     letter-spacing: 0.5px;
 }
+
+.home-disc-count {
+    color: #fff;
+    font-size: 0.625rem;
+    padding: 0.0625rem 0.375rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+}
+
+.home-disc-count-cameras { background: #e74c3c; }

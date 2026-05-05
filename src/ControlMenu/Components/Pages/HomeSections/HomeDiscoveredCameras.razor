@@ -1,11 +1,17 @@
 @* HomeDiscoveredCameras.razor *@
 @using ControlMenu.Components.Shared.Cameras
+@using ControlMenu.Modules.Cameras.Network
+@using ControlMenu.Services
+@inject ICameraScanService ScanService
+@inject ICameraChangeNotifier Notifier
+@implements IDisposable
 
 @if (HasScanned)
 {
     <section class="home-disc-section">
         <div class="home-disc-header">
             <span class="home-disc-label">DISCOVERED — CAMERAS</span>
+            <span class="home-disc-count home-disc-count-cameras">@ScanService.Hits.Count</span>
         </div>
         <DiscoveredCamerasPanel OnCameraAdded="HandleCameraAdded" />
     </section>
@@ -15,5 +21,25 @@
     [Parameter] public bool HasScanned { get; set; }
     [Parameter] public EventCallback OnCameraAdded { get; set; }
 
+    private IDisposable? _subscription;
+
+    protected override void OnInitialized()
+    {
+        // Subscribe-before-load: wire up notifications first so any mutation
+        // that happens during initialization doesn't get lost.
+        Notifier.CamerasChanged += HandleCamerasChanged;
+        _subscription = ScanService.Subscribe(HandleScanEvent);
+    }
+
+    private void HandleCamerasChanged() => InvokeAsync(StateHasChanged);
+
+    private void HandleScanEvent(CameraScanEvent _) => InvokeAsync(StateHasChanged);
+
     private async Task HandleCameraAdded() => await OnCameraAdded.InvokeAsync();
+
+    public void Dispose()
+    {
+        Notifier.CamerasChanged -= HandleCamerasChanged;
+        _subscription?.Dispose();
+    }
 }
