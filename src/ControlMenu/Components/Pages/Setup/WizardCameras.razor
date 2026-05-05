@@ -1,11 +1,152 @@
+@using ControlMenu.Components.Shared.Cameras
+@using ControlMenu.Modules.Cameras.Entities
+@using ControlMenu.Modules.Cameras.Network
 @using ControlMenu.Modules.Cameras.Services
+@using ControlMenu.Services.Network
 @inject ICameraService CameraService
+@inject ICameraScanService ScanService
+@inject ICameraChangeNotifier ChangeNotifier
+@inject SubnetDetectionClient SubnetDetector
+@implements IDisposable
 
 <div class="settings-section">
     <h2>Cameras</h2>
-    <p>Camera setup migration in progress — full wizard coming in T14/T17.</p>
+    <p>Scan your network to discover ONVIF-enabled IP cameras and add each one with a click. <strong>Non-ONVIF cameras (older or basic RTSP-only models) can be added later from <a href="/settings/cameras">Settings › Cameras</a>.</strong></p>
+
+    <div class="toolbar" style="margin-bottom:1rem;">
+        <button class="btn btn-primary" @onclick="StartScan" disabled="@_scanInProgress">
+            <i class="bi bi-broadcast"></i> @(_scanInProgress ? "Scanning..." : "Scan Network")
+        </button>
+    </div>
+
+    @if (ScanService.Phase is not ScanPhase.Idle)
+    {
+        <div class="scan-row" style="margin-bottom:1rem;">
+            <span style="color: var(--text-muted);">@PhaseLabel</span>
+        </div>
+    }
+
+    <DiscoveredCamerasPanel OnCameraAdded="@RefreshCamerasAsync" />
+
+    @if (_cameras.Count > 0)
+    {
+        <h3 style="margin-top: 1.5rem;">Registered cameras</h3>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>CAM #</th>
+                    <th>NAME</th>
+                    <th>MFR / MODEL</th>
+                    <th>ADDRESS</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var cam in _cameras)
+                {
+                    <tr>
+                        <td>@(cam.CameraNumber?.ToString() ?? "—")</td>
+                        <td>@cam.Name</td>
+                        <td>@(cam.Manufacturer ?? "—") @(cam.Model ?? "")</td>
+                        <td>@cam.IpAddress:@cam.Port</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
+            @_message
+        </div>
+    }
 </div>
 
 @code {
+    [Parameter] public SetupWizard.WizardState State { get; set; } = default!;
+
+    private List<Camera> _cameras = new();
+    private bool _scanInProgress;
+    private string? _message;
+    private bool _messageIsError;
+    private IDisposable? _scanSubscription;
+
+    private string PhaseLabel => ScanService.Phase switch
+    {
+        ScanPhase.Scanning => "Scanning network for ONVIF cameras…",
+        ScanPhase.Draining => "Finishing up…",
+        ScanPhase.Complete => "Scan complete.",
+        _ => ""
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        ChangeNotifier.CamerasChanged += OnCamerasChanged;
+        _scanSubscription = ScanService.Subscribe(OnScanEvent);
+        await RefreshCamerasAsync();
+    }
+
     public Task SaveAsync() => Task.CompletedTask;
+
+    private void OnScanEvent(CameraScanEvent ev)
+    {
+        _ = InvokeAsync(() =>
+        {
+            switch (ev)
+            {
+                case CameraScanStartedEvent:
+                    _scanInProgress = true;
+                    break;
+                case CameraScanCompletedEvent or CameraScanCancelledEvent:
+                    _scanInProgress = false;
+                    break;
+            }
+            StateHasChanged();
+        });
+    }
+
+    private async Task RefreshCamerasAsync()
+    {
+        var fresh = await CameraService.GetAllAsync();
+        _cameras = fresh
+            .OrderBy(c => c.CameraNumber ?? int.MaxValue)
+            .ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        State.CamerasAdded = _cameras.Count;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnCamerasChanged() => _ = RefreshCamerasAsync();
+
+    private async Task StartScan()
+    {
+        _message = null;
+        StateHasChanged();
+
+        var detected = await SubnetDetector.DetectAsync();
+        if (detected is null)
+        {
+            _message = "Could not auto-detect a network subnet. You can add cameras manually from Settings → Cameras after setup completes.";
+            _messageIsError = true;
+            StateHasChanged();
+            return;
+        }
+
+        var parseResult = SubnetParser.Parse(detected.Cidr);
+        if (!parseResult.IsSuccess || parseResult.Value is null)
+        {
+            _message = $"Auto-detected subnet '{detected.Cidr}' could not be parsed. Use Settings → Cameras to add a custom subnet.";
+            _messageIsError = true;
+            StateHasChanged();
+            return;
+        }
+
+        await ScanService.StartOnvifOnlyScanAsync(new[] { parseResult.Value });
+    }
+
+    public void Dispose()
+    {
+        ChangeNotifier.CamerasChanged -= OnCamerasChanged;
+        _scanSubscription?.Dispose();
+    }
 }
