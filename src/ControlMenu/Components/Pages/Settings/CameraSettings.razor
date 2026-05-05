@@ -1,45 +1,52 @@
+@page "/settings/cameras"
+@using ControlMenu.Components.Shared.Cameras
+@using ControlMenu.Components.Shared.Scanner
 @using ControlMenu.Modules.Cameras.Entities
 @using ControlMenu.Modules.Cameras.Network
 @using ControlMenu.Modules.Cameras.Services
-@using ControlMenu.Components.Shared.Cameras
-@using ControlMenu.Components.Shared.Scanner
-@using ControlMenu.Services
 @using ControlMenu.Services.Network
 @inject ICameraService CameraService
 @inject ICameraScanService ScanService
 @inject ICameraChangeNotifier ChangeNotifier
 @implements IDisposable
 
-<h2>Cameras</h2>
+<div class="settings-section">
+    <h2>Cameras</h2>
+    <p>Discover, register, and manage IP cameras. <strong>Scan Network</strong> runs ONVIF WS-Discovery + a TCP-554 sweep across configured subnets to find cameras on your LAN. <strong>Add Camera Manually</strong> opens a form for cameras that don't auto-discover.</p>
 
-<div class="toolbar">
-    <button class="btn btn-primary" @onclick="OpenScanModal">Scan Network</button>
-    <button class="btn btn-secondary" @onclick="OpenManualAddModal">Add Camera Manually</button>
-</div>
+    <div class="toolbar">
+        <button class="btn btn-primary" @onclick="OpenScanModal">
+            <i class="bi bi-broadcast"></i> Scan Network
+        </button>
+        <button class="btn btn-secondary" @onclick="OpenManualAddModal">
+            <i class="bi bi-plus-lg"></i> Add Camera Manually
+        </button>
+    </div>
 
-<section>
-    <h3>Configured cameras</h3>
     @if (_cameras.Count == 0)
     {
         <p style="color: var(--text-muted);">No cameras configured yet. Use "Scan Network" to discover cameras on your LAN.</p>
     }
     else
     {
-        <table class="camera-table">
+        <table class="data-table data-table-fixed">
             <thead>
                 <tr>
+                    <th style="width:60px;">Status</th>
                     <th>Name</th>
-                    <th>Address</th>
+                    <th style="width:160px;">Address</th>
                     <th>Mfr / Model</th>
-                    <th>ONVIF</th>
-                    <th>Enabled</th>
-                    <th>Actions</th>
+                    <th style="width:70px;">ONVIF</th>
+                    <th style="width:75px;">Enabled</th>
+                    <th style="width:110px;">Last Seen</th>
+                    <th style="width:140px; text-align:right;">Actions</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach (var cam in _cameras)
                 {
                     <tr>
+                        <td><span class="status-dot @GetStatusClass(cam)"></span></td>
                         <td>@cam.Name</td>
                         <td>@cam.IpAddress:@cam.Port</td>
                         <td>@(cam.Manufacturer ?? "—") @(cam.Model ?? "")</td>
@@ -48,21 +55,24 @@
                             <input type="checkbox" checked="@cam.Enabled"
                                    @onchange="@(e => ToggleEnabled(cam, e))" />
                         </td>
+                        <td>@FormatLastSeen(cam.LastSeen)</td>
                         <td class="actions">
-                            <button class="icon-btn" title="Edit" @onclick="@(() => OpenEditModal(cam))">✎</button>
-                            <button class="icon-btn" title="Delete" @onclick="@(() => ConfirmDelete(cam))">🗑</button>
+                            <button class="btn btn-secondary btn-sm" @onclick="@(() => OpenEditModal(cam))">Edit</button>
+                            <button class="btn btn-danger btn-sm" @onclick="@(() => ConfirmDelete(cam))">Delete</button>
                         </td>
                     </tr>
                 }
             </tbody>
         </table>
     }
-</section>
+</div>
 
-<section>
-    <h3>Discovered</h3>
+<div class="settings-section">
+    <h2>Discovered on Network</h2>
+    <p>ONVIF cameras and RTSP-only devices found by the latest scan. Enter credentials and click <strong>Add</strong> to register; <span style="color: var(--text-muted);">×</span> dismisses the row for this scan session.</p>
+
     <DiscoveredCamerasPanel OnCameraAdded="@RefreshCamerasAsync" />
-</section>
+</div>
 
 @if (_scanModalOpen)
 {
@@ -165,6 +175,26 @@
 
     private Task OnScanStart(IReadOnlyList<ParsedSubnet> subnets)
         => ScanService.StartScanAsync(subnets);
+
+    private static string GetStatusClass(Camera cam)
+    {
+        if (!cam.Enabled) return "offline";
+        if (cam.LastSeen is null) return "offline";
+        var age = DateTime.UtcNow - cam.LastSeen.Value;
+        if (age.TotalMinutes < 10) return "online";
+        if (age.TotalHours < 24) return "stale";
+        return "offline";
+    }
+
+    private static string FormatLastSeen(DateTime? lastSeen)
+    {
+        if (lastSeen is null) return "—";
+        var ago = DateTime.UtcNow - lastSeen.Value;
+        if (ago.TotalSeconds < 60) return "Just now";
+        if (ago.TotalMinutes < 60) return $"{(int)ago.TotalMinutes}m ago";
+        if (ago.TotalHours < 24) return $"{(int)ago.TotalHours}h ago";
+        return $"{(int)ago.TotalDays}d ago";
+    }
 
     private async Task ShowMessage(string message, bool isError = false)
     {

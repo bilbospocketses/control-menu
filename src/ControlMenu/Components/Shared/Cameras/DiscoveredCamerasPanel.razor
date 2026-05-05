@@ -8,59 +8,83 @@
 
 @if (_hits.Count == 0)
 {
-    <p class="discovered-empty">No new cameras discovered. Run a scan to look for cameras on your network.</p>
+    <p style="color: var(--text-muted);">No new cameras discovered. Run a scan to look for cameras on your network.</p>
 }
 else
 {
     @if (HasOnvifRows)
     {
-        <section class="bulk-creds">
+        <div class="bulk-creds-panel">
             <p>All cameras use the same credentials? Enter once and submit to add all discovered ONVIF cameras.</p>
-            <div class="bulk-form">
-                <input type="text" placeholder="username" @bind="_bulkUser" />
-                <input type="password" placeholder="password" @bind="_bulkPass" />
-                <button @onclick="@AddAllOnvifAsync" disabled="@_bulkBusy">@BulkButtonLabel</button>
+            <div class="bulk-creds-form">
+                <input class="form-control form-control-sm" @bind="_bulkUser" placeholder="username" />
+                <input type="password" class="form-control form-control-sm" @bind="_bulkPass" placeholder="password" />
+                <button class="btn btn-primary btn-sm" @onclick="@AddAllOnvifAsync" disabled="@_bulkBusy">@BulkButtonLabel</button>
             </div>
-            @if (_bulkError is not null) { <div class="hit-error">⚠ @_bulkError</div> }
-        </section>
+            @if (_bulkError is not null) { <div class="hit-error" style="margin-top: 0.5rem;">⚠ @_bulkError</div> }
+        </div>
     }
 
-    <ul class="discovered-list">
-        @foreach (var hit in _hits)
-        {
-            <li class="discovered-row" @key="hit.IpAddress">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Source</th>
+                <th>Name / Model</th>
+                <th>Address</th>
+                <th>Username</th>
+                <th>Password</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var hit in _hits)
+            {
                 @if (hit.IsOnvif)
                 {
-                    <div class="hit-summary">
-                        <strong>ONVIF:</strong> @(hit.Manufacturer ?? "Unknown") @(hit.Model ?? "")
-                        <span class="hit-ip">@hit.IpAddress</span>
-                    </div>
-                    <div class="hit-actions">
-                        <input type="text" placeholder="username"
-                               value="@GetUser(hit.IpAddress)"
-                               @oninput="@(e => SetUser(hit.IpAddress, e.Value?.ToString() ?? ""))" />
-                        <input type="password" placeholder="password"
-                               value="@GetPass(hit.IpAddress)"
-                               @oninput="@(e => SetPass(hit.IpAddress, e.Value?.ToString() ?? ""))" />
-                        <button @onclick="@(() => AddOnvifAsync(hit))" disabled="@_busy.Contains(hit.IpAddress)">Add</button>
-                    </div>
+                    <tr @key="hit.IpAddress">
+                        <td><span class="source-badge" title="Discovery source">ONVIF</span></td>
+                        <td>@(hit.Manufacturer ?? "Unknown") @(hit.Model ?? "")</td>
+                        <td>@hit.IpAddress</td>
+                        <td>
+                            <input class="form-control form-control-sm" style="width: 100%;" size="1"
+                                   value="@GetUser(hit.IpAddress)"
+                                   @oninput="@(e => SetUser(hit.IpAddress, e.Value?.ToString() ?? ""))"
+                                   placeholder="username" />
+                        </td>
+                        <td>
+                            <input type="password" class="form-control form-control-sm" style="width: 100%;" size="1"
+                                   value="@GetPass(hit.IpAddress)"
+                                   @oninput="@(e => SetPass(hit.IpAddress, e.Value?.ToString() ?? ""))"
+                                   placeholder="password" />
+                        </td>
+                        <td class="actions">
+                            <button class="btn btn-success btn-sm" @onclick="@(() => AddOnvifAsync(hit))" disabled="@_busy.Contains(hit.IpAddress)">Add</button>
+                            <button class="btn btn-danger btn-sm" @onclick="@(() => DismissHit(hit))" title="Dismiss — remove from this list">× Close</button>
+                        </td>
+                    </tr>
                     @if (_errors.TryGetValue(hit.IpAddress, out var err))
                     {
-                        <div class="hit-error">⚠ @err</div>
+                        <tr class="discovered-error-row">
+                            <td colspan="6"><span class="hit-error">⚠ @err</span></td>
+                        </tr>
                     }
                 }
                 else
                 {
-                    <div class="hit-summary">
-                        <strong>RTSP only:</strong> @hit.IpAddress :@hit.Port
-                    </div>
-                    <div class="hit-actions">
-                        <button @onclick="@(() => OpenTcpModal(hit))">Add manually...</button>
-                    </div>
+                    <tr @key="hit.IpAddress">
+                        <td><span class="source-badge" title="Discovery source">RTSP</span></td>
+                        <td><span style="color: var(--text-muted);">—</span></td>
+                        <td>@hit.IpAddress :@hit.Port</td>
+                        <td colspan="2"><span style="color: var(--text-muted);">Manual entry required</span></td>
+                        <td class="actions">
+                            <button class="btn btn-secondary btn-sm" @onclick="@(() => OpenTcpModal(hit))">Add manually...</button>
+                            <button class="btn btn-danger btn-sm" @onclick="@(() => DismissHit(hit))" title="Dismiss — remove from this list">× Close</button>
+                        </td>
+                    </tr>
                 }
-            </li>
-        }
-    </ul>
+            }
+        </tbody>
+    </table>
 }
 
 @if (_tcpModalHit is not null)
@@ -118,7 +142,6 @@ else
 
         foreach (var hit in snapshot)
         {
-            // Pre-populate per-row inputs so AddOnvifAsync uses the bulk creds
             _userInputs[hit.IpAddress] = _bulkUser;
             _passInputs[hit.IpAddress] = _bulkPass;
             await AddOnvifAsync(hit);
@@ -156,6 +179,15 @@ else
     private string GetPass(string ip) => _passInputs.GetValueOrDefault(ip, "");
     private void SetUser(string ip, string val) => _userInputs[ip] = val;
     private void SetPass(string ip, string val) => _passInputs[ip] = val;
+
+    private void DismissHit(CameraScanHit hit)
+    {
+        _hits.Remove(hit);
+        _userInputs.Remove(hit.IpAddress);
+        _passInputs.Remove(hit.IpAddress);
+        _errors.Remove(hit.IpAddress);
+        _busy.Remove(hit.IpAddress);
+    }
 
     private async Task AddOnvifAsync(CameraScanHit hit)
     {
