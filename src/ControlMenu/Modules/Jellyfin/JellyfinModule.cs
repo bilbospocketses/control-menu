@@ -36,7 +36,8 @@ public class JellyfinModule : IToolModule
             VersionCommand = "docker --version",
             VersionPattern = @"Docker version ([\d.]+)",
             SourceType = UpdateSourceType.Manual,
-            ProjectHomeUrl = "https://docs.docker.com/get-docker/"
+            ProjectHomeUrl = "https://docs.docker.com/get-docker/",
+            InstallPath = Path.Combine(DepsRoot, "docker")
         },
         new ModuleDependency
         {

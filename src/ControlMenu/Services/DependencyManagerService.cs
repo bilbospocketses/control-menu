@@ -125,10 +125,9 @@ public class DependencyManagerService : IDependencyManagerService
             return new DependencyCheckResult(dependencyId, entity.Name, DependencyStatus.CheckFailed,
                 entity.InstalledVersion, null, "Module dependency declaration not found");
 
-        // External-mode ws-scrcpy-web: health = HTTP ping of configured URL.
+        // ws-scrcpy-web is always external: health = HTTP ping of configured URL.
         // No install-path or version check makes sense when the node server lives elsewhere.
-        if (entity.Name == "ws-scrcpy-web" &&
-            await _wsScrcpy.GetDeployModeAsync() == WsScrcpyDeployMode.External)
+        if (entity.Name == "ws-scrcpy-web")
         {
             var url = (await _config.GetSettingAsync("wsscrcpy-url")) ?? "http://localhost:8000";
             try
@@ -261,7 +260,6 @@ public class DependencyManagerService : IDependencyManagerService
         StaleUrlAction? urlAction = null;
         var needsAdbKill = entity.Name == "adb";
         var needsGo2RtcStop = entity.Name == "go2rtc";
-        var stoppedScrcpy = false;
         var stoppedGo2Rtc = false;
         var tempDir = Path.Combine(Path.GetTempPath(), "ControlMenu", Guid.NewGuid().ToString());
         Directory.CreateDirectory(tempDir);
@@ -330,8 +328,7 @@ public class DependencyManagerService : IDependencyManagerService
             // 4. Swap — stop processes that lock the binary, backup old, move in new
             if (needsAdbKill)
             {
-                _logger.LogInformation("Stopping ws-scrcpy-web and ADB server before updating adb");
-                await _wsScrcpy.StopAsync(CancellationToken.None);
+                _logger.LogInformation("Stopping ADB server before updating adb");
                 try
                 {
                     await _executor.ExecuteResolvedAsync(_resolver, "android-devices", "adb", "kill-server");
@@ -340,7 +337,6 @@ public class DependencyManagerService : IDependencyManagerService
                 {
                     // adb not installed — nothing to kill. Continue with the install/swap.
                 }
-                stoppedScrcpy = true;
                 await Task.Delay(500);
             }
 
@@ -389,11 +385,6 @@ public class DependencyManagerService : IDependencyManagerService
         }
         finally
         {
-            if (stoppedScrcpy)
-            {
-                _logger.LogInformation("Restarting ws-scrcpy-web after ADB update");
-                _wsScrcpy.Restart();
-            }
             if (stoppedGo2Rtc)
             {
                 _logger.LogInformation("Restarting go2rtc after update");
