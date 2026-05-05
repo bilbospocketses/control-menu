@@ -121,6 +121,7 @@
     private async Task StartScan()
     {
         _message = null;
+        _messageIsError = false;
         StateHasChanged();
 
         var detected = await SubnetDetector.DetectAsync();
