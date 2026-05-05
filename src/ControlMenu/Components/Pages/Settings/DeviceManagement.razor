@@ -5,6 +5,7 @@
 @using ControlMenu.Services
 @using ControlMenu.Services.Network
 @inject IDeviceService DeviceService
+@inject IDeviceChangeNotifier DeviceChangeNotifier
 @inject INetworkDiscoveryService NetworkDiscovery
 @inject IAdbService AdbService
 @inject IConfigurationService Config
@@ -192,7 +193,14 @@
             _discoveryInterval = parsed;
         await LoadDevices();
         Handler.OnStateChanged += HandleHandlerStateChanged;
+        DeviceChangeNotifier.Changed += OnDevicesChanged;
     }
+
+    private void OnDevicesChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadDevices();
+        StateHasChanged();
+    });
 
     private void HandleHandlerStateChanged()
     {
@@ -515,5 +523,6 @@
     public void Dispose()
     {
         Handler.OnStateChanged -= HandleHandlerStateChanged;
+        DeviceChangeNotifier.Changed -= OnDevicesChanged;
     }
 }

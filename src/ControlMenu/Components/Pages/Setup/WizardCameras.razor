@@ -90,19 +90,26 @@
 
     private void OnScanEvent(CameraScanEvent ev)
     {
-        _ = InvokeAsync(() =>
+        try
         {
-            switch (ev)
+            _ = InvokeAsync(() =>
             {
-                case CameraScanStartedEvent:
-                    _scanInProgress = true;
-                    break;
-                case CameraScanCompletedEvent or CameraScanCancelledEvent:
-                    _scanInProgress = false;
-                    break;
-            }
-            StateHasChanged();
-        });
+                switch (ev)
+                {
+                    case CameraScanStartedEvent:
+                        _scanInProgress = true;
+                        break;
+                    case CameraScanCompletedEvent or CameraScanCancelledEvent:
+                        _scanInProgress = false;
+                        break;
+                }
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+            // Component disposed mid-event; subscription already removed in Dispose().
+        }
     }
 
     private async Task RefreshCamerasAsync()
@@ -127,7 +134,7 @@
         var detected = await SubnetDetector.DetectAsync();
         if (detected is null)
         {
-            _message = "Could not auto-detect a network subnet. You can add cameras manually from Settings → Cameras after setup completes.";
+            _message = "Could not auto-detect a network subnet — verify ws-scrcpy-web is running. You can also add cameras manually from Settings → Cameras after setup completes.";
             _messageIsError = true;
             StateHasChanged();
             return;
