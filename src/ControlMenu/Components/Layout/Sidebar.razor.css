@@ -209,3 +209,46 @@
     object-fit: contain;
     flex-shrink: 0;
 }
+
+.sidebar-flyout {
+    position: fixed;
+    left: 56px;
+    width: 220px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+    padding: 6px 0;
+    z-index: 100;
+    animation: sidebar-flyout-fade 200ms ease-out;
+}
+
+.sidebar-flyout:focus { outline: none; }
+
+.sidebar-flyout-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.sidebar-flyout-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    background: transparent;
+}
+
+@keyframes sidebar-flyout-fade {
+    from { opacity: 0; transform: translateX(-4px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+::deep .sidebar-flyout .sidebar-link {
+    /* Reuse existing sidebar-link styling; override the deep left padding so
+       the flat fly-out list reads cleanly without the indented sub-item look. */
+    padding-left: 14px;
+}
