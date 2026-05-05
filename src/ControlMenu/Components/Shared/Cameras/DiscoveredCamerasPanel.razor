@@ -251,33 +251,49 @@ else
         {
             var user = GetUser(hit.IpAddress);
             var pass = GetPass(hit.IpAddress);
+
             var profiles = await OnvifClient.GetProfilesAsync(hit.OnvifServiceUrl!, user, pass, default);
             if (profiles.Count == 0)
                 throw new InvalidOperationException("No media profiles returned");
             var streamUri = await OnvifClient.GetStreamUriAsync(hit.OnvifServiceUrl!, profiles[0].Token, user, pass, default);
 
+            // Best-effort device info (some firmware rejects, that's fine)
             string? firmwareVersion = null;
             string? serialNumber = null;
             string? hardwareId = null;
+            string? onvifManufacturer = null;
+            string? onvifModel = null;
             try
             {
                 var info = await OnvifClient.GetDeviceInformationAsync(hit.OnvifServiceUrl!, user, pass, default);
                 firmwareVersion = info.FirmwareVersion;
                 serialNumber = info.SerialNumber;
                 hardwareId = info.HardwareId;
+                onvifManufacturer = info.Manufacturer;
+                onvifModel = info.Model;
             }
-            catch (Exception)
-            {
-                // Best-effort. Some firmware rejects this verb; proceed without it.
-            }
+            catch { /* best-effort */ }
+
+            // Combined manufacturer/model — ONVIF preferred, Scopes fallback.
+            // ONVIF GetDeviceInformation is more reliable than WS-Discovery Scopes
+            // (some vendors omit /manufacturer/ scope entirely).
+            var manufacturer = !string.IsNullOrWhiteSpace(onvifManufacturer) ? onvifManufacturer : hit.Manufacturer;
+            var model = !string.IsNullOrWhiteSpace(onvifModel) ? onvifModel : hit.Model;
 
             var name = GetName(hit);
-            if (string.IsNullOrWhiteSpace(name)) name = DefaultNameFor(hit);
+            if (string.IsNullOrWhiteSpace(name) || name == DefaultNameFor(hit))
+            {
+                name = !string.IsNullOrWhiteSpace(hit.Location) ? hit.Location
+                    : !string.IsNullOrWhiteSpace(hit.FriendlyName) ? hit.FriendlyName
+                    : !string.IsNullOrWhiteSpace($"{manufacturer} {model}".Trim()) ? $"{manufacturer} {model}".Trim()
+                    : $"Camera at {hit.IpAddress}";
+            }
 
             string? macAddress = hit.MacAddress;
             int? cameraNumber = null;
 
-            if (IsHikvisionLike(hit.Manufacturer))
+            // Vendor-gate ISAPI on the ONVIF-reported manufacturer (Scopes are unreliable for this)
+            if (IsHikvisionLike(manufacturer))
             {
                 try
                 {
@@ -300,8 +316,8 @@ else
                 Name = name,
                 IpAddress = hit.IpAddress,
                 Port = hit.Port,
-                Manufacturer = hit.Manufacturer,
-                Model = hit.Model,
+                Manufacturer = manufacturer,
+                Model = model,
                 RtspStreamUrl = streamUri,
                 OnvifServiceUrl = hit.OnvifServiceUrl,
                 IsOnvif = true,
@@ -313,6 +329,7 @@ else
                 HardwareId = hardwareId,
             };
             await CameraService.AddAsync(cam, user, pass);
+
             _hits.Remove(hit);
             _nameInputs.Remove(hit.IpAddress);
             _userInputs.Remove(hit.IpAddress);
