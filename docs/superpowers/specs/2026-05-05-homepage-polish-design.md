@@ -61,13 +61,15 @@ Each section:
 
 **Real-time updates:** Home subscribes to `IDeviceChangeNotifier.Changed` (Android) and the camera-side equivalent (`ICameraChangeNotifier` / camera scan-event channel) so background-tick scans + manual scans both refresh the on-screen list without a page reload — same pattern shipped 2026-05-05 in item 18.
 
-### 3. Inline + Add — modal that hosts the existing inline-add component
+### 3. Add behavior — embed the existing panels directly
 
-Clicking `+ Add` on a Discovered row opens a modal on Home. The modal hosts the **existing inline-add component** (originally shipped as A3 — see `archive/project_cm_inline_add_ui.md`) unchanged. Same fields, same validation, same probe behavior (`RunProbesAsync` for Android — kind / model / serial probes).
+Home embeds the shipped `DiscoveredPanel.razor` (Android) and `DiscoveredCamerasPanel.razor` (Cameras) **as-is**, fed from the same `IScanLifecycleHandler.Discovered` and camera scan-handler data the Settings pages consume. + Add behavior, inline-edit fields, ONVIF bulk-credentials panel, dismiss/× behavior — all unchanged from Settings. Home becomes a host for these components, not a divergent UI.
 
-On successful Add: modal closes; the row disappears from the Discovered list (it's now registered, dedupe filter catches it on next render); status line at top updates the registered count.
+This means each Discovered section on Home is a wide table when populated (10 columns for Android, 8 for Cameras), not the slim row-summary look from the brainstorm mockup. The mockup's slim look is **aspirational polish, not in scope** for this iteration. If table-heaviness feels wrong on Home after smoke-testing, a follow-up task can add a `Compact` parameter to those panels — but that's a separate concern.
 
-Why reuse rather than build a slim Home-specific form: zero divergence cost, identical UX between Home and Settings, no maintenance fork. Spec rejects the slim-version alternative.
+Why this approach: zero divergence cost, no new modal plumbing, no slim/wide variants to maintain. Spec rejects both the slim-Home-only-form alternative and the modal-wrapper alternative.
+
+On successful Add: the Discovered row disappears (the existing panels handle this via dedupe-on-next-render); status line at top updates the registered count via the change-notifier subscription.
 
 ### 4. Module nav — compact 6-tile row at the bottom
 
@@ -92,8 +94,8 @@ Resolved targets at time of writing:
 All new code lives in `src/ControlMenu/Components/Pages/Home.razor` plus a small set of focused child components for testability:
 
 1. **`HomeScanBand.razor`** — the three-button row + status line. Owns the button-state machine (idle / running / done flash). Takes scan-trigger callbacks as parameters; emits no domain logic itself.
-2. **`HomeDiscoveredAndroid.razor`** — the Android Discovered section. Subscribes to `IDeviceChangeNotifier.Changed`, reads `IScanLifecycleHandler.Discovered`, applies registered-dedupe, renders rows. Hosts the inline-add modal when `+ Add` is clicked.
-3. **`HomeDiscoveredCameras.razor`** — the Cameras Discovered section. Symmetric to the Android version, against the camera scan handler.
+2. **`HomeDiscoveredAndroid.razor`** — Android section wrapper. Subscribes to `IDeviceChangeNotifier.Changed`, reads `IScanLifecycleHandler.Discovered` and the registered-devices DB, renders the section header (label + count badge or empty/post-scan placeholder), and embeds the existing `<DiscoveredPanel Discovered=... Registered=... OnAdd=... OnDismiss=... />` for the actual rows.
+3. **`HomeDiscoveredCameras.razor`** — Cameras section wrapper. Subscribes to `ICameraChangeNotifier`, renders the section header, and embeds the existing `<DiscoveredCamerasPanel />` for the actual rows. (Camera panel manages its own data subscription internally — wrapper just hosts and adds the section chrome.)
 4. **`HomeModuleTiles.razor`** — the 6-tile bottom row. Reads `ModuleDiscoveryService.Modules`, resolves each module's first nav entry per the rules above, renders tiles.
 
 `Home.razor` becomes a thin composition: `<HomeScanBand ... /> <HomeDiscoveredAndroid /> <HomeDiscoveredCameras /> <HomeModuleTiles />` plus the existing setup-wizard guard (`_setupDone`) that wraps everything.
@@ -123,7 +125,7 @@ The existing `_setupDone` check in `Home.razor` stays. If setup hasn't completed
 Per the `superpowers:test-driven-development` discipline, bUnit tests precede implementation for each new component (the project's existing 354-test bUnit suite is the precedent).
 
 - **`HomeScanBand`**: idle → running → done state per button; Scan All composes correctly with already-running specific scans; buttons remain fixed-width through state transitions; running buttons are non-clickable.
-- **`HomeDiscoveredAndroid` / `HomeDiscoveredCameras`**: empty list (no scan run) hides the section; empty list (post-scan) shows the placeholder; populated list renders rows with correct + Add / ✓ registered states; subscription to change notifier triggers re-render.
+- **`HomeDiscoveredAndroid` / `HomeDiscoveredCameras`**: empty list (no scan run) hides the section entirely; empty list (post-scan) shows section header + `No devices found` placeholder; populated list delegates row rendering to the embedded existing panel; subscription to change notifier triggers wrapper re-render. Tests assert the wrapper's render-decision logic, not the embedded panel's internals (those are tested separately).
 - **`HomeModuleTiles`**: each tile resolves to the lowest-SortOrder visible nav entry; Cameras-with-zero-cameras falls back to `/settings/cameras`; conditional-visibility predicates are honored.
 - **`Home.razor`** integration: setup-not-done shows `<SetupWizard />`; setup-done composes the four sections in order.
 
