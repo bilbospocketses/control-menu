@@ -13,6 +13,10 @@
                 @onclick='() => Navigate("devices")'>
             <i class="bi bi-phone"></i> Android Devices
         </button>
+        <button class="settings-nav-item @(ActiveSection == "cameras" ? "active" : "")"
+                @onclick='() => Navigate("cameras")'>
+            <i class="bi bi-camera-video"></i> Cameras
+        </button>
         <button class="settings-nav-item @(ActiveSection == "jellyfin" ? "active" : "")"
                 @onclick='() => Navigate("jellyfin")'>
             <i class="bi bi-film"></i> Jellyfin
@@ -20,10 +24,6 @@
         <button class="settings-nav-item @(ActiveSection == "dependencies" ? "active" : "")"
                 @onclick='() => Navigate("dependencies")'>
             <i class="bi bi-box-seam"></i> Dependencies
-        </button>
-        <button class="settings-nav-item @(ActiveSection == "cameras" ? "active" : "")"
-                @onclick='() => Navigate("cameras")'>
-            <i class="bi bi-camera-video"></i> Cameras
         </button>
     </nav>
 

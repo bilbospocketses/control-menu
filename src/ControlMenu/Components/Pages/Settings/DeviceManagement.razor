@@ -29,14 +29,14 @@
 
 <div class="settings-section">
     <h2>Device Management</h2>
-    <p>Register and manage Android devices. <strong>Quick Refresh</strong> reconciles registered devices via <code>adb mdns services</code> + ARP; <strong>Scan Network…</strong> opens a full scanner (CIDR/IP/range subnets, TCP sweep + mDNS via ws-scrcpy-web).</p>
+    <p>Register and manage Android devices. <strong>Quick Scan…</strong> reconciles registered devices via <code>adb mdns services</code> + ARP; <strong>Scan Network…</strong> opens a full scanner (CIDR/IP/range subnets, TCP sweep + mDNS via ws-scrcpy-web).</p>
 
     <div class="toolbar">
         <button class="btn btn-primary" @onclick="ShowAddForm">
-            <i class="bi bi-plus-lg"></i> Add Device
+            <i class="bi bi-plus-lg"></i> Add Device Manually
         </button>
         <button class="btn btn-secondary" @onclick="QuickRefresh" disabled="@_scanning">
-            <i class="bi bi-arrow-clockwise"></i> @(_scanning ? "Refreshing..." : "Quick Refresh")
+            <i class="bi bi-lightning-charge"></i> @(_scanning ? "Scanning..." : "Quick Scan…")
         </button>
         <button class="btn btn-secondary" @onclick="OpenScanModal">
             <i class="bi bi-broadcast"></i> Scan Network…
