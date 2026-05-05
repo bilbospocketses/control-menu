@@ -43,7 +43,9 @@
             @foreach (var module in ModuleDiscovery.Modules)
             {
                 <div class="sidebar-group">
-                    <div class="sidebar-group-header" @onclick="() => ToggleGroup(module.Id)">
+                    <div class="sidebar-group-header"
+                         data-flyout-anchor="@module.Id"
+                         @onclick="@(() => Collapsed ? OpenFlyout(module) : ToggleGroup(module.Id))">
                         @if (ModuleImageMap.TryGetValue(module.Id, out var imgPath))
                         {
                             <img src="@imgPath" alt="" class="sidebar-module-icon" />
@@ -99,12 +101,66 @@
             }
         </NavLink>
     </div>
+
+    @if (Collapsed && _flyoutModuleId is not null)
+    {
+        var flyoutModule = ModuleDiscovery.Modules.FirstOrDefault(m => m.Id == _flyoutModuleId);
+        if (flyoutModule is not null)
+        {
+            <div class="sidebar-flyout-backdrop" @onclick="CloseFlyout"></div>
+            <div class="sidebar-flyout"
+                 style="top: @(_flyoutTopPx.ToString(System.Globalization.CultureInfo.InvariantCulture))px;"
+                 tabindex="-1"
+                 @ref="_flyoutRef"
+                 @onkeydown="HandleFlyoutKeydown">
+                <div class="sidebar-flyout-header">
+                    @if (ModuleImageMap.TryGetValue(flyoutModule.Id, out var flyoutImg))
+                    {
+                        <img src="@flyoutImg" alt="" class="sidebar-module-icon" />
+                    }
+                    else
+                    {
+                        <i class="bi @flyoutModule.Icon"></i>
+                    }
+                    <span>@flyoutModule.DisplayName</span>
+                </div>
+                @foreach (var entry in VisibleEntries(flyoutModule))
+                {
+                    <NavLink class="sidebar-link" href="@entry.Href" Match="NavLinkMatch.All"
+                             @onclick="CloseFlyout">
+                        @if (entry.Icon is not null)
+                        {
+                            @if (entry.Icon.StartsWith("bi-"))
+                            {
+                                <i class="bi @entry.Icon"></i>
+                            }
+                            else if (entry.Icon.StartsWith("/") || entry.Icon.EndsWith(".svg"))
+                            {
+                                <img src="@entry.Icon" alt="" class="sidebar-nav-icon" />
+                            }
+                            else
+                            {
+                                <span class="nav-emoji">@entry.Icon</span>
+                            }
+                        }
+                        <span>@entry.Title</span>
+                    </NavLink>
+                }
+            </div>
+        }
+    }
 </nav>
 
 @code {
     private bool Collapsed { get; set; }
     private readonly HashSet<string> _expandedGroups = new();
     private bool _allExpanded;
+    private string? _flyoutModuleId;
+    private double _flyoutTopPx;
+    private int? _resizeSubscriptionToken;
+    private DotNetObjectReference<Sidebar>? _selfRef;
+    private ElementReference _flyoutRef;
+    private bool _shouldFocusFlyout;
 
     private static readonly Dictionary<string, string> ModuleImageMap = new()
     {
@@ -161,9 +217,26 @@
             UpdateAllExpandedFlag();
             StateHasChanged();
         }
+
+        if (_shouldFocusFlyout && _flyoutModuleId is not null)
+        {
+            _shouldFocusFlyout = false;
+            try
+            {
+                await _flyoutRef.FocusAsync();
+            }
+            catch { /* element may have been removed; ignore */ }
+        }
     }
 
-    private void ToggleCollapsed() => Collapsed = !Collapsed;
+    private async Task ToggleCollapsed()
+    {
+        if (_flyoutModuleId is not null)
+        {
+            await CloseFlyout();
+        }
+        Collapsed = !Collapsed;
+    }
 
     private async Task ToggleGroup(string moduleId)
     {
@@ -171,6 +244,59 @@
             _expandedGroups.Add(moduleId);
         UpdateAllExpandedFlag();
         await PersistState();
+    }
+
+    private async Task OpenFlyout(Modules.IToolModule module)
+    {
+        if (!Collapsed) return;
+        if (!VisibleEntries(module).Any()) return;
+
+        _flyoutTopPx = await JS.InvokeAsync<double>("controlMenu.getModuleIconRectTop", module.Id);
+        _flyoutModuleId = module.Id;
+        _shouldFocusFlyout = true;
+
+        if (_resizeSubscriptionToken is null)
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            _resizeSubscriptionToken = await JS.InvokeAsync<int>(
+                "controlMenu.subscribeFlyoutResize", _selfRef);
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task CloseFlyout()
+    {
+        _flyoutModuleId = null;
+        _shouldFocusFlyout = false;
+
+        if (_resizeSubscriptionToken is not null)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("controlMenu.unsubscribeFlyoutResize", _resizeSubscriptionToken);
+            }
+            catch { /* JS context torn down — nothing to do */ }
+            _resizeSubscriptionToken = null;
+        }
+    }
+
+    private async Task HandleFlyoutKeydown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await CloseFlyout();
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnWindowResize()
+    {
+        if (_flyoutModuleId is not null)
+        {
+            await CloseFlyout();
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task ToggleAll()
@@ -201,5 +327,19 @@
 
     private bool IsGroupExpanded(string moduleId) => _expandedGroups.Contains(moduleId);
 
-    public void Dispose() => DeviceTypeCache.CacheUpdated -= OnCacheUpdated;
+    public void Dispose()
+    {
+        DeviceTypeCache.CacheUpdated -= OnCacheUpdated;
+
+        if (_resizeSubscriptionToken is not null)
+        {
+            try
+            {
+                _ = JS.InvokeVoidAsync("controlMenu.unsubscribeFlyoutResize", _resizeSubscriptionToken);
+            }
+            catch { /* swallow */ }
+        }
+
+        _selfRef?.Dispose();
+    }
 }

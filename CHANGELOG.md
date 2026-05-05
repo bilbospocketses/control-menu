@@ -65,6 +65,7 @@ and this project will adhere to [Semantic Versioning](https://semver.org/spec/v2
 - `themeManager.subscribe(callback)` and `themeManager.subscribeBlazor(dotnetRef)` — JS subscriber API in `wwwroot/js/theme.js`. The Blazor variant uses a numeric token (returned to .NET, passed back to `unsubscribeBlazor`) to avoid trying to marshal a JS function as `IJSObjectReference`.
 - `id="ws-scrcpy-iframe"` attribute on the iframe in `Modules/AndroidPowerTools/Pages/AndroidPowerToolsPage.razor` so the bridge can find it via querySelector.
 - `docs/superpowers/specs/2026-04-29-iframe-theme-bridge-design.md` and `docs/superpowers/plans/2026-04-29-iframe-theme-bridge.md` — design spec and implementation plan.
+- **Sidebar fly-out menu** — clicking a section icon while the sidebar is collapsed opens a floating panel listing that module's nav entries (including device-type sub-links). The panel anchors to the right of the icon. Closes via click-outside (transparent backdrop), Esc key, link click, or uncollapsing the sidebar. Window resize while open closes the panel. Solves the "dead click" feel where collapsed-mode section icons toggled internal state with no visible effect.
 
 ### Changed
 - **WizardDevices intro paragraph** now explicitly calls out the mDNS-only discovery limitation and directs older Android devices to Settings → Android Devices post-wizard. Substantive change in messaging, not behavior.
