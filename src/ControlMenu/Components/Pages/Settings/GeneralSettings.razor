@@ -194,7 +194,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _theme = await JS.InvokeAsync<string>("themeManager.get");
         _timezone = await Config.GetSettingAsync("app-timezone") ?? "UTC";
         _smtpServer = await Config.GetSettingAsync("smtp-server") ?? "";
         _smtpPort = await Config.GetSettingAsync("smtp-port") ?? "587";
@@ -204,6 +203,15 @@
         _notificationEmail = await Config.GetSettingAsync("notification-email") ?? "";
         _wsscrcpyMode = await Config.GetSettingAsync("wsscrcpy-mode") ?? "managed";
         _wsscrcpyUrl = await Config.GetSettingAsync("wsscrcpy-url") ?? "http://localhost:8000";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _theme = await JS.InvokeAsync<string>("themeManager.get");
+            StateHasChanged();
+        }
     }
 
     private async Task SetTheme(string theme)
