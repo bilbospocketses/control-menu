@@ -393,3 +393,18 @@ If you're short on time, just hit these:
 
 - [ ] On first run after upgrade, the `wsscrcpy-mode` and `ws_scrcpy_web_path` (module=android-devices) settings rows are removed from the DB.
 - [ ] Subsequent boots: cleanup is a no-op (verified via log: no "Removed obsolete setting…" lines after first run).
+
+## Sidebar Fly-out (2026-05-05)
+
+- [ ] Collapse the sidebar via the `<` toggle.
+- [ ] Click any section icon (Android Devices / Cameras / Jellyfin / etc.) → fly-out panel opens to the right of the icon, vertically aligned with it.
+- [ ] Panel header shows module name + icon. Below it, nav entries match what the expanded sidebar shows for that module.
+- [ ] Click a different section icon → previous fly-out closes; new one opens.
+- [ ] Click a link inside the fly-out → navigates and closes.
+- [ ] Click outside the fly-out (on the page background, main content, or another icon) → closes.
+- [ ] Press Esc with the fly-out open → closes.
+- [ ] Toggle sidebar back to expanded while fly-out is open → fly-out closes.
+- [ ] Resize browser window while fly-out is open → fly-out closes (acceptable v1 behavior).
+- [ ] Active route highlight survives inside the fly-out (current page is highlighted in the fly-out's link list).
+- [ ] Animation: 200ms slide-and-fade-in on open; not twitchy on rapid icon clicks.
+- [ ] Empty module (zero visible nav entries) — clicking its icon when collapsed is a no-op (no empty panel).
