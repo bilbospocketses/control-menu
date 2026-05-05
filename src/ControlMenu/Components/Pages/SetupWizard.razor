@@ -17,7 +17,7 @@
                 <WizardDevices State="_state" />
                 break;
             case WizardStep.Cameras:
-                <WizardCameras @ref="_camerasRef" />
+                <WizardCameras @ref="_camerasRef" State="_state" />
                 break;
             case WizardStep.Jellyfin:
                 <WizardJellyfin @ref="_jellyfinRef" State="_state" />
@@ -74,6 +74,7 @@
     public class WizardState
     {
         public int DevicesAdded { get; set; }
+        public int CamerasAdded { get; set; }
         public bool JellyfinConfigured { get; set; }
         public bool SmtpConfigured { get; set; }
         public int DependenciesFound { get; set; }

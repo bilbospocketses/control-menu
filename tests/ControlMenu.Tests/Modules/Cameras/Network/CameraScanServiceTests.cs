@@ -149,6 +149,27 @@ public class CameraScanServiceTests
     }
 
     [Fact]
+    public async Task StartOnvifOnlyScanAsync_DoesNotInvokeRtspProbe()
+    {
+        // Arrange: ONVIF probe returns no hits (we don't care about hit handling here,
+        // just that the TCP-554 branch never fires).
+        _onvifDisc.Setup(o => o.ProbeAsync(It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+                  .ReturnsAsync(new List<OnvifProbeResponse>());
+
+        var sut = CreateSut();
+
+        // Act
+        await sut.StartOnvifOnlyScanAsync(new[] { Subnet("192.168.86.0/24") });
+
+        // Assert
+        _onvifDisc.Verify(o => o.ProbeAsync(It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()), Times.Once);
+        _rtsp.Verify(
+            r => r.ProbeTcpAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        Assert.Equal(ScanPhase.Complete, sut.Phase);
+    }
+
+    [Fact]
     public async Task Subscribe_ReceivesEvents()
     {
         _onvifDisc.Setup(d => d.ProbeAsync(It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))

@@ -19,6 +19,7 @@
         <div style="display:flex; gap:0.5rem; align-items:center;">
             <input type="number" class="form-control" style="max-width:200px;" min="0" max="3600"
                    value="@_livenessInterval" @onchange="OnLivenessIntervalChanged" />
+            <button class="btn btn-primary" @onclick="ScanNow">Scan Now</button>
             <button class="btn btn-primary" @onclick="RestoreDefaultInterval">Restore Default</button>
         </div>
         <div class="form-hint">How often to refresh camera Status &amp; Last Seen by probing each registered camera. Allowed: 0 (disabled) or 300–3600 seconds. Default 300.</div>
@@ -192,6 +193,12 @@
         await Config.SetSettingAsync("cameras-liveness-interval-seconds", DefaultLivenessInterval.ToString(), "cameras");
         IntervalSignal.Trigger(IntervalChangeSignal.CameraLiveness);
         await ShowMessage($"Restored default ({DefaultLivenessInterval}s).");
+    }
+
+    private async Task ScanNow()
+    {
+        IntervalSignal.Trigger(IntervalChangeSignal.CameraLiveness);
+        await ShowMessage("Liveness scan triggered.");
     }
 
     private async Task RefreshCamerasAsync()
