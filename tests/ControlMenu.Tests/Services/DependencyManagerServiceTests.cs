@@ -442,23 +442,9 @@ public class DependencyManagerServiceTests : IDisposable
         Assert.Contains("unreachable", result.ErrorMessage ?? "");
     }
 
-    [Fact]
-    public async Task CheckDependency_WsScrcpyWeb_ManagedMode_SkipsExternalBranch()
-    {
-        // Default mode = Managed (no stub for wsscrcpy-mode). External branch must not fire.
-        // Managed path calls GetInstalledVersionAsync which shells out via _executor.
-        // Verify HTTP factory was NOT called.
-        _mockExecutor.Setup(e => e.ExecuteAsync(It.IsAny<string>(), It.IsAny<string>(), null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CommandResult(1, "", "not found", false));
-
-        var module = new FakeModule("android-devices", "Android", [WsScrcpyModuleDep()]);
-        var dep = await SeedWsScrcpyWebDependencyAsync();
-
-        var service = CreateService(module);
-        await service.CheckDependencyAsync(dep.Id);
-
-        _mockHttpFactory.Verify(f => f.CreateClient(It.IsAny<string>()), Times.Never);
-    }
+    // NOTE: CheckDependency_WsScrcpyWeb_ManagedMode_SkipsExternalBranch removed in Task 1 —
+    // WsScrcpyService is now always External; the Managed-mode branch no longer exists.
+    // Task 5 will add a replacement test covering the always-external HTTP-ping path.
 }
 
 // Test helpers at bottom of file

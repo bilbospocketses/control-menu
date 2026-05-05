@@ -370,3 +370,26 @@ If you're short on time, just hit these:
 - [ ] Logs path migration: at least one log file likely locked → partial-success notification mentions the locked file by name.
 - [ ] Retry-after-restart-or-rotation: re-clicking Save migrates remaining files.
 - [ ] Retention save persists the new day count.
+
+## External Dependencies Refactor (2026-05-05)
+
+### General Settings — External Dependencies section
+
+- [ ] Settings → General page has an **External Dependencies** section (was: "ws-scrcpy-web deployment").
+- [ ] Section intro paragraph mentions scanning features need ws-scrcpy-web running.
+- [ ] **No** Managed/External radio toggle.
+- [ ] ws-scrcpy-web URL field is editable; blur saves with "Restart to apply" notification.
+- [ ] Docker executable path field is editable; blur saves with "Docker path saved." notification (or "Docker path cleared." if emptied).
+
+### Dependencies page
+
+- [ ] docker row: Installed/Latest/Status/Install Path/Actions all visible (no colspan merge).
+- [ ] docker row: Install Path column shows the configured path (or "Not configured (set in General Settings)") in muted text — **no editable input, no Reset button**.
+- [ ] docker row: **No Update or Install button** — only Check + project-link.
+- [ ] ws-scrcpy-web row: same shape — read-only Install Path showing `External: <url>`, no Update button.
+- [ ] After configuring a valid Docker path on General Settings, the Dependencies page Docker row shows actual installed Docker version after Check (not `–`).
+
+### Settings cleanup (idempotent on every boot)
+
+- [ ] On first run after upgrade, the `wsscrcpy-mode` and `ws_scrcpy_web_path` (module=android-devices) settings rows are removed from the DB.
+- [ ] Subsequent boots: cleanup is a no-op (verified via log: no "Removed obsolete setting…" lines after first run).

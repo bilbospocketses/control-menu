@@ -10,6 +10,7 @@ using ControlMenu.Modules.Jellyfin.Services;
 using ControlMenu.Modules.Utilities.Services;
 using ControlMenu.Services;
 using ControlMenu.Services.Network;
+using ControlMenu.Services.Startup;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -98,8 +99,10 @@ builder.Services.AddHostedService(sp => (Go2RtcService)sp.GetRequiredService<IGo
 
 // Dependency management
 builder.Services.AddHttpClient();
-builder.Services.AddHttpClient("github-api");
-builder.Services.AddHttpClient("dependency-updates");
+builder.Services.AddHttpClient("github-api", c =>
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("ControlMenu"));
+builder.Services.AddHttpClient("dependency-updates", c =>
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("ControlMenu"));
 builder.Services.AddScoped<IDependencyManagerService>(sp =>
 {
     var dbFactory = sp.GetRequiredService<IDbContextFactory<AppDbContext>>();
@@ -114,6 +117,7 @@ builder.Services.AddScoped<IDependencyManagerService>(sp =>
     return new DependencyManagerService(dbFactory, modules, executor, httpFactory, config, wsScrcpy, go2Rtc, resolver, logger);
 });
 builder.Services.AddHostedService<DependencyCheckHostedService>();
+builder.Services.AddHostedService<ObsoleteSettingsCleanupService>();
 
 // Module discovery — scans the main assembly for IToolModule implementations
 builder.Services.AddSingleton(new ModuleDiscoveryService(
