@@ -13,6 +13,7 @@ public class HomeDiscoveredAndroidTests : TestContext
     private readonly Mock<IScanLifecycleHandler> _handler = new();
     private readonly Mock<IDeviceChangeNotifier> _notifier = new();
     private readonly Mock<IDeviceService> _deviceService = new();
+    private readonly Mock<IConfigurationService> _config = new();
 
     public HomeDiscoveredAndroidTests()
     {
@@ -24,6 +25,7 @@ public class HomeDiscoveredAndroidTests : TestContext
         Services.AddSingleton(_handler.Object);
         Services.AddSingleton(_notifier.Object);
         Services.AddSingleton(_deviceService.Object);
+        Services.AddSingleton(_config.Object);
     }
 
     [Fact]

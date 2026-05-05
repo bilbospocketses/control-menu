@@ -1,0 +1,78 @@
+@* HomeDiscoveredAndroid.razor *@
+@using ControlMenu.Components.Shared.Scanner
+@using ControlMenu.Data.Entities
+@using ControlMenu.Services
+@using ControlMenu.Services.Network
+@inject IScanLifecycleHandler Handler
+@inject IDeviceChangeNotifier Notifier
+@inject IDeviceService DeviceService
+@inject IConfigurationService Config
+@implements IDisposable
+
+@if (HasScanned || Handler.Discovered.Count > 0)
+{
+    <section class="home-disc-section">
+        <div class="home-disc-header">
+            <span class="home-disc-label">DISCOVERED — ANDROID</span>
+            <span class="home-disc-count home-disc-count-android">@Handler.Discovered.Count</span>
+        </div>
+        @if (Handler.Discovered.Count == 0)
+        {
+            <p class="home-disc-empty">No Android devices found on the last scan.</p>
+        }
+        else
+        {
+            <DiscoveredPanel Discovered="Handler.Discovered"
+                             Registered="_devices"
+                             OnAdd="HandleInlineAdd"
+                             OnDismiss="HandleDismiss" />
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public bool HasScanned { get; set; }
+    [Parameter] public EventCallback OnDeviceAdded { get; set; }
+
+    private IReadOnlyList<Device> _devices = Array.Empty<Device>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _devices = await DeviceService.GetAllDevicesAsync();
+        Notifier.Changed += HandleNotifierChanged;
+    }
+
+    private async void HandleNotifierChanged()
+    {
+        _devices = await DeviceService.GetAllDevicesAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // Mirrors WizardDevices.HandleInlineAdd: normalize MAC, persist via
+    // AddDeviceAsync, store the optional PIN secret, then drop the matching
+    // row from Handler.Discovered so the user doesn't see it offered twice.
+    // Bubbles OnDeviceAdded so the parent (Home.razor) can refresh status.
+    private async Task HandleInlineAdd(InlineAddPayload payload)
+    {
+        var device = payload.Device;
+        device.MacAddress = NetworkDiscoveryService.NormalizeMac(device.MacAddress);
+
+        var saved = await DeviceService.AddDeviceAsync(device);
+
+        if (!string.IsNullOrEmpty(payload.Pin))
+            await Config.SetSecretAsync($"device-pin-{saved.Id}", payload.Pin);
+
+        Handler.ReplaceDiscovered(Handler.Discovered
+            .Where(d => !string.Equals(d.Mac, saved.MacAddress, StringComparison.OrdinalIgnoreCase)));
+
+        _devices = await DeviceService.GetAllDevicesAsync();
+        await OnDeviceAdded.InvokeAsync();
+    }
+
+    private void HandleDismiss(DiscoveredDevice d) => Handler.Dismiss(d);
+
+    public void Dispose()
+    {
+        Notifier.Changed -= HandleNotifierChanged;
+    }
+}
