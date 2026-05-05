@@ -180,7 +180,9 @@
             .Select(d => d.Name)
             .ToHashSet();
         _updatableCount = _dependencies.Count(d =>
-            d.Status == DependencyStatus.UpdateAvailable && _hasInstallPath.Contains(d.Name));
+            d.Status == DependencyStatus.UpdateAvailable
+            && _hasInstallPath.Contains(d.Name)
+            && !IsExternallyConfigured(d.Name));
 
         // Sort: docker + ws-scrcpy-web (externally configured on General Settings) first,
         // alphabetized; everything else follows alphabetically.
@@ -275,7 +277,9 @@
         StateHasChanged();
 
         var toUpdate = _dependencies
-            .Where(d => d.Status == DependencyStatus.UpdateAvailable && _hasInstallPath.Contains(d.Name))
+            .Where(d => d.Status == DependencyStatus.UpdateAvailable
+                && _hasInstallPath.Contains(d.Name)
+                && !IsExternallyConfigured(d.Name))
             .ToList();
 
         int succeeded = 0;

@@ -171,6 +171,9 @@ public class DependencyManagerService : IDependencyManagerService
                 case UpdateSourceType.DirectUrl:
                     await CheckDirectUrlVersionAsync(entity, moduleDep);
                     break;
+                case UpdateSourceType.Manual when moduleDep.VersionCheckUrl is not null && moduleDep.VersionCheckPattern is not null:
+                    await CheckDirectUrlVersionAsync(entity, moduleDep);
+                    break;
                 case UpdateSourceType.Manual:
                     entity.Status = DependencyStatus.UpToDate;
                     break;
@@ -556,12 +559,15 @@ public class DependencyManagerService : IDependencyManagerService
             : DependencyStatus.UpToDate;
 
         // Resolve versioned download URL from template (e.g., Node.js dist)
-        if (moduleDep.DownloadUrlTemplate is not null)
+        // Skip for Manual deps — they have no download URL to construct.
+        if (moduleDep.SourceType == UpdateSourceType.DirectUrl && moduleDep.DownloadUrlTemplate is not null)
         {
             entity.DownloadUrl = moduleDep.DownloadUrlTemplate.Replace("{version}", latestVersion);
         }
         // Update download URL if the current one contains an old version-encoded filename
-        else if (entity.Status == DependencyStatus.UpdateAvailable && moduleDep.DownloadUrl is not null)
+        else if (moduleDep.SourceType == UpdateSourceType.DirectUrl
+            && entity.Status == DependencyStatus.UpdateAvailable
+            && moduleDep.DownloadUrl is not null)
         {
             var updatedUrl = BuildVersionedDownloadUrl(moduleDep.DownloadUrl, content, moduleDep);
             if (updatedUrl is not null)

@@ -37,7 +37,9 @@ public class JellyfinModule : IToolModule
             VersionPattern = @"Docker version ([\d.]+)",
             SourceType = UpdateSourceType.Manual,
             ProjectHomeUrl = "https://docs.docker.com/get-docker/",
-            InstallPath = Path.Combine(DepsRoot, "docker")
+            InstallPath = Path.Combine(DepsRoot, "docker"),
+            VersionCheckUrl = "https://api.github.com/repos/moby/moby/releases/latest",
+            VersionCheckPattern = @"""tag_name""\s*:\s*""v(\d+\.\d+\.\d+)"""
         },
         new ModuleDependency
         {
