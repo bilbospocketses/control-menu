@@ -38,8 +38,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _devices = await DeviceService.GetAllDevicesAsync();
         Notifier.Changed += HandleNotifierChanged;
+        _devices = await DeviceService.GetAllDevicesAsync();
     }
 
     private async void HandleNotifierChanged()
