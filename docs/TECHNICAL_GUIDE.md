@@ -470,39 +470,62 @@ Camera (RTSP :554) --> go2rtc (localhost:1984) --> Browser (iframe MP4 stream)
 
 go2rtc runs as a managed child process alongside the app. `Go2RtcService` generates a `go2rtc.yaml` config file from the camera settings, spawns the process, and monitors its health. Each camera view page embeds an iframe pointing at `http://localhost:1984/api/stream.mp4?src=camera-{N}`.
 
-### CameraConfig
+### Camera entity (DB-backed)
 
 ```csharp
-public record CameraConfig(int Index, string Name, string IpAddress, int Port = 554);
+public class Camera
+{
+    public Guid Id { get; set; }
+    public required string Name { get; set; }
+    public required string IpAddress { get; set; }
+    public int Port { get; set; } = 554;
+    public string? Manufacturer { get; set; }
+    public string? Model { get; set; }
+    public string? RtspStreamUrl { get; set; }
+    public string? OnvifServiceUrl { get; set; }
+    public bool IsOnvif { get; set; }
+    public bool Enabled { get; set; } = true;
+    public DateTime? LastSeen { get; set; }
+    public string? MacAddress { get; set; }
+    public int? CameraNumber { get; set; }
+    public string? FirmwareVersion { get; set; }
+    public string? SerialNumber { get; set; }
+    public string? HardwareId { get; set; }
+}
 ```
 
-A lightweight record representing a single camera's non-secret configuration. The `Index` is the camera's position (1-based) within the user's configured camera count.
+EF-mapped entity stored in the `Cameras` table. Replaces the legacy `camera-{index}-*` indexed-slot model (purged via `PurgeLegacyCameraSettingsMigration`). Per-camera credentials are stored as encrypted Settings under keys `camera-{guid:N}-username` and `camera-{guid:N}-password` (module: `cameras`); the entity itself never holds the password.
 
 ### CameraService
 
-`CameraService` implements `ICameraService` and uses `IConfigurationService` for all persistence. Camera settings are scoped to `moduleId = "cameras"`.
-
-Settings per camera:
-| Key Pattern | Type | Storage |
-|-------------|------|---------|
-| `camera-count` | int | Plain setting (default: 8) |
-| `camera-{index}-name` | string | Plain setting |
-| `camera-{index}-ip` | string | Plain setting |
-| `camera-{index}-port` | int | Plain setting (default: 554) |
-| `camera-{index}-username` | string | Secret (encrypted) |
-| `camera-{index}-password` | string | Secret (encrypted) |
+`CameraService` implements `ICameraService` over `AppDbContext` (EF) for the `Camera` rows + `IConfigurationService` for the credential secrets. Notifies `ICameraChangeNotifier` (singleton) on every mutation so subscribed UI re-renders.
 
 Key methods:
 | Method | Purpose |
 |--------|---------|
-| `GetCameraCountAsync()` | Read `camera-count` setting, default 8 |
-| `SetCameraCountAsync(count)` | Write `camera-count` setting |
-| `GetCameraConfigAsync(index)` | Load name, IP, port for one camera |
-| `GetAllCameraConfigsAsync()` | Load configs for all configured cameras |
-| `SaveCameraConfigAsync(config)` | Write name, IP, port for one camera |
-| `GetCredentialsAsync(index)` | Read username/password secrets |
-| `SaveCredentialsAsync(index, user, pass)` | Write username/password secrets |
-| `GetConfiguredCamerasAsync()` | Returns cameras with both name and IP set |
+| `GetAllAsync()` | All cameras, no tracking |
+| `GetEnabledAsync()` | Cameras where `Enabled = true` |
+| `GetAsync(id)` | Single camera by GUID |
+| `AddAsync(camera, user, pass)` | Insert + seed `LastSeen = UtcNow` + persist creds + notify |
+| `UpdateAsync(camera)` | Update non-secret fields + notify |
+| `SetCredentialsAsync(id, user, pass)` | Update encrypted creds only |
+| `GetCredentialsAsync(id)` | Decrypt and return (user, pass), or null if either missing |
+| `DeleteAsync(id)` | Remove row + delete creds + notify |
+| `UpdateLastSeenAsync(id)` | Bump `LastSeen` + notify (called by liveness probe) |
+| `DeleteAllAsync()` | Atomic batch delete + single notify fire (no per-row regen storms) |
+
+### Camera scanner + liveness
+
+`ICameraScanService` runs on-demand network scans across configured subnets and emits `CameraScanEvent`s through a fan-out subscriber bus. Two public entry points share a private `RunScanAsync(subnets, includeRtspSweep, ct)` helper:
+
+| Method | Behavior |
+|--------|----------|
+| `StartScanAsync(subnets, ct)` | Full scan: ONVIF WS-Discovery (UDP 3702 multicast) + TCP-554 sweep in parallel against each subnet. Used by Settings → Cameras `Scan Network` button. |
+| `StartOnvifOnlyScanAsync(subnets, ct)` | ONVIF WS-Discovery only, skips TCP-554 sweep. Used by the Setup Wizard's Cameras step (parallel to WizardDevices using mDNS-only quick discovery). |
+
+ONVIF responses surface manufacturer/model/service-URL inline; non-ONVIF rows return only "TCP 554 is open" and are added via the `AddTcpCameraModal` (manual stream URL + RTSP `DESCRIBE` validation). After a successful ONVIF Add, the Hikvision/LTS-OEM ISAPI client (`IHikvisionIsapiClient`) makes a best-effort `GET /ISAPI/System/deviceInfo` call to enrich the row with Camera Number, MAC, firmware, and the user-set device name from the camera's web UI.
+
+`CameraLivenessHostedService` (BackgroundService) wakes every 30s, reads the `cameras-liveness-interval-seconds` setting (0 = disabled, 300–3600s, default 300), and if enough time has elapsed, TCP-probes each enabled camera's RTSP port directly (no subnet sweep). On hit it bumps `LastSeen` via `CameraService.UpdateLastSeenAsync`. It does NOT populate the Discovered panel — that surface is reserved for user-initiated `StartScanAsync` calls. Hot-reload via `IntervalChangeSignal.CameraLiveness` so the Settings page's Liveness Interval input + Scan Now + Restore Default buttons take effect immediately rather than after the current Task.Delay window.
 
 ### Go2RtcService
 
@@ -546,17 +569,17 @@ Implements `IToolModule` with:
 - `SortOrder`: `4`
 - `Icon`: `"bi-camera-video"`
 - `Dependencies`: go2rtc (GitHub source: `AlexxIT/go2rtc`, asset: `go2rtc_win64.zip`)
-- `GetNavEntries()`: Dynamically generates one `NavEntry` per configured camera using user-defined names (falls back to "Camera N" if unnamed). Camera count and names are preloaded into static properties at startup by `Program.cs` and updated when settings are saved.
+- `GetNavEntries()`: Dynamically generates one `NavEntry` per registered enabled camera, preferring `Name` (falls back to "Camera N" using `CameraNumber`). Loaded from the `Cameras` DB table at startup and refreshed when `ICameraChangeNotifier` fires.
 
 Uses `FindDepsRoot()` to resolve the absolute path to the `dependencies/` folder, consistent with other modules.
 
 ### Pages
 
-- **CameraView** (`/cameras/{Index:int}`) -- Embeds an iframe to `http://localhost:1984/api/stream.mp4?src=camera-{Index}`. Shows status messages when the camera is not configured or go2rtc is not running.
+- **CameraView** (`/cameras/{Id:guid}`) -- Embeds an iframe to `http://localhost:1984/api/stream.mp4?src=camera-{guid:N}`. Shows status messages when the camera is not configured or go2rtc is not running.
 
 ### Settings UI
 
-- **CameraSettings** (Settings > Cameras tab) -- Configurable camera count with per-camera name, IP, port, username, and password fields. Saving triggers `RegenerateConfigAsync()` to update go2rtc with new camera URLs.
+- **CameraSettings** (Settings → Cameras) -- Liveness Interval input + Scan Now + Restore Default buttons at the top; toolbar with `Scan Network` (full ONVIF + TCP-554 sweep), `Add Camera Manually` (opens `AddTcpCameraModal`), and `Delete All` (when ≥1 camera). Registered cameras render in a sortable table (Status / Cam # / Name / Mfr / Model / Address / MAC / Enabled / Last Seen / Actions) and the `DiscoveredCamerasPanel` surfaces unregistered scan hits below for inline-Add. Mutations regenerate `go2rtc.yaml` via `Go2RtcService.RegenerateConfigAsync()` to keep streams in sync.
 
 ### Dependency Updates
 
@@ -822,18 +845,18 @@ The setup wizard runs on first launch (when the `setup-completed` setting is abs
 | Step | Component | Purpose |
 |------|-----------|---------|
 | 1 | WizardWelcome | Introduction |
-| 2 | WizardDevices | Add Android devices, run network discovery for MAC-to-IP resolution |
-| 3 | WizardCameras | Configure CCTV cameras with collapsible per-camera slots |
+| 2 | WizardDevices | Scan for Android devices via mDNS + ARP, inline-Add discovered devices |
+| 3 | WizardCameras | Auto-detect LAN subnet + ONVIF-only scan, inline-Add discovered cameras |
 | 4 | WizardJellyfin | Configure Jellyfin docker-compose path, validate compose file |
 | 5 | WizardEmail | Configure SMTP settings, send test email |
 | 6 | WizardDependencies | Scan for installed tools, install missing ones |
-| 7 | WizardDone | Summary, sets `setup-completed` setting |
+| 7 | WizardDone | Summary (devices + cameras + jellyfin + email + deps), sets `setup-completed` |
 
-The `WizardStepper.razor` component provides the step indicator and navigation.
+The `WizardStepper.razor` component provides the step indicator and navigation. `WizardState` is passed to every step that contributes to the Done summary (`DevicesAdded`, `CamerasAdded`, `JellyfinConfigured`, `SmtpConfigured`, `DependenciesFound`, `DependenciesTotal`).
 
-During the Android Devices step, `NetworkDiscoveryService.GetArpTableAsync()` is used to resolve device IPs from MAC addresses. This populates `Device.LastKnownIp` for ADB connections.
+During the **Android Devices** step, `IAdbService.ScanMdnsAsync()` queries `adb mdns services` for advertised devices and `NetworkDiscoveryService.GetArpTableAsync()` resolves MACs from IPs. The intro paragraph explicitly notes this discovery path is mDNS-only (modern Android); older devices need Settings → Android Devices post-wizard.
 
-During the Cameras step, users configure camera count, names, IPs, ports, and credentials. Camera slots are collapsible to keep the UI manageable when many cameras are configured.
+During the **Cameras** step, `SubnetDetectionClient.DetectAsync()` calls ws-scrcpy-web's `/api/devices/scan/subnet` endpoint to find the active LAN subnet (the adapter with a default gateway in the same subnet, filtering out Hyper-V virtual switches etc.), then `ICameraScanService.StartOnvifOnlyScanAsync` fires WS-Discovery against that subnet. The shared `DiscoveredCamerasPanel` handles inline-Add per row + bulk-creds entry. Non-ONVIF / RTSP-only cameras are deferred to Settings → Cameras post-wizard via the intro paragraph callout.
 
 ---
 
@@ -847,7 +870,7 @@ During the Cameras step, users configure camera count, names, IPs, ports, and cr
 |-----|-----------|-------------|
 | General | GeneralSettings | `smtp-server`, `smtp-port`, `smtp-username`, `smtp-password` (secret), `smtp-from-email`, `notification-email`, `app-timezone` |
 | Devices | DeviceManagement | Device CRUD, `ws_scrcpy_web_path` (module: `android-devices`) |
-| Cameras | CameraSettings | `camera-count`, per-camera name/IP/port, per-camera username/password (secrets) (module: `cameras`) |
+| Cameras | CameraSettings | `cameras-liveness-interval-seconds`, `cameras-scan-subnets`, per-camera username/password as `camera-{guid:N}-username/-password` (secrets) (module: `cameras`). Camera rows live in the `Cameras` DB table, not in Settings. |
 | Jellyfin | JellyfinSettingsSection | `jellyfin-compose-path`, `jellyfin-api-key` (secret), `jellyfin-url`, `jellyfin-user-id` |
 | Dependencies | DependencyManagement | Per-dependency install paths (`dep-path-{name}`), version check, install/update buttons, check interval (`dep-check-interval`) |
 
