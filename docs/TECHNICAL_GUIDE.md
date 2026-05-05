@@ -579,7 +579,7 @@ Uses `FindDepsRoot()` to resolve the absolute path to the `dependencies/` folder
 
 ### Settings UI
 
-- **CameraSettings** (Settings → Cameras) -- Liveness Interval input + Scan Now + Restore Default buttons at the top; toolbar with `Scan Network` (full ONVIF + TCP-554 sweep), `Add Camera Manually` (opens `AddTcpCameraModal`), and `Delete All` (when ≥1 camera). Registered cameras render in a sortable table (Status / Cam # / Name / Mfr / Model / Address / MAC / Enabled / Last Seen / Actions) and the `DiscoveredCamerasPanel` surfaces unregistered scan hits below for inline-Add. Mutations regenerate `go2rtc.yaml` via `Go2RtcService.RegenerateConfigAsync()` to keep streams in sync.
+- **CameraSettings** (Settings → Cameras) -- Liveness Interval input + Scan Now + Restore Default buttons at the top; toolbar with `Add Camera Manually` (opens `AddTcpCameraModal`), `Quick Scan…` (auto-detected subnet, ONVIF-only via `StartOnvifOnlyScanAsync`), `Scan Network…` (full ONVIF + TCP-554 sweep with subnet-selection modal), and `Delete All` (when ≥1 camera). Toolbar shape mirrors Settings → Android Devices for parity. Registered cameras render in a sortable table (Status / Cam # / Name / Mfr / Model / Address / MAC / Enabled / Last Seen / Actions) and the `DiscoveredCamerasPanel` surfaces unregistered scan hits below for inline-Add. Mutations regenerate `go2rtc.yaml` via `Go2RtcService.RegenerateConfigAsync()` to keep streams in sync.
 
 ### Dependency Updates
 
