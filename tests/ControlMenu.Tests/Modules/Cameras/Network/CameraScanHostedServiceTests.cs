@@ -17,6 +17,7 @@ public class CameraScanHostedServiceTests
     {
         var sp = new Mock<IServiceProvider>();
         sp.Setup(p => p.GetService(typeof(IConfigurationService))).Returns(_config.Object);
+        sp.Setup(p => p.GetService(typeof(ICameraSubnetDetector))).Returns(_detect.Object);
 
         var scope = new Mock<IServiceScope>();
         scope.SetupGet(s => s.ServiceProvider).Returns(sp.Object);
@@ -32,7 +33,7 @@ public class CameraScanHostedServiceTests
         _config.Setup(c => c.GetSettingAsync("cameras-scan-interval-minutes", "cameras")).ReturnsAsync("0");
         _scanSvc.SetupGet(s => s.Phase).Returns(ScanPhase.Idle);
 
-        var sut = new CameraScanHostedService(_scanSvc.Object, BuildScopeFactory(), _detect.Object, NullLogger<CameraScanHostedService>.Instance);
+        var sut = new CameraScanHostedService(_scanSvc.Object, BuildScopeFactory(), NullLogger<CameraScanHostedService>.Instance);
         await sut.RunOneTickForTestsAsync(default);
 
         _scanSvc.Verify(s => s.StartScanAsync(It.IsAny<IReadOnlyList<ParsedSubnet>>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -44,7 +45,7 @@ public class CameraScanHostedServiceTests
         _config.Setup(c => c.GetSettingAsync("cameras-scan-interval-minutes", "cameras")).ReturnsAsync("15");
         _scanSvc.SetupGet(s => s.Phase).Returns(ScanPhase.Scanning);
 
-        var sut = new CameraScanHostedService(_scanSvc.Object, BuildScopeFactory(), _detect.Object, NullLogger<CameraScanHostedService>.Instance);
+        var sut = new CameraScanHostedService(_scanSvc.Object, BuildScopeFactory(), NullLogger<CameraScanHostedService>.Instance);
         await sut.RunOneTickForTestsAsync(default);
 
         _scanSvc.Verify(s => s.StartScanAsync(It.IsAny<IReadOnlyList<ParsedSubnet>>(), It.IsAny<CancellationToken>()), Times.Never);

@@ -36,17 +36,15 @@ public class CameraScanHostedService : BackgroundService
 
     private readonly ICameraScanService _scan;
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ICameraSubnetDetector _detect;
     private readonly ILogger<CameraScanHostedService> _logger;
     private DateTime _lastTick = DateTime.MinValue;
 
     public CameraScanHostedService(
         ICameraScanService scan,
         IServiceScopeFactory scopeFactory,
-        ICameraSubnetDetector detect,
         ILogger<CameraScanHostedService> logger)
     {
-        _scan = scan; _scopeFactory = scopeFactory; _detect = detect; _logger = logger;
+        _scan = scan; _scopeFactory = scopeFactory; _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -69,6 +67,7 @@ public class CameraScanHostedService : BackgroundService
         {
             using var scope = _scopeFactory.CreateScope();
             var config = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
+            var detector = scope.ServiceProvider.GetRequiredService<ICameraSubnetDetector>();
             var intervalStr = await config.GetSettingAsync(IntervalKey, Module);
             var interval = int.TryParse(intervalStr, out var i) ? i : DefaultIntervalMinutes;
             if (interval <= 0) return;
@@ -77,7 +76,7 @@ public class CameraScanHostedService : BackgroundService
             var elapsed = DateTime.UtcNow - _lastTick;
             if (elapsed < TimeSpan.FromMinutes(interval)) return;
 
-            var subnets = await ResolveSubnetsAsync(config, stoppingToken);
+            var subnets = await ResolveSubnetsAsync(config, detector, stoppingToken);
             if (subnets.Count == 0)
             {
                 _logger.LogInformation("Camera scan: no subnets resolved, skipping tick");
@@ -94,10 +93,10 @@ public class CameraScanHostedService : BackgroundService
         }
     }
 
-    private async Task<IReadOnlyList<ParsedSubnet>> ResolveSubnetsAsync(IConfigurationService config, CancellationToken ct)
+    private async Task<IReadOnlyList<ParsedSubnet>> ResolveSubnetsAsync(IConfigurationService config, ICameraSubnetDetector detector, CancellationToken ct)
     {
         var list = new List<ParsedSubnet>();
-        var auto = await _detect.DetectAsync(ct);
+        var auto = await detector.DetectAsync(ct);
         if (auto is not null)
         {
             var result = SubnetParser.Parse(auto.Cidr);

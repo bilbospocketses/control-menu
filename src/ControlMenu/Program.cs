@@ -85,7 +85,7 @@ builder.Services.AddSingleton<IOnvifDiscoveryClient, OnvifDiscoveryClient>();
 builder.Services.AddScoped<IOnvifClient, OnvifClient>();
 builder.Services.AddSingleton<IRtspProbeClient, RtspProbeClient>();
 builder.Services.AddSingleton<ICameraScanService, CameraScanService>();
-builder.Services.AddSingleton<ICameraSubnetDetector, CameraSubnetDetector>();
+builder.Services.AddScoped<ICameraSubnetDetector, CameraSubnetDetector>();
 builder.Services.AddHostedService<CameraScanHostedService>();
 builder.Services.AddScoped<PurgeLegacyCameraSettingsMigration>();
 
