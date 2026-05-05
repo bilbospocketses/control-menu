@@ -54,8 +54,8 @@
                     <tr>
                         <td><strong>@dep.Name</strong></td>
                         <td>@dep.ModuleId</td>
-                        <td><code>@(string.IsNullOrEmpty(dep.InstalledVersion) ? "—" : dep.InstalledVersion)</code></td>
-                        <td><code>@(string.IsNullOrEmpty(dep.LatestKnownVersion) ? "—" : dep.LatestKnownVersion)</code></td>
+                        <td><code>@FormatVersion(dep.Name, dep.InstalledVersion)</code></td>
+                        <td><code>@FormatVersion(dep.Name, dep.LatestKnownVersion)</code></td>
                         <td><span class="status-badge @GetStatusClass(dep.Status)">@FormatStatus(dep.Status)</span></td>
                         <td>
                             @if (isExternallyConfigured)
@@ -373,4 +373,12 @@
     };
 
     private static string FormatSize(long bytes) => Services.FormatHelper.FormatSize(bytes);
+
+    private static string FormatVersion(string depName, string? value)
+    {
+        // ws-scrcpy-web: version detection deferred until v0.5.0 stable release;
+        // see todo_ws_scrcpy_web.md §15. Always render dash regardless of stale DB value.
+        if (depName == "ws-scrcpy-web") return "—";
+        return string.IsNullOrEmpty(value) ? "—" : value;
+    }
 }

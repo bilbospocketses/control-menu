@@ -46,6 +46,21 @@ public sealed class ObsoleteSettingsCleanupService : IHostedService
                     "Removed obsolete setting {Key} (module={ModuleId})",
                     row.Key, row.ModuleId ?? "<null>");
             }
+
+            // Clean up stale "external" placeholder in the ws-scrcpy-web Dependency row.
+            // Pre-T1 code wrote the literal string "external" into InstalledVersion;
+            // post-T1 the field should be null (no version detection yet — see
+            // ws-scrcpy-web todo §15 for the v0.5.0 cross-check).
+            var wsScrcpyDep = await db.Dependencies
+                .FirstOrDefaultAsync(d => d.Name == "ws-scrcpy-web" && d.InstalledVersion == "external",
+                    cancellationToken);
+
+            if (wsScrcpyDep is not null)
+            {
+                wsScrcpyDep.InstalledVersion = null;
+                await db.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("Reset ws-scrcpy-web InstalledVersion (was stale 'external' placeholder)");
+            }
         }
         catch (Exception ex)
         {
