@@ -53,7 +53,16 @@ public class CameraScanService : ICameraScanService
         return new Subscription(() => { lock (_subscriberLock) _subscribers.Remove(onEvent); });
     }
 
-    public async Task StartScanAsync(IReadOnlyList<ParsedSubnet> subnets, CancellationToken ct = default)
+    public Task StartScanAsync(IReadOnlyList<ParsedSubnet> subnets, CancellationToken ct = default) =>
+        RunScanAsync(subnets, includeRtspSweep: true, ct);
+
+    public Task StartOnvifOnlyScanAsync(IReadOnlyList<ParsedSubnet> subnets, CancellationToken ct = default) =>
+        RunScanAsync(subnets, includeRtspSweep: false, ct);
+
+    private async Task RunScanAsync(
+        IReadOnlyList<ParsedSubnet> subnets,
+        bool includeRtspSweep,
+        CancellationToken ct)
     {
         if (Phase == ScanPhase.Scanning) return;
         Phase = ScanPhase.Scanning;
@@ -75,7 +84,9 @@ public class CameraScanService : ICameraScanService
         var seenIps = new ConcurrentDictionary<string, byte>();
 
         var onvifTask = RunOnvifBranchAsync(subnets, existingByIp, seenIps, cameraService, _cts.Token);
-        var tcpTask = RunTcpSweepAsync(subnets, existingByIp, seenIps, cameraService, _cts.Token);
+        var tcpTask = includeRtspSweep
+            ? RunTcpSweepAsync(subnets, existingByIp, seenIps, cameraService, _cts.Token)
+            : Task.CompletedTask;
 
         await Task.WhenAll(onvifTask, tcpTask);
 
@@ -90,7 +101,9 @@ public class CameraScanService : ICameraScanService
         Phase = ScanPhase.Complete;
         var onvifCount = Hits.Count(h => h.IsOnvif);
         var rtspCount = Hits.Count(h => !h.IsOnvif);
-        _logger.LogInformation("Camera scan: {Subnets} subnet(s), {OnvifHits} ONVIF, {RtspHits} RTSP-only, {Duration}",
+        _logger.LogInformation(
+            "Camera scan ({Mode}): {Subnets} subnet(s), {OnvifHits} ONVIF, {RtspHits} RTSP-only, {Duration}",
+            includeRtspSweep ? "full" : "onvif-only",
             subnets.Count, onvifCount, rtspCount, sw.Elapsed);
         Emit(new CameraScanCompletedEvent(onvifCount, rtspCount, sw.Elapsed));
     }
