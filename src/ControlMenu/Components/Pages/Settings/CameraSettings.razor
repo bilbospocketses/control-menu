@@ -95,12 +95,15 @@
     }
 </div>
 
-<div class="settings-section">
-    <h2>Discovered on Network</h2>
-    <p>ONVIF cameras and RTSP-only devices found by the latest scan. Enter credentials and click <strong>Add</strong> to register; <span style="color: var(--text-muted);">×</span> dismisses the row for this scan session.</p>
+@if (ScanService.Phase is ScanPhase.Scanning or ScanPhase.Draining || ScanService.Hits.Count > 0)
+{
+    <div class="settings-section">
+        <h2>Discovered on Network</h2>
+        <p>ONVIF cameras and RTSP-only devices found by the latest scan. Enter credentials and click <strong>Add</strong> to register; <span style="color: var(--text-muted);">×</span> dismisses the row for this scan session.</p>
 
-    <DiscoveredCamerasPanel OnCameraAdded="@RefreshCamerasAsync" />
-</div>
+        <DiscoveredCamerasPanel OnCameraAdded="@RefreshCamerasAsync" />
+    </div>
+}
 
 @if (_scanModalOpen)
 {
