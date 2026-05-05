@@ -8,6 +8,7 @@
 @inject IAdbService AdbService
 @inject IConfigurationService Config
 @inject IScanLifecycleHandler Handler
+@inject ILogger<DeviceManagement> Logger
 @implements IDisposable
 
 <div class="settings-section">
@@ -315,18 +316,35 @@
     {
         _scanning = true;
         StateHasChanged();
+        Logger.LogInformation("[ARP-DIAG] registered devices in DB: {Count} — MACs: {Macs}",
+            _devices.Count, string.Join(", ", _devices.Select(d => d.MacAddress)));
 
         // 1. Query mDNS — each hit gives us IP + advertised ADB port + service name.
         var mdnsResults = await AdbService.ScanMdnsAsync();
+        Logger.LogInformation("[ARP-DIAG] mDNS hits: {Count} — {Hits}",
+            mdnsResults.Count, string.Join(", ", mdnsResults.Select(m => $"{m.IpAddress}:{m.Port}")));
 
         // 2. Build IP→MAC map from ARP. If any mDNS IPs aren't in ARP yet, ping them
         //    in parallel to force the OS to resolve them, then re-read ARP.
         var arpMap = await BuildArpMapAsync();
+        Logger.LogInformation("[ARP-DIAG] ARP map (first pass): {Count} entries — looking up {NeedCount} mDNS IPs",
+            arpMap.Count, mdnsResults.Count);
+        foreach (var m in mdnsResults)
+        {
+            var hit = arpMap.TryGetValue(m.IpAddress, out var macHit) ? macHit : "(MISS)";
+            Logger.LogInformation("[ARP-DIAG]   mdns {Ip} -> {Mac}", m.IpAddress, hit);
+        }
         var missing = mdnsResults.Where(m => !arpMap.ContainsKey(m.IpAddress)).Select(m => m.IpAddress).ToList();
         if (missing.Count > 0)
         {
             await Task.WhenAll(missing.Select(ip => NetworkDiscovery.PingAsync(ip)));
             arpMap = await BuildArpMapAsync();
+            Logger.LogInformation("[ARP-DIAG] ARP map (after ping refresh): {Count} entries", arpMap.Count);
+            foreach (var m in mdnsResults.Where(m => missing.Contains(m.IpAddress)))
+            {
+                var hit = arpMap.TryGetValue(m.IpAddress, out var macHit) ? macHit : "(STILL-MISS)";
+                Logger.LogInformation("[ARP-DIAG]   mdns {Ip} -> {Mac} (after ping)", m.IpAddress, hit);
+            }
         }
 
         // 3. Walk the mDNS hits. Registered devices: update IP/port in-place in the DB
@@ -350,6 +368,12 @@
         foreach (var m in mdnsResults)
         {
             var mac = arpMap.TryGetValue(m.IpAddress, out var x) ? x : null;
+            Logger.LogInformation("[ARP-DIAG] decide {Ip}:{Port} mac={Mac} — {Outcome}",
+                m.IpAddress, m.Port, mac ?? "null",
+                mac is not null && devicesByMac.ContainsKey(mac)
+                    ? "REGISTERED-MATCH (skip discovered)"
+                    : mac is null ? "NO-MAC -> add to discovered"
+                    : "MAC-NOT-IN-DEVICESBYMAC -> add to discovered");
             if (mac is not null && devicesByMac.TryGetValue(mac, out var registered))
             {
                 await DeviceService.UpdateLastSeenAsync(registered.Id, m.IpAddress);

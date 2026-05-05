@@ -1,21 +1,33 @@
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 
 namespace ControlMenu.Services;
 
 public partial class NetworkDiscoveryService : INetworkDiscoveryService
 {
     private readonly ICommandExecutor _executor;
+    private readonly ILogger<NetworkDiscoveryService> _logger;
 
-    public NetworkDiscoveryService(ICommandExecutor executor)
+    public NetworkDiscoveryService(ICommandExecutor executor, ILogger<NetworkDiscoveryService> logger)
     {
         _executor = executor;
+        _logger = logger;
     }
 
     public async Task<IReadOnlyList<ArpEntry>> GetArpTableAsync(CancellationToken ct = default)
     {
         var result = await _executor.ExecuteAsync("arp", "-a", cancellationToken: ct);
-        if (result.ExitCode != 0) return [];
-        return ParseArpOutput(result.StandardOutput);
+        _logger.LogInformation("[ARP-DIAG] arp -a exit={Exit} stdoutLen={Len} stderrLen={ErrLen}",
+            result.ExitCode, result.StandardOutput?.Length ?? 0, result.StandardError?.Length ?? 0);
+        if (result.ExitCode != 0)
+        {
+            _logger.LogWarning("[ARP-DIAG] arp -a failed: {Stderr}", result.StandardError);
+            return [];
+        }
+        var entries = ParseArpOutput(result.StandardOutput);
+        _logger.LogInformation("[ARP-DIAG] parsed {Count} ARP entries; sample IPs: {Sample}",
+            entries.Count, string.Join(", ", entries.Take(5).Select(e => $"{e.IpAddress}={e.MacAddress}")));
+        return entries;
     }
 
     public async Task<string?> ResolveIpFromMacAsync(string macAddress, CancellationToken ct = default)
