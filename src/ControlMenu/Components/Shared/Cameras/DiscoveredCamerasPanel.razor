@@ -1,6 +1,7 @@
 @using ControlMenu.Modules.Cameras.Network
 @using ControlMenu.Modules.Cameras.Entities
 @using ControlMenu.Modules.Cameras.Services
+@using System.Text.Json
 @inject ICameraScanService ScanService
 @inject IOnvifClient OnvifClient
 @inject ICameraService CameraService
@@ -233,6 +234,17 @@ else
                 throw new InvalidOperationException("No media profiles returned");
             var streamUri = await OnvifClient.GetStreamUriAsync(hit.OnvifServiceUrl!, profiles[0].Token, user, pass, default);
 
+            CameraDeviceInfo? deviceInfo = null;
+            try
+            {
+                var info = await OnvifClient.GetDeviceInformationAsync(hit.OnvifServiceUrl!, user, pass, default);
+                deviceInfo = new CameraDeviceInfo(info.FirmwareVersion, info.SerialNumber, info.HardwareId);
+            }
+            catch (Exception)
+            {
+                // Non-fatal — proceed without metadata
+            }
+
             var name = GetName(hit);
             if (string.IsNullOrWhiteSpace(name)) name = DefaultNameFor(hit);
 
@@ -247,6 +259,7 @@ else
                 OnvifServiceUrl = hit.OnvifServiceUrl,
                 IsOnvif = true,
                 Enabled = true,
+                Metadata = deviceInfo is not null ? JsonSerializer.Serialize(deviceInfo) : null,
             };
             await CameraService.AddAsync(cam, user, pass);
             _hits.Remove(hit);

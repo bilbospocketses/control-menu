@@ -1,5 +1,6 @@
 @using ControlMenu.Modules.Cameras.Entities
 @using ControlMenu.Modules.Cameras.Services
+@using System.Text.Json
 @inject ICameraService CameraService
 
 <div class="dialog-overlay" @onclick="@CloseAsync">
@@ -32,6 +33,26 @@
                 <input type="checkbox" @bind="_camera.Enabled" />
                 <span>Enabled</span>
             </label>
+            @if (_deviceInfo is not null)
+            {
+                <div class="form-section" style="margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border-color);">
+                    <h4 style="margin: 0 0 0.5rem 0; font-size: 0.95em; color: var(--text-muted);">Device Info</h4>
+                    <dl class="device-info-grid">
+                        @if (!string.IsNullOrEmpty(_deviceInfo.FirmwareVersion))
+                        {
+                            <dt>Firmware</dt><dd>@_deviceInfo.FirmwareVersion</dd>
+                        }
+                        @if (!string.IsNullOrEmpty(_deviceInfo.SerialNumber))
+                        {
+                            <dt>Serial</dt><dd><code>@_deviceInfo.SerialNumber</code></dd>
+                        }
+                        @if (!string.IsNullOrEmpty(_deviceInfo.HardwareId))
+                        {
+                            <dt>Hardware ID</dt><dd><code>@_deviceInfo.HardwareId</code></dd>
+                        }
+                    </dl>
+                </div>
+            }
             @if (_error is not null)
             {
                 <div class="error-banner">&#9888; @_error</div>
@@ -53,6 +74,7 @@
     private string _password = "";
     private string? _error;
     private bool _busy;
+    private CameraDeviceInfo? _deviceInfo;
 
     protected override async Task OnInitializedAsync()
     {
@@ -74,6 +96,12 @@
         };
         var creds = await CameraService.GetCredentialsAsync(Camera.Id);
         if (creds is not null) _username = creds.Value.Username;
+
+        if (!string.IsNullOrEmpty(_camera.Metadata))
+        {
+            try { _deviceInfo = JsonSerializer.Deserialize<CameraDeviceInfo>(_camera.Metadata); }
+            catch (JsonException) { }
+        }
     }
 
     private async Task SaveAsync()

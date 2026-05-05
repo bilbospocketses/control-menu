@@ -41,3 +41,21 @@
     border-radius: 4px;
     font-size: 0.9em;
 }
+
+.device-info-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+    margin: 0;
+}
+.device-info-grid dt {
+    color: var(--text-muted);
+    font-size: 0.9em;
+}
+.device-info-grid dd {
+    margin: 0;
+    font-size: 0.9em;
+}
+.device-info-grid code {
+    font-size: 0.95em;
+}
