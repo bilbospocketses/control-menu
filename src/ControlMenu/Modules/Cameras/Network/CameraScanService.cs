@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using ControlMenu.Modules.Cameras.Services;
+using ControlMenu.Services;
 using ControlMenu.Services.Network;
 using Microsoft.Extensions.Logging;
 
@@ -16,8 +17,10 @@ public class CameraScanService : ICameraScanService
 
     private readonly IOnvifDiscoveryClient _onvif;
     private readonly IRtspProbeClient _rtsp;
+    private readonly INetworkDiscoveryService _networkDiscovery;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<CameraScanService> _logger;
+    private Dictionary<string, string> _arpByIp = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<Action<CameraScanEvent>> _subscribers = new();
     private readonly object _subscriberLock = new();
     private readonly List<CameraScanHit> _hits = new();
@@ -33,11 +36,13 @@ public class CameraScanService : ICameraScanService
     public CameraScanService(
         IOnvifDiscoveryClient onvif,
         IRtspProbeClient rtsp,
+        INetworkDiscoveryService networkDiscovery,
         IServiceScopeFactory scopeFactory,
         ILogger<CameraScanService> logger)
     {
         _onvif = onvif;
         _rtsp = rtsp;
+        _networkDiscovery = networkDiscovery;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -57,6 +62,11 @@ public class CameraScanService : ICameraScanService
         var sw = Stopwatch.StartNew();
 
         Emit(new CameraScanStartedEvent(subnets.Select(s => s.Normalized).ToList()));
+
+        var arpEntries = await _networkDiscovery.GetArpTableAsync(_cts.Token);
+        _arpByIp = arpEntries
+            .GroupBy(e => e.IpAddress)
+            .ToDictionary(g => g.Key, g => g.First().MacAddress, StringComparer.OrdinalIgnoreCase);
 
         using var scope = _scopeFactory.CreateScope();
         var cameraService = scope.ServiceProvider.GetRequiredService<ICameraService>();
@@ -105,10 +115,13 @@ public class CameraScanService : ICameraScanService
             {
                 if (!IsInAnySubnet(r.IpAddress, subnets)) continue;
                 seenIps.TryAdd(r.IpAddress, 0);
-                await EmitHitOrBumpAsync(
-                    new CameraScanHit(r.IpAddress, RtspPort, true, r.Manufacturer, r.Model, r.OnvifServiceUrl),
-                    existing,
-                    cameraService);
+                var hit = new CameraScanHit(r.IpAddress, RtspPort, true, r.Manufacturer, r.Model, r.OnvifServiceUrl)
+                {
+                    FriendlyName = r.FriendlyName,
+                    Location = r.Location,
+                    MacAddress = _arpByIp.TryGetValue(r.IpAddress, out var mac) ? mac : null,
+                };
+                await EmitHitOrBumpAsync(hit, existing, cameraService);
             }
         }
         catch (OperationCanceledException) { throw; }
@@ -137,10 +150,11 @@ public class CameraScanService : ICameraScanService
                 if (seenIps.ContainsKey(ipStr)) return;
                 if (!await _rtsp.ProbeTcpAsync(ipStr, RtspPort, TcpProbeTimeout, ct)) return;
                 if (!seenIps.TryAdd(ipStr, 0)) return; // ONVIF beat us to it
-                await EmitHitOrBumpAsync(
-                    new CameraScanHit(ipStr, RtspPort, false, null, null, null),
-                    existing,
-                    cameraService);
+                var tcpHit = new CameraScanHit(ipStr, RtspPort, false, null, null, null)
+                {
+                    MacAddress = _arpByIp.TryGetValue(ipStr, out var tcpMac) ? tcpMac : null,
+                };
+                await EmitHitOrBumpAsync(tcpHit, existing, cameraService);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)

@@ -28,12 +28,14 @@ else
     <table class="data-table">
         <thead>
             <tr>
-                <th>Source</th>
-                <th>Name / Model</th>
-                <th>Address</th>
-                <th>Username</th>
-                <th>Password</th>
-                <th>Actions</th>
+                <th>SOURCE</th>
+                <th>NAME</th>
+                <th>MFR / MODEL</th>
+                <th>ADDRESS</th>
+                <th>MAC</th>
+                <th>USERNAME</th>
+                <th>PASSWORD</th>
+                <th>ACTIONS</th>
             </tr>
         </thead>
         <tbody>
@@ -43,8 +45,15 @@ else
                 {
                     <tr @key="hit.IpAddress">
                         <td><span class="source-badge" title="Discovery source">ONVIF</span></td>
-                        <td>@(hit.Manufacturer ?? "Unknown") @(hit.Model ?? "")</td>
+                        <td>
+                            <input class="form-control form-control-sm" style="width: 100%;" size="1"
+                                   value="@GetName(hit)"
+                                   @oninput="@(e => SetName(hit.IpAddress, e.Value?.ToString() ?? ""))"
+                                   placeholder="Name" />
+                        </td>
+                        <td>@(hit.Manufacturer ?? "—") @(hit.Model ?? "")</td>
                         <td>@hit.IpAddress</td>
+                        <td><code style="font-size: 0.85em; color: var(--text-muted);">@(hit.MacAddress ?? "—")</code></td>
                         <td>
                             <input class="form-control form-control-sm" style="width: 100%;" size="1"
                                    value="@GetUser(hit.IpAddress)"
@@ -65,7 +74,7 @@ else
                     @if (_errors.TryGetValue(hit.IpAddress, out var err))
                     {
                         <tr class="discovered-error-row">
-                            <td colspan="6"><span class="hit-error">⚠ @err</span></td>
+                            <td colspan="8"><span class="hit-error">⚠ @err</span></td>
                         </tr>
                     }
                 }
@@ -74,7 +83,9 @@ else
                     <tr @key="hit.IpAddress">
                         <td><span class="source-badge" title="Discovery source">RTSP</span></td>
                         <td><span style="color: var(--text-muted);">—</span></td>
+                        <td><span style="color: var(--text-muted);">—</span></td>
                         <td>@hit.IpAddress :@hit.Port</td>
+                        <td><code style="font-size: 0.85em; color: var(--text-muted);">@(hit.MacAddress ?? "—")</code></td>
                         <td colspan="2"><span style="color: var(--text-muted);">Manual entry required</span></td>
                         <td class="actions">
                             <button class="btn btn-secondary btn-sm" @onclick="@(() => OpenTcpModal(hit))">Add manually...</button>
@@ -100,6 +111,7 @@ else
 
     private IDisposable? _subscription;
     private readonly List<CameraScanHit> _hits = new();
+    private readonly Dictionary<string, string> _nameInputs = new();
     private readonly Dictionary<string, string> _userInputs = new();
     private readonly Dictionary<string, string> _passInputs = new();
     private readonly Dictionary<string, string> _errors = new();
@@ -164,7 +176,7 @@ else
         switch (ev)
         {
             case CameraScanStartedEvent:
-                _hits.Clear(); _errors.Clear();
+                _hits.Clear(); _errors.Clear(); _nameInputs.Clear();
                 break;
             case CameraScanHitEvent hitEv:
                 var idx = _hits.FindIndex(h => h.IpAddress == hitEv.Hit.IpAddress);
@@ -175,6 +187,23 @@ else
         InvokeAsync(StateHasChanged);
     }
 
+    private string GetName(CameraScanHit hit)
+    {
+        if (_nameInputs.TryGetValue(hit.IpAddress, out var typed)) return typed;
+        return DefaultNameFor(hit);
+    }
+
+    private void SetName(string ip, string val) => _nameInputs[ip] = val;
+
+    private static string DefaultNameFor(CameraScanHit hit)
+    {
+        if (!string.IsNullOrWhiteSpace(hit.Location)) return hit.Location;
+        var mfrModel = $"{hit.Manufacturer} {hit.Model}".Trim();
+        if (!string.IsNullOrWhiteSpace(mfrModel)) return mfrModel;
+        if (!string.IsNullOrWhiteSpace(hit.FriendlyName)) return hit.FriendlyName;
+        return $"Camera at {hit.IpAddress}";
+    }
+
     private string GetUser(string ip) => _userInputs.GetValueOrDefault(ip, "");
     private string GetPass(string ip) => _passInputs.GetValueOrDefault(ip, "");
     private void SetUser(string ip, string val) => _userInputs[ip] = val;
@@ -183,6 +212,7 @@ else
     private void DismissHit(CameraScanHit hit)
     {
         _hits.Remove(hit);
+        _nameInputs.Remove(hit.IpAddress);
         _userInputs.Remove(hit.IpAddress);
         _passInputs.Remove(hit.IpAddress);
         _errors.Remove(hit.IpAddress);
@@ -203,8 +233,8 @@ else
                 throw new InvalidOperationException("No media profiles returned");
             var streamUri = await OnvifClient.GetStreamUriAsync(hit.OnvifServiceUrl!, profiles[0].Token, user, pass, default);
 
-            var rawName = $"{hit.Manufacturer} {hit.Model}".Trim();
-            var name = string.IsNullOrEmpty(rawName) ? $"Camera at {hit.IpAddress}" : rawName;
+            var name = GetName(hit);
+            if (string.IsNullOrWhiteSpace(name)) name = DefaultNameFor(hit);
 
             var cam = new Camera
             {
@@ -220,6 +250,7 @@ else
             };
             await CameraService.AddAsync(cam, user, pass);
             _hits.Remove(hit);
+            _nameInputs.Remove(hit.IpAddress);
             _userInputs.Remove(hit.IpAddress);
             _passInputs.Remove(hit.IpAddress);
             await OnCameraAdded.InvokeAsync();

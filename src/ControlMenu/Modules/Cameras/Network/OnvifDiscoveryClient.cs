@@ -152,20 +152,21 @@ public class OnvifDiscoveryClient : IOnvifDiscoveryClient
         if (string.IsNullOrEmpty(serviceUrl)) return null;
 
         var scopes = probeMatch.Element(WsdNs + "Scopes")?.Value ?? "";
-        var (manufacturer, model) = ParseScopes(scopes);
+        var (manufacturer, model, friendlyName, location) = ParseScopes(scopes);
 
-        return new OnvifProbeResponse(sourceIp, manufacturer, model, serviceUrl);
+        return new OnvifProbeResponse(sourceIp, manufacturer, model, serviceUrl)
+        {
+            FriendlyName = friendlyName,
+            Location = location,
+        };
     }
 
-    private static (string? Manufacturer, string? Model) ParseScopes(string scopesText)
+    private static (string? Manufacturer, string? Model, string? FriendlyName, string? Location) ParseScopes(string scopesText)
     {
-        // ONVIF scopes are space-separated URIs like:
-        //   onvif://www.onvif.org/type/video_encoder
-        //   onvif://www.onvif.org/manufacturer/HIKVISION
-        //   onvif://www.onvif.org/hardware/DS-2CD2143G0-I
-        //   onvif://www.onvif.org/name/HIKVISION DS-2CD2143G0-I
         string? manufacturer = null;
         string? model = null;
+        string? friendlyName = null;
+        string? location = null;
         foreach (var scope in scopesText.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
         {
             var trimmed = scope.TrimEnd('/');
@@ -179,7 +180,11 @@ public class OnvifDiscoveryClient : IOnvifDiscoveryClient
                 manufacturer = value;
             else if (prefix.EndsWith("/hardware", StringComparison.OrdinalIgnoreCase) && model is null)
                 model = value;
+            else if (prefix.EndsWith("/name", StringComparison.OrdinalIgnoreCase) && friendlyName is null)
+                friendlyName = value;
+            else if (prefix.EndsWith("/location", StringComparison.OrdinalIgnoreCase) && location is null)
+                location = value;
         }
-        return (manufacturer, model);
+        return (manufacturer, model, friendlyName, location);
     }
 }

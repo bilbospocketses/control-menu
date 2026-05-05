@@ -6,4 +6,9 @@ public sealed record CameraScanHit(
     bool IsOnvif,
     string? Manufacturer,
     string? Model,
-    string? OnvifServiceUrl);
+    string? OnvifServiceUrl)
+{
+    public string? FriendlyName { get; init; }
+    public string? Location { get; init; }
+    public string? MacAddress { get; init; }
+}
