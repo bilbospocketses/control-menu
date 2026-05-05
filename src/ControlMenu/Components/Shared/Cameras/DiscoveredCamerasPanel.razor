@@ -220,13 +220,6 @@ else
         return typed != DefaultNameFor(hit);
     }
 
-    private static bool IsHikvisionLike(string? manufacturer)
-    {
-        if (string.IsNullOrWhiteSpace(manufacturer)) return false;
-        return manufacturer.Contains("Hikvision", StringComparison.OrdinalIgnoreCase)
-            || manufacturer.Equals("LTS", StringComparison.OrdinalIgnoreCase);
-    }
-
     private string GetUser(string ip) => _userInputs.GetValueOrDefault(ip, "");
     private string GetPass(string ip) => _passInputs.GetValueOrDefault(ip, "");
     private void SetUser(string ip, string val) => _userInputs[ip] = val;
@@ -292,24 +285,24 @@ else
             string? macAddress = hit.MacAddress;
             int? cameraNumber = null;
 
-            // Vendor-gate ISAPI on the ONVIF-reported manufacturer (Scopes are unreliable for this)
-            if (IsHikvisionLike(manufacturer))
+            // Try Hikvision ISAPI for any ONVIF camera. Many vendors (LTS, Honeywell,
+            // W Box, Annke, dozens of OEM rebrands) ship Hikvision firmware. The parser
+            // returns null for cameras that aren't Hikvision-firmware-derived, so this
+            // is safe to always attempt — no per-vendor gating needed.
+            try
             {
-                try
+                var onvifUri = new Uri(hit.OnvifServiceUrl!);
+                var hik = await HikvisionClient.GetDeviceInfoAsync(
+                    onvifUri.Host, onvifUri.Port == -1 ? 80 : onvifUri.Port, user, pass, default);
+                if (hik is not null)
                 {
-                    var onvifUri = new Uri(hit.OnvifServiceUrl!);
-                    var hik = await HikvisionClient.GetDeviceInfoAsync(
-                        onvifUri.Host, onvifUri.Port == -1 ? 80 : onvifUri.Port, user, pass, default);
-                    if (hik is not null)
-                    {
-                        if (!string.IsNullOrWhiteSpace(hik.MacAddress)) macAddress = hik.MacAddress;
-                        cameraNumber = hik.TelecontrolId;
-                        if (!IsNameUserOverridden(hit) && !string.IsNullOrWhiteSpace(hik.DeviceName))
-                            name = hik.DeviceName;
-                    }
+                    if (!string.IsNullOrWhiteSpace(hik.MacAddress)) macAddress = hik.MacAddress;
+                    cameraNumber = hik.TelecontrolId;
+                    if (!IsNameUserOverridden(hit) && !string.IsNullOrWhiteSpace(hik.DeviceName))
+                        name = hik.DeviceName;
                 }
-                catch { /* best-effort */ }
             }
+            catch { /* best-effort */ }
 
             var cam = new Camera
             {
