@@ -71,6 +71,7 @@ public class DeviceService : IDeviceService
             device.LastKnownIp = ipAddress;
             device.LastSeen = DateTime.UtcNow;
             await db.SaveChangesAsync();
+            _notifier.NotifyChanged();
         }
     }
 

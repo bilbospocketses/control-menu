@@ -86,8 +86,9 @@ builder.Services.AddScoped<IOnvifClient, OnvifClient>();
 builder.Services.AddScoped<IHikvisionIsapiClient, HikvisionIsapiClient>();
 builder.Services.AddSingleton<IRtspProbeClient, RtspProbeClient>();
 builder.Services.AddSingleton<ICameraScanService, CameraScanService>();
-builder.Services.AddScoped<ICameraSubnetDetector, CameraSubnetDetector>();
-builder.Services.AddHostedService<CameraScanHostedService>();
+builder.Services.AddSingleton<IntervalChangeSignal>();
+builder.Services.AddHostedService<CameraLivenessHostedService>();
+builder.Services.AddHostedService<AndroidLivenessHostedService>();
 builder.Services.AddScoped<PurgeLegacyCameraSettingsMigration>();
 
 // go2rtc streaming service

@@ -133,7 +133,7 @@ public class DeviceServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task UpdateLastSeenAsync_DoesNotNotify()
+    public async Task UpdateLastSeenAsync_NotifiesOnce()
     {
         var device = MakeDevice();
         await _service.AddDeviceAsync(device);
@@ -141,7 +141,7 @@ public class DeviceServiceTests : IDisposable
 
         await _service.UpdateLastSeenAsync(device.Id, "192.168.1.100");
 
-        Assert.Equal(0, _notifier.NotifyChangedCallCount);
+        Assert.Equal(1, _notifier.NotifyChangedCallCount);
     }
 
     [Fact]

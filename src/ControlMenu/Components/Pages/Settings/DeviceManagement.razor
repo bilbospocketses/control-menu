@@ -2,21 +2,23 @@
 @using ControlMenu.Data.Entities
 @using ControlMenu.Data.Enums
 @using ControlMenu.Modules.AndroidDevices.Services
+@using ControlMenu.Services
 @using ControlMenu.Services.Network
 @inject IDeviceService DeviceService
 @inject INetworkDiscoveryService NetworkDiscovery
 @inject IAdbService AdbService
 @inject IConfigurationService Config
 @inject IScanLifecycleHandler Handler
+@inject IntervalChangeSignal IntervalSignal
 @implements IDisposable
 
 <div class="settings-section">
     <h2>Device Discovery</h2>
     <div class="form-group" style="margin-bottom:1.5rem;">
-        <label>Discovery Interval (seconds)</label>
-        <input type="number" class="form-control" style="max-width:200px;" min="30" max="3600"
+        <label>Liveness Interval (seconds)</label>
+        <input type="number" class="form-control" style="max-width:200px;" min="0" max="3600"
                value="@_discoveryInterval" @onchange="OnDiscoveryIntervalChanged" />
-        <div class="form-hint">How often to scan the network for device IP changes. Min 30s, max 3600s.</div>
+        <div class="form-hint">How often to refresh device Status &amp; Last Seen by probing each registered device. Allowed: 0 (disabled) or 300–3600 seconds. Default 300.</div>
     </div>
 </div>
 
@@ -200,15 +202,16 @@
 
     private async Task OnDiscoveryIntervalChanged(ChangeEventArgs e)
     {
-        if (int.TryParse(e.Value?.ToString(), out var val) && val >= 30 && val <= 3600)
+        if (int.TryParse(e.Value?.ToString(), out var val) && (val == 0 || (val >= 300 && val <= 3600)))
         {
             _discoveryInterval = val;
             await Config.SetSettingAsync("discovery-interval", val.ToString());
+            IntervalSignal.Trigger(IntervalChangeSignal.AndroidLiveness);
             await ShowMessage("Saved.");
         }
         else
         {
-            await ShowMessage("Must be between 30 and 3600 seconds.", true);
+            await ShowMessage("Must be 0 (disabled) or between 300 and 3600 seconds.", true);
         }
     }
 

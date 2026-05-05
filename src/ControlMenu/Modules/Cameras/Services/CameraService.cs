@@ -47,6 +47,7 @@ public class CameraService : ICameraService
     {
         using var db = await _dbFactory.CreateDbContextAsync();
         if (camera.Id == Guid.Empty) camera.Id = Guid.NewGuid();
+        if (camera.LastSeen is null) camera.LastSeen = DateTime.UtcNow;
         db.Cameras.Add(camera);
         await db.SaveChangesAsync();
         await _config.SetSecretAsync($"camera-{camera.Id:N}-username", username, Module);
@@ -97,6 +98,7 @@ public class CameraService : ICameraService
         if (camera is null) return;
         camera.LastSeen = DateTime.UtcNow;
         await db.SaveChangesAsync();
+        _notifier.NotifyChanged();
     }
 
     public async Task<int> DeleteAllAsync()

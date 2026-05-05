@@ -3,11 +3,24 @@
 @using ControlMenu.Modules.Cameras.Entities
 @using ControlMenu.Modules.Cameras.Network
 @using ControlMenu.Modules.Cameras.Services
+@using ControlMenu.Services
 @using ControlMenu.Services.Network
 @inject ICameraService CameraService
 @inject ICameraScanService ScanService
 @inject ICameraChangeNotifier ChangeNotifier
+@inject IConfigurationService Config
+@inject IntervalChangeSignal IntervalSignal
 @implements IDisposable
+
+<div class="settings-section">
+    <h2>Camera Discovery</h2>
+    <div class="form-group" style="margin-bottom:1.5rem;">
+        <label>Liveness Interval (seconds)</label>
+        <input type="number" class="form-control" style="max-width:200px;" min="0" max="3600"
+               value="@_livenessInterval" @onchange="OnLivenessIntervalChanged" />
+        <div class="form-hint">How often to refresh camera Status &amp; Last Seen by probing each registered camera. Allowed: 0 (disabled) or 300–3600 seconds. Default 900.</div>
+    </div>
+</div>
 
 <div class="settings-section">
     <h2>Cameras</h2>
@@ -143,11 +156,30 @@
     private bool _showDeleteAllConfirm;
     private string? _message;
     private bool _messageIsError;
+    private int _livenessInterval = 900;
 
     protected override async Task OnInitializedAsync()
     {
         ChangeNotifier.CamerasChanged += OnCamerasChanged;
+        var interval = await Config.GetSettingAsync("cameras-liveness-interval-seconds", "cameras");
+        if (int.TryParse(interval, out var parsed))
+            _livenessInterval = parsed;
         await RefreshCamerasAsync();
+    }
+
+    private async Task OnLivenessIntervalChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var val) && (val == 0 || (val >= 300 && val <= 3600)))
+        {
+            _livenessInterval = val;
+            await Config.SetSettingAsync("cameras-liveness-interval-seconds", val.ToString(), "cameras");
+            IntervalSignal.Trigger(IntervalChangeSignal.CameraLiveness);
+            await ShowMessage("Saved.");
+        }
+        else
+        {
+            await ShowMessage("Must be 0 (disabled) or between 300 and 3600 seconds.", true);
+        }
     }
 
     private async Task RefreshCamerasAsync()

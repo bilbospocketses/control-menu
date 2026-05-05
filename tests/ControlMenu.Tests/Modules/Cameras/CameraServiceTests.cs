@@ -89,12 +89,15 @@ public class CameraServiceTests : IDisposable
     public async Task UpdateLastSeenAsync_BumpsTimestamp()
     {
         var saved = await _sut.AddAsync(NewCamera(), "u", "p");
-        Assert.Null(saved.LastSeen);
+        var seededTimestamp = saved.LastSeen;
+        Assert.NotNull(seededTimestamp);
 
+        await Task.Delay(10);
         await _sut.UpdateLastSeenAsync(saved.Id);
 
         var fetched = await _sut.GetAsync(saved.Id);
         Assert.NotNull(fetched!.LastSeen);
+        Assert.True(fetched.LastSeen > seededTimestamp);
     }
 
     [Fact]
