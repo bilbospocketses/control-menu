@@ -16,5 +16,4 @@ public sealed record HikvisionDeviceInfo(
     string? SerialNumber,
     string? FirmwareVersion,
     string? MacAddress = null,
-    int? TelecontrolId = null,
-    string? FirmwareBuildDate = null);
+    int? TelecontrolId = null);

@@ -188,9 +188,6 @@ namespace ControlMenu.Migrations
                     b.Property<bool>("Enabled")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("FirmwareBuildDate")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("FirmwareVersion")
                         .HasColumnType("TEXT");
 

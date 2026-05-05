@@ -65,8 +65,7 @@ public class HikvisionIsapiClient : IHikvisionIsapiClient
                 SerialNumber: Get("serialNumber"),
                 FirmwareVersion: Get("firmwareVersion"),
                 MacAddress: normalizedMac,
-                TelecontrolId: telecontrolId,
-                FirmwareBuildDate: Get("firmwareReleasedDate"));
+                TelecontrolId: telecontrolId);
         }
         catch
         {

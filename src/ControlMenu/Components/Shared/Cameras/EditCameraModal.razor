@@ -36,7 +36,6 @@
                 var hasDeviceInfo = _camera.FirmwareVersion is not null
                     || _camera.SerialNumber is not null
                     || _camera.HardwareId is not null
-                    || _camera.FirmwareBuildDate is not null
                     || _camera.MacAddress is not null
                     || _camera.CameraNumber is not null;
             }
@@ -56,13 +55,7 @@
                         @if (!string.IsNullOrEmpty(_camera.FirmwareVersion))
                         {
                             <dt>Firmware</dt>
-                            <dd>
-                                @_camera.FirmwareVersion
-                                @if (!string.IsNullOrEmpty(_camera.FirmwareBuildDate))
-                                {
-                                    <span style="color: var(--text-muted); font-size: 0.9em;">(@_camera.FirmwareBuildDate)</span>
-                                }
-                            </dd>
+                            <dd>@_camera.FirmwareVersion</dd>
                         }
                         @if (!string.IsNullOrEmpty(_camera.SerialNumber))
                         {
@@ -118,7 +111,6 @@
             FirmwareVersion = Camera.FirmwareVersion,
             SerialNumber = Camera.SerialNumber,
             HardwareId = Camera.HardwareId,
-            FirmwareBuildDate = Camera.FirmwareBuildDate,
         };
         var creds = await CameraService.GetCredentialsAsync(Camera.Id);
         if (creds is not null) _username = creds.Value.Username;

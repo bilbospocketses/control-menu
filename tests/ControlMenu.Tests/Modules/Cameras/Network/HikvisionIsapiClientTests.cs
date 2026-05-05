@@ -38,7 +38,6 @@ public class HikvisionIsapiClientTests
               <model>CMIP7352W</model>
               <serialNumber>CMIP7352W20170428AAWR756864499</serialNumber>
               <firmwareVersion>V5.6.2</firmwareVersion>
-              <firmwareReleasedDate>build 211202</firmwareReleasedDate>
               <macAddress>14:2f:fd:02:1a:36</macAddress>
               <telecontrolID>1</telecontrolID>
             </DeviceInfo>
@@ -57,7 +56,6 @@ public class HikvisionIsapiClientTests
         Assert.Equal("V5.6.2", info.FirmwareVersion);
         Assert.Equal("14-2f-fd-02-1a-36", info.MacAddress);
         Assert.Equal(1, info.TelecontrolId);
-        Assert.Equal("build 211202", info.FirmwareBuildDate);
     }
 
     [Fact]
@@ -70,7 +68,6 @@ public class HikvisionIsapiClientTests
         Assert.Equal("Cam", info.DeviceName);
         Assert.Null(info.MacAddress);
         Assert.Null(info.TelecontrolId);
-        Assert.Null(info.FirmwareBuildDate);
     }
 
     [Fact]

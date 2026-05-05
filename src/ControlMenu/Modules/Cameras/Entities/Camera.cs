@@ -18,5 +18,4 @@ public class Camera
     public string? FirmwareVersion { get; set; }
     public string? SerialNumber { get; set; }
     public string? HardwareId { get; set; }
-    public string? FirmwareBuildDate { get; set; }
 }

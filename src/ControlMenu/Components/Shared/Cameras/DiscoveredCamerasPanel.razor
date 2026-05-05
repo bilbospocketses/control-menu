@@ -268,7 +268,6 @@ else
 
             string? macAddress = hit.MacAddress;
             int? cameraNumber = null;
-            string? firmwareBuildDate = null;
 
             if (IsHikvisionLike(hit.Manufacturer))
             {
@@ -281,7 +280,6 @@ else
                     {
                         if (!string.IsNullOrWhiteSpace(hik.MacAddress)) macAddress = hik.MacAddress;
                         cameraNumber = hik.TelecontrolId;
-                        firmwareBuildDate = hik.FirmwareBuildDate;
                         if (!IsNameUserOverridden(hit) && !string.IsNullOrWhiteSpace(hik.DeviceName))
                             name = hik.DeviceName;
                     }
@@ -305,7 +303,6 @@ else
                 FirmwareVersion = firmwareVersion,
                 SerialNumber = serialNumber,
                 HardwareId = hardwareId,
-                FirmwareBuildDate = firmwareBuildDate,
             };
             await CameraService.AddAsync(cam, user, pass);
             _hits.Remove(hit);
