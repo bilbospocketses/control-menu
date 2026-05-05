@@ -32,7 +32,7 @@ Out of scope:
 - Hover preview / quick-peek triggers.
 - Per-fly-out entry filtering or search.
 - Touch-screen long-press dismissal.
-- Animation polish beyond a basic 100ms fade-in.
+- Animation polish beyond a basic 200ms fade-in.
 - Changes to the expanded-sidebar behavior or to the Settings footer (single-nav-link, no fly-out needed).
 
 ## Behavior
@@ -173,7 +173,7 @@ The render of the panel itself happens once at the end of the `<nav class="sideb
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
     padding: 6px 0;
     z-index: 100;
-    animation: sidebar-flyout-fade 100ms ease-out;
+    animation: sidebar-flyout-fade 200ms ease-out;
 }
 
 .sidebar-flyout:focus { outline: none; }
@@ -280,4 +280,4 @@ CHANGELOG `[Unreleased]` Added: "Sidebar fly-out menu — clicking a section ico
 
 - **JS interop pattern for window resize** — the spec leaves the choice between handle-return vs numeric-token to the implementation plan, biased toward whatever simpler pattern works without the marshaling pitfalls flagged in `feedback_blazor_jsinterop_marshaling.md`.
 - **Fly-out width 220px** — picked to roughly match the visible content width of the expanded sidebar (260px wide minus padding/borders). Implementation can tweak this on first render if it looks off.
-- **Fly-out animation** — 100ms slide-and-fade. If it feels twitchy with rapid icon clicks, implementation drops the animation entirely.
+- **Fly-out animation** — 200ms slide-and-fade. If it feels twitchy with rapid icon clicks, implementation drops the animation entirely.
