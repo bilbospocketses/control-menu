@@ -5,6 +5,7 @@
 @inject ICameraScanService ScanService
 @inject IOnvifClient OnvifClient
 @inject ICameraService CameraService
+@inject IHikvisionIsapiClient HikvisionClient
 @implements IDisposable
 
 @if (_hits.Count == 0)
@@ -205,6 +206,20 @@ else
         return $"Camera at {hit.IpAddress}";
     }
 
+    private bool IsNameUserOverridden(CameraScanHit hit)
+    {
+        if (!_nameInputs.TryGetValue(hit.IpAddress, out var typed)) return false;
+        if (string.IsNullOrWhiteSpace(typed)) return false;
+        return typed != DefaultNameFor(hit);
+    }
+
+    private static bool IsHikvisionLike(string? manufacturer)
+    {
+        if (string.IsNullOrWhiteSpace(manufacturer)) return false;
+        return manufacturer.Contains("Hikvision", StringComparison.OrdinalIgnoreCase)
+            || manufacturer.Equals("LTS", StringComparison.OrdinalIgnoreCase);
+    }
+
     private string GetUser(string ip) => _userInputs.GetValueOrDefault(ip, "");
     private string GetPass(string ip) => _passInputs.GetValueOrDefault(ip, "");
     private void SetUser(string ip, string val) => _userInputs[ip] = val;
@@ -247,6 +262,24 @@ else
 
             var name = GetName(hit);
             if (string.IsNullOrWhiteSpace(name)) name = DefaultNameFor(hit);
+
+            // Hikvision/LTS: fetch user-set Device Name from proprietary ISAPI
+            // (standard ONVIF doesn't expose it). Override our name auto-fill ONLY if
+            // the user hasn't manually edited the row's Name field.
+            if (!IsNameUserOverridden(hit) && IsHikvisionLike(hit.Manufacturer))
+            {
+                try
+                {
+                    var onvifUri = new Uri(hit.OnvifServiceUrl!);
+                    var hik = await HikvisionClient.GetDeviceInfoAsync(
+                        onvifUri.Host, onvifUri.Port == -1 ? 80 : onvifUri.Port, user, pass, default);
+                    if (!string.IsNullOrWhiteSpace(hik?.DeviceName))
+                    {
+                        name = hik.DeviceName;
+                    }
+                }
+                catch { /* best-effort, swallow */ }
+            }
 
             var cam = new Camera
             {

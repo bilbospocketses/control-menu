@@ -83,6 +83,7 @@ builder.Services.AddSingleton<ICameraChangeNotifier, CameraChangeNotifier>();
 builder.Services.AddScoped<ICameraService, CameraService>();
 builder.Services.AddSingleton<IOnvifDiscoveryClient, OnvifDiscoveryClient>();
 builder.Services.AddScoped<IOnvifClient, OnvifClient>();
+builder.Services.AddScoped<IHikvisionIsapiClient, HikvisionIsapiClient>();
 builder.Services.AddSingleton<IRtspProbeClient, RtspProbeClient>();
 builder.Services.AddSingleton<ICameraScanService, CameraScanService>();
 builder.Services.AddScoped<ICameraSubnetDetector, CameraSubnetDetector>();
