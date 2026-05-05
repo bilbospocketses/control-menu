@@ -13,5 +13,10 @@ public class Camera
     public bool IsOnvif { get; set; }
     public bool Enabled { get; set; } = true;
     public DateTime? LastSeen { get; set; }
-    public string? Metadata { get; set; }
+    public string? MacAddress { get; set; }
+    public int? CameraNumber { get; set; }
+    public string? FirmwareVersion { get; set; }
+    public string? SerialNumber { get; set; }
+    public string? HardwareId { get; set; }
+    public string? FirmwareBuildDate { get; set; }
 }

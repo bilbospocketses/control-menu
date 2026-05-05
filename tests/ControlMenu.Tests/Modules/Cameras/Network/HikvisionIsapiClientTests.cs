@@ -38,7 +38,9 @@ public class HikvisionIsapiClientTests
               <model>CMIP7352W</model>
               <serialNumber>CMIP7352W20170428AAWR756864499</serialNumber>
               <firmwareVersion>V5.6.2</firmwareVersion>
+              <firmwareReleasedDate>build 211202</firmwareReleasedDate>
               <macAddress>14:2f:fd:02:1a:36</macAddress>
+              <telecontrolID>1</telecontrolID>
             </DeviceInfo>
             """;
         var (sut, _) = CreateClient(new HttpResponseMessage(HttpStatusCode.OK)
@@ -53,6 +55,22 @@ public class HikvisionIsapiClientTests
         Assert.Equal("CMIP7352W", info.Model);
         Assert.Equal("CMIP7352W20170428AAWR756864499", info.SerialNumber);
         Assert.Equal("V5.6.2", info.FirmwareVersion);
+        Assert.Equal("14-2f-fd-02-1a-36", info.MacAddress);
+        Assert.Equal(1, info.TelecontrolId);
+        Assert.Equal("build 211202", info.FirmwareBuildDate);
+    }
+
+    [Fact]
+    public async Task GetDeviceInfoAsync_ReturnsRecordWithNulls_WhenFieldsMissing()
+    {
+        var xml = "<DeviceInfo><deviceName>Cam</deviceName></DeviceInfo>";
+        var (sut, _) = CreateClient(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(xml) });
+        var info = await sut.GetDeviceInfoAsync("192.168.86.10", 80, "u", "p", default);
+        Assert.NotNull(info);
+        Assert.Equal("Cam", info.DeviceName);
+        Assert.Null(info.MacAddress);
+        Assert.Null(info.TelecontrolId);
+        Assert.Null(info.FirmwareBuildDate);
     }
 
     [Fact]

@@ -1,7 +1,6 @@
 @using ControlMenu.Modules.Cameras.Network
 @using ControlMenu.Modules.Cameras.Entities
 @using ControlMenu.Modules.Cameras.Services
-@using System.Text.Json
 @inject ICameraScanService ScanService
 @inject IOnvifClient OnvifClient
 @inject ICameraService CameraService
@@ -249,36 +248,45 @@ else
                 throw new InvalidOperationException("No media profiles returned");
             var streamUri = await OnvifClient.GetStreamUriAsync(hit.OnvifServiceUrl!, profiles[0].Token, user, pass, default);
 
-            CameraDeviceInfo? deviceInfo = null;
+            string? firmwareVersion = null;
+            string? serialNumber = null;
+            string? hardwareId = null;
             try
             {
                 var info = await OnvifClient.GetDeviceInformationAsync(hit.OnvifServiceUrl!, user, pass, default);
-                deviceInfo = new CameraDeviceInfo(info.FirmwareVersion, info.SerialNumber, info.HardwareId);
+                firmwareVersion = info.FirmwareVersion;
+                serialNumber = info.SerialNumber;
+                hardwareId = info.HardwareId;
             }
             catch (Exception)
             {
-                // Non-fatal — proceed without metadata
+                // Best-effort. Some firmware rejects this verb; proceed without it.
             }
 
             var name = GetName(hit);
             if (string.IsNullOrWhiteSpace(name)) name = DefaultNameFor(hit);
 
-            // Hikvision/LTS: fetch user-set Device Name from proprietary ISAPI
-            // (standard ONVIF doesn't expose it). Override our name auto-fill ONLY if
-            // the user hasn't manually edited the row's Name field.
-            if (!IsNameUserOverridden(hit) && IsHikvisionLike(hit.Manufacturer))
+            string? macAddress = hit.MacAddress;
+            int? cameraNumber = null;
+            string? firmwareBuildDate = null;
+
+            if (IsHikvisionLike(hit.Manufacturer))
             {
                 try
                 {
                     var onvifUri = new Uri(hit.OnvifServiceUrl!);
                     var hik = await HikvisionClient.GetDeviceInfoAsync(
                         onvifUri.Host, onvifUri.Port == -1 ? 80 : onvifUri.Port, user, pass, default);
-                    if (!string.IsNullOrWhiteSpace(hik?.DeviceName))
+                    if (hik is not null)
                     {
-                        name = hik.DeviceName;
+                        if (!string.IsNullOrWhiteSpace(hik.MacAddress)) macAddress = hik.MacAddress;
+                        cameraNumber = hik.TelecontrolId;
+                        firmwareBuildDate = hik.FirmwareBuildDate;
+                        if (!IsNameUserOverridden(hit) && !string.IsNullOrWhiteSpace(hik.DeviceName))
+                            name = hik.DeviceName;
                     }
                 }
-                catch { /* best-effort, swallow */ }
+                catch { /* best-effort */ }
             }
 
             var cam = new Camera
@@ -292,7 +300,12 @@ else
                 OnvifServiceUrl = hit.OnvifServiceUrl,
                 IsOnvif = true,
                 Enabled = true,
-                Metadata = deviceInfo is not null ? JsonSerializer.Serialize(deviceInfo) : null,
+                MacAddress = macAddress,
+                CameraNumber = cameraNumber,
+                FirmwareVersion = firmwareVersion,
+                SerialNumber = serialNumber,
+                HardwareId = hardwareId,
+                FirmwareBuildDate = firmwareBuildDate,
             };
             await CameraService.AddAsync(cam, user, pass);
             _hits.Remove(hit);

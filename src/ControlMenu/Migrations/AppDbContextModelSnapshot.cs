@@ -182,8 +182,20 @@ namespace ControlMenu.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("CameraNumber")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("Enabled")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("FirmwareBuildDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FirmwareVersion")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HardwareId")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("IpAddress")
                         .IsRequired()
@@ -195,10 +207,10 @@ namespace ControlMenu.Migrations
                     b.Property<DateTime?>("LastSeen")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Manufacturer")
+                    b.Property<string>("MacAddress")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Metadata")
+                    b.Property<string>("Manufacturer")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Model")
@@ -215,6 +227,9 @@ namespace ControlMenu.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("RtspStreamUrl")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SerialNumber")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");

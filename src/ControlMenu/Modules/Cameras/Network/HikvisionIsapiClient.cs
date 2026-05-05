@@ -45,19 +45,28 @@ public class HikvisionIsapiClient : IHikvisionIsapiClient
         try
         {
             var doc = XDocument.Parse(xml);
-            // Hikvision sometimes namespaces the response, sometimes not.
-            // Match by LocalName to handle both.
             var root = doc.Root;
             if (root is null) return null;
 
             string? Get(string localName) =>
                 root.Elements().FirstOrDefault(e => e.Name.LocalName.Equals(localName, StringComparison.OrdinalIgnoreCase))?.Value;
 
+            // Hikvision ISAPI returns MAC with colons (e.g., 14:2f:fd:02:1a:36).
+            // Project convention is dashes (matches Device.MacAddress storage).
+            var rawMac = Get("macAddress");
+            var normalizedMac = string.IsNullOrEmpty(rawMac) ? null : rawMac.Replace(':', '-').ToLowerInvariant();
+
+            var rawTelecontrol = Get("telecontrolID");
+            var telecontrolId = int.TryParse(rawTelecontrol, out var n) ? n : (int?)null;
+
             return new HikvisionDeviceInfo(
                 DeviceName: Get("deviceName"),
                 Model: Get("model"),
                 SerialNumber: Get("serialNumber"),
-                FirmwareVersion: Get("firmwareVersion"));
+                FirmwareVersion: Get("firmwareVersion"),
+                MacAddress: normalizedMac,
+                TelecontrolId: telecontrolId,
+                FirmwareBuildDate: Get("firmwareReleasedDate"));
         }
         catch
         {

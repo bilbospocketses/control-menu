@@ -38,14 +38,15 @@
         <table class="data-table data-table-fixed">
             <thead>
                 <tr>
-                    <th style="width:60px;">Status</th>
-                    <th>Name</th>
-                    <th style="width:160px;">Address</th>
-                    <th>Mfr / Model</th>
-                    <th style="width:70px;">ONVIF</th>
-                    <th style="width:75px;">Enabled</th>
-                    <th style="width:110px;">Last Seen</th>
-                    <th style="width:140px; text-align:right;">Actions</th>
+                    <th>STATUS</th>
+                    <th>CAM #</th>
+                    <th>NAME</th>
+                    <th>MFR / MODEL</th>
+                    <th>ADDRESS</th>
+                    <th>MAC ADDRESS</th>
+                    <th>ENABLED</th>
+                    <th>LAST SEEN</th>
+                    <th>ACTIONS</th>
                 </tr>
             </thead>
             <tbody>
@@ -53,10 +54,11 @@
                 {
                     <tr>
                         <td><span class="status-dot @GetStatusClass(cam)"></span></td>
+                        <td>@(cam.CameraNumber?.ToString() ?? "—")</td>
                         <td>@cam.Name</td>
-                        <td>@cam.IpAddress:@cam.Port</td>
                         <td>@(cam.Manufacturer ?? "—") @(cam.Model ?? "")</td>
-                        <td>@(cam.IsOnvif ? "✓" : "✗")</td>
+                        <td>@cam.IpAddress:@cam.Port</td>
+                        <td>@(cam.MacAddress ?? "—")</td>
                         <td>
                             <input type="checkbox" checked="@cam.Enabled"
                                    @onchange="@(e => ToggleEnabled(cam, e))" />
@@ -152,7 +154,10 @@
     private async Task RefreshCamerasAsync()
     {
         var fresh = await CameraService.GetAllAsync();
-        _cameras = fresh.ToList();
+        _cameras = fresh
+            .OrderBy(c => c.CameraNumber ?? int.MaxValue)
+            .ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
         await InvokeAsync(StateHasChanged);
     }
 
