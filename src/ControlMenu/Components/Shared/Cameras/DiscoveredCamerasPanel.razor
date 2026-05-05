@@ -12,6 +12,19 @@
 }
 else
 {
+    @if (HasOnvifRows)
+    {
+        <section class="bulk-creds">
+            <p>All cameras use the same credentials? Enter once and submit to add all discovered ONVIF cameras.</p>
+            <div class="bulk-form">
+                <input type="text" placeholder="username" @bind="_bulkUser" />
+                <input type="password" placeholder="password" @bind="_bulkPass" />
+                <button @onclick="@AddAllOnvifAsync" disabled="@_bulkBusy">@BulkButtonLabel</button>
+            </div>
+            @if (_bulkError is not null) { <div class="hit-error">⚠ @_bulkError</div> }
+        </section>
+    }
+
     <ul class="discovered-list">
         @foreach (var hit in _hits)
         {
@@ -68,6 +81,54 @@ else
     private readonly Dictionary<string, string> _errors = new();
     private readonly HashSet<string> _busy = new();
     private CameraScanHit? _tcpModalHit;
+
+    private string _bulkUser = "";
+    private string _bulkPass = "";
+    private bool _bulkBusy;
+    private int _bulkProgress;
+    private int _bulkTotal;
+    private string? _bulkError;
+
+    private bool HasOnvifRows => _hits.Any(h => h.IsOnvif);
+
+    private string BulkButtonLabel
+    {
+        get
+        {
+            if (_bulkBusy) return $"Adding... ({_bulkProgress}/{_bulkTotal})";
+            var n = _hits.Count(h => h.IsOnvif);
+            return $"Add all ({n})";
+        }
+    }
+
+    private async Task AddAllOnvifAsync()
+    {
+        _bulkError = null;
+        if (string.IsNullOrEmpty(_bulkUser) && string.IsNullOrEmpty(_bulkPass))
+        {
+            _bulkError = "Enter username and password";
+            return;
+        }
+
+        var snapshot = _hits.Where(h => h.IsOnvif).ToList();
+        _bulkTotal = snapshot.Count;
+        _bulkProgress = 0;
+        _bulkBusy = true;
+        StateHasChanged();
+
+        foreach (var hit in snapshot)
+        {
+            // Pre-populate per-row inputs so AddOnvifAsync uses the bulk creds
+            _userInputs[hit.IpAddress] = _bulkUser;
+            _passInputs[hit.IpAddress] = _bulkPass;
+            await AddOnvifAsync(hit);
+            _bulkProgress++;
+            StateHasChanged();
+        }
+
+        _bulkBusy = false;
+        StateHasChanged();
+    }
 
     protected override void OnInitialized()
     {
