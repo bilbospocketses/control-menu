@@ -143,7 +143,7 @@
     </div>
 
     <SettingsGrid>
-        <SettingsGridCell>
+        <SettingsGridCell FullRow="true">
             <Label>ws-scrcpy-web URL</Label>
             <ChildContent>
                 <input class="form-control"
@@ -154,9 +154,7 @@
             <Hint>e.g. <code>http://localhost:8000</code> or <code>http://ws-scrcpy:8000</code>. Restart the app after changing.</Hint>
         </SettingsGridCell>
 
-        <SettingsGridCell />
-
-        <SettingsGridCell>
+        <SettingsGridCell FullRow="true">
             <Label>Docker executable path</Label>
             <ChildContent>
                 <input class="form-control"
@@ -166,8 +164,6 @@
             </ChildContent>
             <Hint>Directory containing <code>docker.exe</code>. Used by Dependencies version probe. Leave blank if Docker is not installed.</Hint>
         </SettingsGridCell>
-
-        <SettingsGridCell />
     </SettingsGrid>
 </SettingsSection>
 
