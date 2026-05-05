@@ -71,6 +71,7 @@ builder.Services.AddScoped<IScanLifecycleHandler, ScanLifecycleHandler>();
 builder.Services.AddScoped<SubnetDetectionClient>();
 
 // Jellyfin module services
+builder.Services.AddScoped<IJellyfinDirectoryResolver, JellyfinDirectoryResolver>();
 builder.Services.AddScoped<IJellyfinService, JellyfinService>();
 builder.Services.AddScoped<IBackgroundJobService, BackgroundJobService>();
 

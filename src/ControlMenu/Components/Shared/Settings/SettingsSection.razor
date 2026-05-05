@@ -1,0 +1,9 @@
+<div class="settings-section-card">
+    <div class="settings-section-title">@Title</div>
+    @ChildContent
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

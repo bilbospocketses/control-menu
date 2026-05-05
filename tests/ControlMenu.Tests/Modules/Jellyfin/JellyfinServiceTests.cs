@@ -10,14 +10,17 @@ public class JellyfinServiceTests
     private readonly Mock<IConfigurationService> _mockConfig = new();
     private readonly Mock<IHttpClientFactory> _mockHttpFactory = new();
     private readonly Mock<IDependencyPathResolver> _mockResolver = new();
+    private readonly Mock<IJellyfinDirectoryResolver> _mockDirectoryResolver = new();
 
     public JellyfinServiceTests()
     {
         _mockResolver.Setup(r => r.ResolveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((string _, string name, CancellationToken _) => name);
+        _mockDirectoryResolver.Setup(r => r.GetBackupDirectoryAsync())
+            .ReturnsAsync(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
     }
 
-    private JellyfinService CreateService() => new(_mockExecutor.Object, _mockConfig.Object, _mockHttpFactory.Object, _mockResolver.Object);
+    private JellyfinService CreateService() => new(_mockExecutor.Object, _mockConfig.Object, _mockHttpFactory.Object, _mockResolver.Object, _mockDirectoryResolver.Object);
 
     [Fact]
     public async Task GetContainerIdAsync_ParsesDockerPsOutput()
@@ -109,15 +112,16 @@ public class JellyfinServiceTests
     [Fact]
     public async Task CleanupOldBackupsAsync_RemovesOldFiles()
     {
-        // Backup dir is now derived from runtime (OperationLogger.GetBackupDirectory),
-        // not stored in settings. Test against the real runtime path with unique
-        // filenames to avoid cross-test contamination.
-        var backupDir = OperationLogger.GetBackupDirectory();
+        var backupDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        _mockDirectoryResolver.Setup(r => r.GetBackupDirectoryAsync())
+            .ReturnsAsync(backupDir);
+
         var testTag = Guid.NewGuid().ToString("N");
         var oldFile = Path.Combine(backupDir, $"jellyfin_testold_{testTag}.db");
         var newFile = Path.Combine(backupDir, $"jellyfin_testnew_{testTag}.db");
         try
         {
+            Directory.CreateDirectory(backupDir);
             File.WriteAllText(oldFile, "old");
             File.SetLastWriteTimeUtc(oldFile, DateTime.UtcNow.AddDays(-10));
             File.WriteAllText(newFile, "new");
@@ -135,6 +139,7 @@ public class JellyfinServiceTests
         {
             if (File.Exists(oldFile)) File.Delete(oldFile);
             if (File.Exists(newFile)) File.Delete(newFile);
+            if (Directory.Exists(backupDir)) Directory.Delete(backupDir);
         }
     }
 }

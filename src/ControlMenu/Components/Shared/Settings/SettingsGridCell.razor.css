@@ -1,0 +1,47 @@
+.settings-grid-cell {
+    padding: 12px 14px;
+    background: var(--surface-recessed);
+    border-top: 1px solid var(--border-color);
+    border-right: 1px solid var(--border-color);
+    transition: background-color 0.12s;
+}
+
+.settings-grid-cell:hover {
+    background-color: var(--hover-bg);
+}
+
+/* Cells in last column lose the right border (handled by sibling positioning).
+   Last visual column always has no right border to match the section card edge. */
+.settings-grid-cell:nth-child(2n) {
+    border-right: none;
+}
+
+/* Full-row cells span both columns; their right border is the section edge */
+.settings-grid-cell-full {
+    grid-column: 1 / -1;
+    border-right: none;
+}
+
+/* First-row cells (top row of the grid) don't get a top divider */
+.settings-grid-cell:nth-child(-n+2) {
+    border-top: none;
+}
+.settings-grid-cell-full:first-child {
+    border-top: none;
+}
+
+.settings-grid-cell-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.settings-grid-cell-hint {
+    display: block;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}

@@ -8,13 +8,15 @@ public class JellyfinService : IJellyfinService
     private readonly IConfigurationService _config;
     private readonly IHttpClientFactory _httpFactory;
     private readonly IDependencyPathResolver _resolver;
+    private readonly IJellyfinDirectoryResolver _directoryResolver;
 
-    public JellyfinService(ICommandExecutor executor, IConfigurationService config, IHttpClientFactory httpFactory, IDependencyPathResolver resolver)
+    public JellyfinService(ICommandExecutor executor, IConfigurationService config, IHttpClientFactory httpFactory, IDependencyPathResolver resolver, IJellyfinDirectoryResolver directoryResolver)
     {
         _executor = executor;
         _config = config;
         _httpFactory = httpFactory;
         _resolver = resolver;
+        _directoryResolver = directoryResolver;
     }
 
     public async Task<ComposeParseResult> ParseComposeFileAsync(CancellationToken ct = default)
@@ -73,7 +75,8 @@ public class JellyfinService : IJellyfinService
     public async Task<string?> BackupDatabaseAsync(OperationLogger? logger = null, CancellationToken ct = default)
     {
         var dbPath = await _config.GetSettingAsync("jellyfin-db-path");
-        var backupDir = OperationLogger.GetBackupDirectory();
+        var backupDir = await _directoryResolver.GetBackupDirectoryAsync();
+        Directory.CreateDirectory(backupDir);
 
         if (dbPath is null)
         {
@@ -86,8 +89,6 @@ public class JellyfinService : IJellyfinService
             logger?.Fail($"Database file not found: {dbPath}");
             return null;
         }
-
-        Directory.CreateDirectory(backupDir);
         var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
         var backupFileName = $"jellyfin_{timestamp}.db";
         var backupPath = Path.Combine(backupDir, backupFileName);
@@ -127,7 +128,7 @@ public class JellyfinService : IJellyfinService
 
     public async Task CleanupOldBackupsAsync(OperationLogger? logger = null, CancellationToken ct = default)
     {
-        var backupDir = OperationLogger.GetBackupDirectory();
+        var backupDir = await _directoryResolver.GetBackupDirectoryAsync();
         if (!Directory.Exists(backupDir)) return;
 
         var retentionStr = await _config.GetSettingAsync("jellyfin-backup-retention-days");

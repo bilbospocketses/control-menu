@@ -1,102 +1,157 @@
 @using ControlMenu.Services
 @using ControlMenu.Modules.Jellyfin.Services
 
-<div class="settings-section">
-    <h2>Docker Compose</h2>
-    <p>Point Control Menu to your Jellyfin docker-compose.yml to auto-detect container name and database path.</p>
-
-    <div class="form-row" style="display:flex;gap:8px;align-items:center;margin-bottom:1rem;">
-        <label style="white-space:nowrap;">Compose File Path</label>
-        <input type="text" class="form-control" @bind="_composePath" placeholder="e.g., D:\DockerData\jellyfin\docker-compose.yml" style="flex:1;" />
-        <button class="btn btn-primary" @onclick="SaveAndParse" disabled="@_parsing">
-            <i class="bi bi-arrow-repeat"></i> @(_parsing ? "Parsing..." : "Save & Parse")
-        </button>
+<SettingsSection Title="Docker Compose">
+    <div class="settings-section-intro">
+        Point Control Menu to your Jellyfin docker-compose.yml to auto-detect container name and database path.
     </div>
 
-    @if (_parseResult is not null)
-    {
-        @if (_parseResult.ErrorMessage is not null)
-        {
-            <div class="alert alert-danger">
-                <i class="bi bi-exclamation-triangle"></i> @_parseResult.ErrorMessage
-            </div>
-        }
-        else
-        {
-            <table class="data-table" style="max-width:600px;">
-                <tr>
-                    <td><strong>Container Name</strong></td>
-                    <td><code>@(_parseResult.ContainerName ?? "—")</code></td>
-                </tr>
-                <tr>
-                    <td><strong>Database Path</strong></td>
-                    <td><code>@(_parseResult.DbPath ?? "—")</code></td>
-                </tr>
-                <tr>
-                    <td><strong>Backup Directory</strong></td>
-                    <td><code>@OperationLogger.GetBackupDirectory()</code></td>
-                </tr>
-            </table>
-        }
-    }
-</div>
+    <SettingsGrid>
+        <SettingsGridCell FullRow="true">
+            <Label>Compose File Path</Label>
+            <ChildContent>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="text" class="form-control" @bind="_composePath" placeholder="e.g., D:\DockerData\jellyfin\docker-compose.yml" style="flex:1;" />
+                    <button class="btn btn-primary" @onclick="SaveAndParse" disabled="@_parsing">
+                        <i class="bi bi-arrow-repeat"></i> @(_parsing ? "Parsing..." : "Save & Parse")
+                    </button>
+                </div>
 
-<div class="settings-section" style="margin-top:2rem;">
-    <h2>Jellyfin API</h2>
-    <div class="form-group">
-        <label>Base URL</label>
-        <input class="form-control" style="max-width:300px;" value="@_baseUrl"
-               placeholder="http://127.0.0.1:8096" @onchange="SaveBaseUrl" />
-    </div>
-    <div class="form-group">
-        <label>API Key</label>
-        <input type="password" class="form-control" style="max-width:300px;" value="@_apiKey"
-               @onchange="SaveApiKey" />
-    </div>
-    <div class="form-group">
-        <label>User ID</label>
-        <input class="form-control" style="max-width:300px;" value="@_userId"
-               @onchange="SaveUserId" />
-        <div class="form-hint">Jellyfin user ID for API calls (used by Cast & Crew updates).</div>
-    </div>
-</div>
+                @if (_parseResult is not null)
+                {
+                    @if (_parseResult.ErrorMessage is not null)
+                    {
+                        <div class="alert alert-danger" style="margin-top:8px;">
+                            <i class="bi bi-exclamation-triangle"></i> @_parseResult.ErrorMessage
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="data-table" style="max-width:600px;margin-top:8px;">
+                            <tr>
+                                <td><strong>Container Name</strong></td>
+                                <td><code>@(_parseResult.ContainerName ?? "—")</code></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Database Path</strong></td>
+                                <td><code>@(_parseResult.DbPath ?? "—")</code></td>
+                            </tr>
+                        </table>
+                    }
+                }
+            </ChildContent>
+        </SettingsGridCell>
+    </SettingsGrid>
+</SettingsSection>
 
-<div class="settings-section" style="margin-top:2rem;">
-    <h2>Backup &amp; Retention</h2>
-    <div style="display:flex;gap:8px;align-items:center;">
-        <label>Keep backups for</label>
-        <input type="number" class="form-control" @bind="_retentionDays" min="1" max="365" style="width:80px;" />
-        <span>days</span>
-        <button class="btn btn-secondary" @onclick="SaveRetention" style="margin-left:8px;">Save</button>
-    </div>
-</div>
+<SettingsSection Title="Jellyfin API">
+    <SettingsGrid>
+        <SettingsGridCell>
+            <Label>Base URL</Label>
+            <ChildContent>
+                <input class="form-control" @bind="_baseUrl" placeholder="http://127.0.0.1:8096" />
+            </ChildContent>
+        </SettingsGridCell>
 
-<div class="settings-section" style="margin-top:2rem;">
-    <h2>Cast &amp; Crew Notifications</h2>
-    <div class="form-group">
-        <label>Notification Email</label>
-        <input type="email" class="form-control" style="max-width:300px;" value="@_castCrewEmail"
-               placeholder="Uses default from General if blank"
-               @onchange="SaveCastCrewEmail" />
-        <div class="form-hint">Receives completion alerts for Cast & Crew updates. Leave blank to use the default notification email from General settings.</div>
-    </div>
-</div>
+        <SettingsGridCell>
+            <Label>API Key</Label>
+            <ChildContent>
+                <input type="password" class="form-control" @bind="_apiKey" />
+            </ChildContent>
+        </SettingsGridCell>
 
-<div class="settings-section" style="margin-top:2rem;">
-    <h2>Managed Directories</h2>
-    <table class="data-table" style="max-width:600px;">
-        <tr>
-            <td><strong>Backups</strong></td>
-            <td><code>@OperationLogger.GetBackupDirectory()</code></td>
-            <td>@_backupCount files, @FormatSize(_backupSize)</td>
-        </tr>
-        <tr>
-            <td><strong>Logs</strong></td>
-            <td><code>@OperationLogger.GetLogDirectory()</code></td>
-            <td>@_logCount files</td>
-        </tr>
+        <SettingsGridCell>
+            <Label>User ID</Label>
+            <ChildContent>
+                <input class="form-control" @bind="_userId" />
+            </ChildContent>
+            <Hint>Jellyfin user ID for API calls (used by Cast &amp; Crew updates).</Hint>
+        </SettingsGridCell>
+
+        <SettingsGridCell>
+            <ChildContent>
+                <div style="display:flex;justify-content:flex-end;align-items:flex-end;height:100%;">
+                    <button class="btn btn-primary" @onclick="SaveJellyfinApi">
+                        <i class="bi bi-floppy"></i> Save Jellyfin API
+                    </button>
+                </div>
+            </ChildContent>
+        </SettingsGridCell>
+    </SettingsGrid>
+</SettingsSection>
+
+<SettingsSection Title="Logging, Backup &amp; Retention">
+    <table class="data-table settings-section-table" style="width:100%;">
+        <thead>
+            <tr>
+                <th style="text-align:left;width:130px;">Setting</th>
+                <th style="text-align:left;">Value</th>
+                <th style="width:90px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Backups</strong></td>
+                <td>
+                    <input class="form-control" @bind="_backupDirectory" />
+                    <span style="font-size:11px;color:var(--text-secondary);margin-top:4px;display:block;">@_backupCount files, @FormatSize(_backupSize)</span>
+                </td>
+                <td>
+                    <button class="btn btn-primary" @onclick="SaveBackupDirectory">
+                        <i class="bi bi-floppy"></i> Save
+                    </button>
+                </td>
+            </tr>
+            <tr>
+                <td><strong>Logs</strong></td>
+                <td>
+                    <input class="form-control" @bind="_logDirectory" />
+                    <span style="font-size:11px;color:var(--text-secondary);margin-top:4px;display:block;">@_logCount files</span>
+                </td>
+                <td>
+                    <button class="btn btn-primary" @onclick="SaveLogDirectory">
+                        <i class="bi bi-floppy"></i> Save
+                    </button>
+                </td>
+            </tr>
+            <tr>
+                <td><strong>Retention</strong></td>
+                <td>
+                    <input type="number" class="form-control" @bind="_retentionDays" min="1" max="365" style="width:120px;display:inline-block;" />
+                    <span style="margin-left:8px;color:var(--text-secondary);">days</span>
+                </td>
+                <td>
+                    <button class="btn btn-primary" @onclick="SaveRetention">
+                        <i class="bi bi-floppy"></i> Save
+                    </button>
+                </td>
+            </tr>
+        </tbody>
     </table>
-</div>
+</SettingsSection>
+
+<SettingsSection Title="Cast &amp; Crew Notifications">
+    <SettingsGrid>
+        <SettingsGridCell>
+            <Label>Notification Email</Label>
+            <ChildContent>
+                <input type="email" class="form-control" @bind="_castCrewEmail"
+                       placeholder="Uses default from General if blank" />
+            </ChildContent>
+            <Hint>Receives completion alerts for Cast &amp; Crew updates. Leave blank to use the default notification email from General settings.</Hint>
+        </SettingsGridCell>
+
+        <SettingsGridCell>
+            <ChildContent>
+                <div style="display:flex;justify-content:flex-end;align-items:flex-end;height:100%;">
+                    <button class="btn btn-primary" @onclick="SaveCastCrewEmail">
+                        <i class="bi bi-floppy"></i> Save Notification Email
+                    </button>
+                </div>
+            </ChildContent>
+        </SettingsGridCell>
+    </SettingsGrid>
+</SettingsSection>
 
 @if (!string.IsNullOrEmpty(_message))
 {
@@ -108,6 +163,7 @@
 @code {
     [Inject] private IConfigurationService Config { get; set; } = default!;
     [Inject] private IJellyfinService JellyfinService { get; set; } = default!;
+    [Inject] private IJellyfinDirectoryResolver DirectoryResolver { get; set; } = default!;
 
     private string _composePath = "";
     private string _baseUrl = "";
@@ -115,6 +171,8 @@
     private string _userId = "";
     private string _castCrewEmail = "";
     private int _retentionDays = 5;
+    private string _backupDirectory = "";
+    private string _logDirectory = "";
     private bool _parsing;
     private ComposeParseResult? _parseResult;
     private string? _message;
@@ -132,6 +190,8 @@
         _castCrewEmail = await Config.GetSettingAsync("jellyfin-castcrew-notify-email") ?? "";
         var retStr = await Config.GetSettingAsync("jellyfin-backup-retention-days");
         _retentionDays = int.TryParse(retStr, out var d) ? d : 5;
+        _backupDirectory = await DirectoryResolver.GetBackupDirectoryAsync();
+        _logDirectory = await DirectoryResolver.GetLogDirectoryAsync();
 
         RefreshDirectoryStats();
 
@@ -157,40 +217,27 @@
         _parsing = false;
     }
 
-    private async Task SaveBaseUrl(ChangeEventArgs e)
+    private async Task SaveJellyfinApi()
     {
-        _baseUrl = e.Value?.ToString() ?? "";
         await Config.SetSettingAsync("jellyfin-base-url", _baseUrl);
-        ShowMessage("Saved.", false);
-    }
 
-    private async Task SaveApiKey(ChangeEventArgs e)
-    {
-        _apiKey = e.Value?.ToString() ?? "";
         if (!string.IsNullOrEmpty(_apiKey))
         {
             await Config.SetSecretAsync("jellyfin-api-key", _apiKey);
-            ShowMessage("Saved.", false);
         }
         else
         {
             await Config.DeleteSettingAsync("jellyfin-api-key");
-            ShowMessage("API key cleared.", false);
         }
-    }
 
-    private async Task SaveUserId(ChangeEventArgs e)
-    {
-        _userId = e.Value?.ToString() ?? "";
         await Config.SetSettingAsync("jellyfin-user-id", _userId);
-        ShowMessage("Saved.", false);
+        ShowMessage("Jellyfin API saved.", false);
     }
 
-    private async Task SaveCastCrewEmail(ChangeEventArgs e)
+    private async Task SaveCastCrewEmail()
     {
-        _castCrewEmail = e.Value?.ToString() ?? "";
         await Config.SetSettingAsync("jellyfin-castcrew-notify-email", _castCrewEmail);
-        ShowMessage("Saved.", false);
+        ShowMessage("Notification email saved.", false);
     }
 
     private async Task SaveRetention()
@@ -199,21 +246,97 @@
         ShowMessage($"Backup retention set to {_retentionDays} days.", false);
     }
 
-    private void RefreshDirectoryStats()
+    private async Task SaveBackupDirectory()
     {
-        var backupDir = OperationLogger.GetBackupDirectory();
+        var newPath = (_backupDirectory ?? "").Trim();
+        if (string.IsNullOrEmpty(newPath))
+        {
+            ShowMessage("Backup directory cannot be empty.", true);
+            return;
+        }
+
+        var oldPath = await DirectoryResolver.GetBackupDirectoryAsync();
+        if (string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase))
+        {
+            ShowMessage("Backups path saved.", false);
+            return;
+        }
+
+        var migration = await DirectoryResolver.MigrateFilesAsync(oldPath, newPath, "*.db");
+        if (!migration.Success)
+        {
+            ShowMessage($"Could not save: {migration.ErrorMessage}", true);
+            return;
+        }
+
+        await Config.SetSettingAsync("jellyfin-backup-directory", newPath);
+        RefreshDirectoryStats();
+        ShowMessage(BuildMigrationMessage("Backups", migration), migration.FailedCount > 0);
+    }
+
+    private async Task SaveLogDirectory()
+    {
+        var newPath = (_logDirectory ?? "").Trim();
+        if (string.IsNullOrEmpty(newPath))
+        {
+            ShowMessage("Log directory cannot be empty.", true);
+            return;
+        }
+
+        var oldPath = await DirectoryResolver.GetLogDirectoryAsync();
+        if (string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase))
+        {
+            ShowMessage("Logs path saved.", false);
+            return;
+        }
+
+        var migration = await DirectoryResolver.MigrateFilesAsync(oldPath, newPath, "*.log");
+        if (!migration.Success)
+        {
+            ShowMessage($"Could not save: {migration.ErrorMessage}", true);
+            return;
+        }
+
+        await Config.SetSettingAsync("jellyfin-log-directory", newPath);
+        RefreshDirectoryStats();
+        ShowMessage(BuildMigrationMessage("Logs", migration), migration.FailedCount > 0);
+    }
+
+    private static string BuildMigrationMessage(string label, DirectoryMigrationResult result)
+    {
+        if (result.MovedCount == 0 && result.FailedCount == 0)
+            return $"{label} path saved.";
+        if (result.FailedCount == 0)
+            return $"{label} path saved. Moved {result.MovedCount} files.";
+        return $"{label} path saved. Moved {result.MovedCount} files; {result.FailedCount} could not be moved (in use): {string.Join(", ", result.FailedFiles)}. Retry the Save to migrate them.";
+    }
+
+    private async void RefreshDirectoryStats()
+    {
+        var backupDir = await DirectoryResolver.GetBackupDirectoryAsync();
         if (Directory.Exists(backupDir))
         {
             var files = Directory.GetFiles(backupDir, "*.db");
             _backupCount = files.Length;
             _backupSize = files.Sum(f => new FileInfo(f).Length);
         }
+        else
+        {
+            _backupCount = 0;
+            _backupSize = 0;
+        }
 
-        var logDir = OperationLogger.GetLogDirectory();
+        var logDir = await DirectoryResolver.GetLogDirectoryAsync();
         if (Directory.Exists(logDir))
         {
             _logCount = Directory.GetFiles(logDir, "*.log").Length;
         }
+        else
+        {
+            _logCount = 0;
+        }
+
+        StateHasChanged();
     }
 
     private void ShowMessage(string msg, bool isError)
