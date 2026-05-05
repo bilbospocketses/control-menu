@@ -50,12 +50,12 @@
                 @foreach (var dep in _sortedDependencies)
                 {
                     var isConfigurable = DepManager.IsConfigurable(dep.Name, dep.ModuleId);
-                    var isExternallyConfigured = dep.Name == "docker" || dep.Name == "ws-scrcpy-web";
+                    var isExternallyConfigured = IsExternallyConfigured(dep.Name);
                     <tr>
                         <td><strong>@dep.Name</strong></td>
                         <td>@dep.ModuleId</td>
-                        <td><code>@(dep.InstalledVersion ?? "—")</code></td>
-                        <td><code>@(dep.LatestKnownVersion ?? "—")</code></td>
+                        <td><code>@(string.IsNullOrEmpty(dep.InstalledVersion) ? "—" : dep.InstalledVersion)</code></td>
+                        <td><code>@(string.IsNullOrEmpty(dep.LatestKnownVersion) ? "—" : dep.LatestKnownVersion)</code></td>
                         <td><span class="status-badge @GetStatusClass(dep.Status)">@FormatStatus(dep.Status)</span></td>
                         <td>
                             @if (isExternallyConfigured)
@@ -182,9 +182,10 @@
         _updatableCount = _dependencies.Count(d =>
             d.Status == DependencyStatus.UpdateAvailable && _hasInstallPath.Contains(d.Name));
 
-        // Sort: external (docker, ws-scrcpy-web) at top, managed at bottom
+        // Sort: docker + ws-scrcpy-web (externally configured on General Settings) first,
+        // alphabetized; everything else follows alphabetically.
         _sortedDependencies = _dependencies
-            .OrderBy(d => DepManager.IsConfigurable(d.Name, d.ModuleId) ? 1 : 0)
+            .OrderBy(d => IsExternallyConfigured(d.Name) ? 0 : 1)
             .ThenBy(d => d.Name)
             .ToList();
 
@@ -339,10 +340,15 @@
 
     private string GetExternalPathDisplay(string depName) => depName switch
     {
-        "docker" => string.IsNullOrEmpty(_dockerPath) ? "Not configured (set in General Settings)" : _dockerPath,
+        "docker" => string.IsNullOrEmpty(_dockerPath)
+            ? "Not configured (set in General Settings)"
+            : $"External: {_dockerPath}",
         "ws-scrcpy-web" => $"External: {_wsscrcpyUrl}",
         _ => "External"
     };
+
+    private static bool IsExternallyConfigured(string name) =>
+        name == "docker" || name == "ws-scrcpy-web";
 
     private static string GetStatusClass(DependencyStatus status) => status switch
     {
