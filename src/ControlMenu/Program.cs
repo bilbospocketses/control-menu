@@ -99,8 +99,10 @@ builder.Services.AddHostedService(sp => (Go2RtcService)sp.GetRequiredService<IGo
 
 // Dependency management
 builder.Services.AddHttpClient();
-builder.Services.AddHttpClient("github-api");
-builder.Services.AddHttpClient("dependency-updates");
+builder.Services.AddHttpClient("github-api", c =>
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("ControlMenu"));
+builder.Services.AddHttpClient("dependency-updates", c =>
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("ControlMenu"));
 builder.Services.AddScoped<IDependencyManagerService>(sp =>
 {
     var dbFactory = sp.GetRequiredService<IDbContextFactory<AppDbContext>>();
