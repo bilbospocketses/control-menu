@@ -135,38 +135,39 @@
     </SettingsGrid>
 </SettingsSection>
 
-<SettingsSection Title="ws-scrcpy-web deployment">
+<SettingsSection Title="External Dependencies">
+    <div class="settings-section-intro">
+        Configure the URL to a running ws-scrcpy-web instance and the path to your Docker executable.
+        Note: scanning features (camera ONVIF discovery, Android device mDNS) require ws-scrcpy-web
+        to be running before they work — start it before using a scanner.
+    </div>
+
     <SettingsGrid>
         <SettingsGridCell>
-            <Label>Deployment Mode</Label>
-            <ChildContent>
-                <div class="radio-group" style="display:flex;flex-direction:column;gap:8px;">
-                    <label style="display:block;">
-                        <input type="radio" name="wsscrcpyMode" value="managed"
-                               checked="@(_wsscrcpyMode == "managed")"
-                               @onchange="SetModeManaged" />
-                        <strong>Managed</strong> — Control Menu spawns and watches the node process on port 8000.
-                    </label>
-                    <label style="display:block;">
-                        <input type="radio" name="wsscrcpyMode" value="external"
-                               checked="@(_wsscrcpyMode == "external")"
-                               @onchange="SetModeExternal" />
-                        <strong>External</strong> — Connect to a running ws-scrcpy-web at the External URL.
-                    </label>
-                </div>
-            </ChildContent>
-        </SettingsGridCell>
-
-        <SettingsGridCell>
-            <Label>External URL</Label>
+            <Label>ws-scrcpy-web URL</Label>
             <ChildContent>
                 <input class="form-control"
                        @bind="_wsscrcpyUrl" @bind:event="onchange"
-                       @onblur="SaveUrl"
-                       disabled="@(_wsscrcpyMode != "external")" />
+                       @onblur="SaveWsScrcpyUrl"
+                       placeholder="http://localhost:8000" />
             </ChildContent>
-            <Hint>e.g. <code>http://localhost:8000</code> or <code>http://ws-scrcpy:8000</code>. Disabled until External mode is selected.</Hint>
+            <Hint>e.g. <code>http://localhost:8000</code> or <code>http://ws-scrcpy:8000</code>. Restart the app after changing.</Hint>
         </SettingsGridCell>
+
+        <SettingsGridCell />
+
+        <SettingsGridCell>
+            <Label>Docker executable path</Label>
+            <ChildContent>
+                <input class="form-control"
+                       @bind="_dockerPath" @bind:event="onchange"
+                       @onblur="SaveDockerPath"
+                       placeholder="C:\Program Files\Docker\Docker\resources\bin" />
+            </ChildContent>
+            <Hint>Directory containing <code>docker.exe</code>. Used by Dependencies version probe. Leave blank if Docker is not installed.</Hint>
+        </SettingsGridCell>
+
+        <SettingsGridCell />
     </SettingsGrid>
 </SettingsSection>
 
@@ -189,8 +190,8 @@
     private bool _sendingTest;
     private string? _message;
     private bool _messageIsError;
-    private string _wsscrcpyMode = "managed";
     private string _wsscrcpyUrl = "http://localhost:8000";
+    private string _dockerPath = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -201,8 +202,8 @@
         _smtpPassword = await Config.GetSecretAsync("smtp-password") ?? "";
         _fromEmail = await Config.GetSettingAsync("smtp-from-email") ?? "";
         _notificationEmail = await Config.GetSettingAsync("notification-email") ?? "";
-        _wsscrcpyMode = await Config.GetSettingAsync("wsscrcpy-mode") ?? "managed";
         _wsscrcpyUrl = await Config.GetSettingAsync("wsscrcpy-url") ?? "http://localhost:8000";
+        _dockerPath = await Config.GetSettingAsync("dep-path-docker") ?? "";
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -306,19 +307,25 @@
         Nav.NavigateTo("/", forceLoad: true);
     }
 
-    private Task SetModeManaged() => SetWsScrcpyMode("managed");
-    private Task SetModeExternal() => SetWsScrcpyMode("external");
-
-    private async Task SetWsScrcpyMode(string mode)
-    {
-        _wsscrcpyMode = mode;
-        await Config.SetSettingAsync("wsscrcpy-mode", mode);
-        ShowMessage("Deploy mode saved. Restart to apply.", false);
-    }
-
-    private async Task SaveUrl()
+    private async Task SaveWsScrcpyUrl()
     {
         await Config.SetSettingAsync("wsscrcpy-url", _wsscrcpyUrl);
-        ShowMessage("URL saved. Restart to apply.", false);
+        ShowMessage("ws-scrcpy-web URL saved. Restart to apply.", false);
+    }
+
+    private async Task SaveDockerPath()
+    {
+        var path = (_dockerPath ?? "").Trim();
+        _dockerPath = path;
+        if (string.IsNullOrEmpty(path))
+        {
+            await Config.DeleteSettingAsync("dep-path-docker");
+            ShowMessage("Docker path cleared.", false);
+        }
+        else
+        {
+            await Config.SetSettingAsync("dep-path-docker", path);
+            ShowMessage("Docker path saved.", false);
+        }
     }
 }
