@@ -1,5 +1,4 @@
 using ControlMenu.Services;
-using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
 namespace ControlMenu.Tests.Services;
@@ -7,7 +6,7 @@ namespace ControlMenu.Tests.Services;
 public class NetworkDiscoveryServiceTests
 {
     private readonly Mock<ICommandExecutor> _mockExecutor = new();
-    private NetworkDiscoveryService CreateService() => new(_mockExecutor.Object, NullLogger<NetworkDiscoveryService>.Instance);
+    private NetworkDiscoveryService CreateService() => new(_mockExecutor.Object);
 
     [Fact]
     public async Task GetArpTableAsync_ParsesWindowsOutput()
