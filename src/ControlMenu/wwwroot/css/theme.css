@@ -12,6 +12,7 @@
     --active-bg: rgba(13, 110, 253, 0.1);
     --accent-color: #0d6efd;
     --card-bg: #ffffff;
+    --surface-recessed: #f0f2f5;
     --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     --input-bg: #ffffff;
     --input-border: #ced4da;
@@ -35,6 +36,7 @@
     --active-bg: rgba(16, 185, 129, 0.1);
     --accent-color: #10b981;
     --card-bg: #333333;
+    --surface-recessed: #1f1f1f;
     --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
     --input-bg: #2e2e2e;
     --input-border: #444444;
