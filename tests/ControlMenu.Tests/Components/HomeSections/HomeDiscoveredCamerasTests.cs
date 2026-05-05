@@ -38,16 +38,20 @@ public class HomeDiscoveredCamerasTests : TestContext
     }
 
     [Fact]
-    public void EmptyCold_NoScanRun_RendersNothing()
+    public void EmptyCold_NoScanRun_RendersSectionWithPlaceholder()
     {
         var cut = RenderComponent<HomeDiscoveredCameras>(p => p
             .Add(c => c.HasScanned, false));
 
-        Assert.Empty(cut.FindAll(".home-disc-section"));
+        // Section now ALWAYS renders; empty cold state shows the outlined placeholder card.
+        Assert.Single(cut.FindAll(".home-disc-section"));
+        Assert.Single(cut.FindAll(".home-disc-placeholder"));
+        Assert.Contains("No new cameras discovered", cut.Markup);
+        Assert.Contains("Run a scan to look for cameras on your network", cut.Markup);
     }
 
     [Fact]
-    public void PostScan_RendersHeader_AndDelegatesToDiscoveredCamerasPanel()
+    public void PostScan_EmptyHits_RendersHeaderAndPlaceholder()
     {
         var cut = RenderComponent<HomeDiscoveredCameras>(p => p
             .Add(c => c.HasScanned, true));
@@ -57,6 +61,9 @@ public class HomeDiscoveredCamerasTests : TestContext
         // User feedback overrides earlier spec amendment: red count badge is required.
         var badge = cut.Find(".home-disc-count-cameras");
         Assert.Equal("0", badge.TextContent);
+        // Empty case shows the outlined placeholder card, not the embedded panel.
+        Assert.Single(cut.FindAll(".home-disc-placeholder"));
+        Assert.Contains("No new cameras discovered", cut.Markup);
     }
 
     [Fact]

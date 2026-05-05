@@ -6,16 +6,26 @@
 @inject ICameraChangeNotifier Notifier
 @implements IDisposable
 
-@if (HasScanned)
-{
-    <section class="home-disc-section">
-        <div class="home-disc-header">
-            <span class="home-disc-label">DISCOVERED — CAMERAS</span>
-            <span class="home-disc-count home-disc-count-cameras">@ScanService.Hits.Count</span>
-        </div>
+@* Section ALWAYS renders now: cold and post-scan-empty both show the outlined
+   placeholder card. HasScanned remains a parameter for API symmetry with
+   HomeDiscoveredAndroid (Home.razor still tracks _camerasScanned for the
+   status-line tagline), but no longer keys the section's visibility. *@
+<section class="home-disc-section">
+    <div class="home-disc-header">
+        <span class="home-disc-label">DISCOVERED — CAMERAS</span>
+        <span class="home-disc-count home-disc-count-cameras">@ScanService.Hits.Count</span>
+    </div>
+    @if (ScanService.Hits.Count > 0)
+    {
         <DiscoveredCamerasPanel OnCameraAdded="HandleCameraAdded" />
-    </section>
-}
+    }
+    else
+    {
+        <div class="home-disc-placeholder">
+            No new cameras discovered. Run a scan to look for cameras on your network.
+        </div>
+    }
+</section>
 
 @code {
     [Parameter] public bool HasScanned { get; set; }

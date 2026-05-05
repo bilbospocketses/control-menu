@@ -9,26 +9,29 @@
 @inject IConfigurationService Config
 @implements IDisposable
 
-@if (HasScanned || Handler.Discovered.Count > 0)
-{
-    <section class="home-disc-section">
-        <div class="home-disc-header">
-            <span class="home-disc-label">DISCOVERED — ANDROID</span>
-            <span class="home-disc-count home-disc-count-android">@Handler.Discovered.Count</span>
+@* Section ALWAYS renders now: cold and post-scan-empty both show the outlined
+   placeholder card. HasScanned remains a parameter for API symmetry with
+   HomeDiscoveredCameras (Home.razor still tracks _androidScanned for the
+   status-line tagline), but no longer keys the section's visibility. *@
+<section class="home-disc-section">
+    <div class="home-disc-header">
+        <span class="home-disc-label">DISCOVERED — ANDROID</span>
+        <span class="home-disc-count home-disc-count-android">@Handler.Discovered.Count</span>
+    </div>
+    @if (Handler.Discovered.Count == 0)
+    {
+        <div class="home-disc-placeholder">
+            No Android devices found on the last scan. Run a scan to look for Androids on your network.
         </div>
-        @if (Handler.Discovered.Count == 0)
-        {
-            <p class="home-disc-empty">No Android devices found on the last scan.</p>
-        }
-        else
-        {
-            <DiscoveredPanel Discovered="Handler.Discovered"
-                             Registered="_devices"
-                             OnAdd="HandleInlineAdd"
-                             OnDismiss="HandleDismiss" />
-        }
-    </section>
-}
+    }
+    else
+    {
+        <DiscoveredPanel Discovered="Handler.Discovered"
+                         Registered="_devices"
+                         OnAdd="HandleInlineAdd"
+                         OnDismiss="HandleDismiss" />
+    }
+</section>
 
 @code {
     [Parameter] public bool HasScanned { get; set; }

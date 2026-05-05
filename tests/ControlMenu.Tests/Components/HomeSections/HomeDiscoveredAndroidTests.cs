@@ -36,12 +36,16 @@ public class HomeDiscoveredAndroidTests : TestContext
     }
 
     [Fact]
-    public void EmptyCold_NoScanRun_RendersNothing()
+    public void EmptyCold_NoScanRun_RendersSectionWithPlaceholder()
     {
         var cut = RenderComponent<HomeDiscoveredAndroid>(p => p
             .Add(c => c.HasScanned, false));
 
-        Assert.Empty(cut.FindAll(".home-disc-section"));
+        // Section now ALWAYS renders; empty cold state shows the outlined placeholder card.
+        Assert.Single(cut.FindAll(".home-disc-section"));
+        Assert.Single(cut.FindAll(".home-disc-placeholder"));
+        Assert.Contains("No Android devices found on the last scan", cut.Markup);
+        Assert.Contains("Run a scan to look for Androids on your network", cut.Markup);
     }
 
     [Fact]
@@ -64,12 +68,13 @@ public class HomeDiscoveredAndroidTests : TestContext
     }
 
     [Fact]
-    public void EmptyPostScan_RendersHeaderAndEmptyMessage()
+    public void EmptyPostScan_RendersHeaderAndPlaceholder()
     {
         var cut = RenderComponent<HomeDiscoveredAndroid>(p => p
             .Add(c => c.HasScanned, true));
 
         Assert.Single(cut.FindAll(".home-disc-section"));
-        Assert.Contains("No Android devices found", cut.Markup);
+        Assert.Single(cut.FindAll(".home-disc-placeholder"));
+        Assert.Contains("No Android devices found on the last scan", cut.Markup);
     }
 }
