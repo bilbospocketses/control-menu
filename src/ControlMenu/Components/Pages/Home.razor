@@ -1,5 +1,16 @@
 @page "/"
+@using ControlMenu.Components.Pages.HomeSections
+@using ControlMenu.Modules.AndroidDevices.Services
+@using ControlMenu.Modules.Cameras.Network
 @using ControlMenu.Services
+@using ControlMenu.Services.Network
+@inject IConfigurationService Config
+@inject IAdbService AdbService
+@inject ICameraScanService CameraScanService
+@inject SubnetDetectionClient SubnetDetector
+@inject IScanLifecycleHandler AndroidHandler
+@inject IDeviceChangeNotifier DeviceNotifier
+@inject ICameraChangeNotifier CameraNotifier
 
 <PageTitle>Control Menu</PageTitle>
 
@@ -9,116 +20,117 @@
 }
 else
 {
-    <div class="home-container">
-        <div class="hero">
-            <img src="/icon-512.png" alt="Control Menu" class="hero-icon" />
-            <h1>Control Menu</h1>
-            <p class="hero-subtitle">Manage your Android devices, media server, and utilities from one place.</p>
-        </div>
-
-        @if (ModuleDiscovery.Modules.Count == 0)
-        {
-            <div class="empty-state">
-                <i class="bi bi-box-seam"></i>
-                <h2>No modules loaded</h2>
-                <p>No modules are currently loaded. Check your configuration or re-run the setup wizard.</p>
-            </div>
-        }
-        else
-        {
-            <div class="module-grid">
-                @foreach (var module in ModuleDiscovery.Modules)
-                {
-                    <div class="module-card">
-                        <div class="module-header">
-                            @if (ModuleImageMap.TryGetValue(module.Id, out var imagePath))
-                            {
-                                <img src="@imagePath" alt="@module.DisplayName" class="module-icon-img" />
-                            }
-                            else
-                            {
-                                <i class="bi @module.Icon module-icon-bi"></i>
-                            }
-                            <h3>@module.DisplayName</h3>
-                        </div>
-                        <div class="module-links">
-                            @foreach (var entry in module.GetNavEntries().OrderBy(e => e.SortOrder))
-                            {
-                                <a href="@entry.Href" class="pill-link">
-                                    @if (entry.Icon is not null)
-                                    {
-                                        @if (entry.Icon.StartsWith("bi-"))
-                                        {
-                                            <i class="bi @entry.Icon"></i>
-                                        }
-                                        else if (entry.Icon.StartsWith("/") || entry.Icon.EndsWith(".svg"))
-                                        {
-                                            <img src="@entry.Icon" alt="" class="pill-icon-img" />
-                                        }
-                                        else
-                                        {
-                                            <span class="pill-emoji">@entry.Icon</span>
-                                        }
-                                    }
-                                    <span>@entry.Title</span>
-                                </a>
-                            }
-                        </div>
-                    </div>
-                }
-
-                <div class="module-card">
-                    <div class="module-header">
-                        <i class="bi bi-gear module-icon-bi"></i>
-                        <h3>Settings</h3>
-                    </div>
-                    <div class="module-links">
-                        <a href="/settings/general" class="pill-link">
-                            <i class="bi bi-sliders"></i>
-                            <span>General</span>
-                        </a>
-                        <a href="/settings/devices" class="pill-link">
-                            <i class="bi bi-phone"></i>
-                            <span>Android Devices</span>
-                        </a>
-                        <a href="/settings/cameras" class="pill-link">
-                            <i class="bi bi-camera-video"></i>
-                            <span>Cameras</span>
-                        </a>
-                        <a href="/settings/jellyfin" class="pill-link">
-                            <i class="bi bi-film"></i>
-                            <span>Jellyfin</span>
-                        </a>
-                        <a href="/settings/dependencies" class="pill-link">
-                            <i class="bi bi-box-seam"></i>
-                            <span>Dependencies</span>
-                        </a>
-                    </div>
+    <div class="home-root">
+        <header class="home-header">
+            <div class="home-brand">
+                <img src="/icon-512.png" alt="Control Menu" class="home-logo" />
+                <div class="home-titles">
+                    <div class="home-title">Control Menu</div>
+                    <div class="home-status">@StatusLine</div>
                 </div>
             </div>
-        }
+            <HomeScanBand AndroidRunning="_androidRunning"
+                          CamerasRunning="_camerasRunning"
+                          AllRunning="_allRunning"
+                          OnScanAndroid="ScanAndroidAsync"
+                          OnScanCameras="ScanCamerasAsync"
+                          OnScanAll="ScanAllAsync" />
+        </header>
+
+        <HomeDiscoveredAndroid HasScanned="_androidScanned" OnDeviceAdded="HandleStatusRefresh" />
+        <HomeDiscoveredCameras HasScanned="_camerasScanned" OnCameraAdded="HandleStatusRefresh" />
+        <HomeModuleTiles />
     </div>
 }
 
 @code {
-    [Inject]
-    private ModuleDiscoveryService ModuleDiscovery { get; set; } = default!;
-
-    [Inject]
-    private IConfigurationService Config { get; set; } = default!;
-
     private bool _setupDone = true;
-
-    private static readonly Dictionary<string, string> ModuleImageMap = new()
-    {
-        ["android-devices"] = "/images/android-logo.svg",
-        ["jellyfin"] = "/images/jellyfin-logo.svg"
-    };
+    private bool _androidScanned;
+    private bool _camerasScanned;
+    private bool _androidRunning;
+    private bool _camerasRunning;
+    private bool _allRunning;
+    private DateTime? _lastScanUtc;
 
     protected override async Task OnInitializedAsync()
     {
         var flag = await Config.GetSettingAsync("setup-completed");
-        if (flag != "true")
-            _setupDone = false;
+        if (flag != "true") _setupDone = false;
+    }
+
+    private string StatusLine
+    {
+        get
+        {
+            if (!_androidScanned && !_camerasScanned)
+                return "Find devices and cameras on your network, then manage them.";
+            var ago = _lastScanUtc.HasValue
+                ? $" · last scan {(DateTime.UtcNow - _lastScanUtc.Value).TotalSeconds:F0}s ago"
+                : "";
+            return $"{AndroidHandler.Discovered.Count} Android discovered{ago}";
+        }
+    }
+
+    private async Task ScanAndroidAsync()
+    {
+        if (_androidRunning) return;
+        _androidRunning = true;
+        StateHasChanged();
+        try { await AdbService.ScanMdnsAsync(); }
+        finally
+        {
+            _androidRunning = false;
+            _androidScanned = true;
+            _lastScanUtc = DateTime.UtcNow;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ScanCamerasAsync()
+    {
+        if (_camerasRunning) return;
+        _camerasRunning = true;
+        StateHasChanged();
+        try
+        {
+            // Mirror CameraSettings.QuickScan: detect subnet, parse, then run ONVIF-only scan.
+            var detected = await SubnetDetector.DetectAsync();
+            if (detected is not null)
+            {
+                var parseResult = SubnetParser.Parse(detected.Cidr);
+                if (parseResult.IsSuccess && parseResult.Value is not null)
+                {
+                    await CameraScanService.StartOnvifOnlyScanAsync(new[] { parseResult.Value });
+                }
+            }
+        }
+        finally
+        {
+            _camerasRunning = false;
+            _camerasScanned = true;
+            _lastScanUtc = DateTime.UtcNow;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ScanAllAsync()
+    {
+        if (_allRunning) return;
+        _allRunning = true;
+        StateHasChanged();
+        var androidTask = _androidRunning ? Task.CompletedTask : ScanAndroidAsync();
+        var camerasTask = _camerasRunning ? Task.CompletedTask : ScanCamerasAsync();
+        try { await Task.WhenAll(androidTask, camerasTask); }
+        finally
+        {
+            _allRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private Task HandleStatusRefresh()
+    {
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 }

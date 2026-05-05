@@ -1,162 +1,36 @@
-/* Home page — hero + module cards with pill-button navigation */
-
-.home-container {
+/* Home.razor.css — discovery dashboard layout */
+.home-root {
     display: flex;
     flex-direction: column;
+}
+
+.home-header {
+    display: flex;
     align-items: center;
-    padding: 2rem 1.5rem;
-    max-width: 1200px;
-    margin: 0 auto;
+    gap: 0.875rem;
+    padding: 0.875rem 1.5rem;
+    border-bottom: 1px solid var(--border-subtle, #2a2a2a);
 }
 
-/* Hero section */
-.hero {
-    text-align: center;
-    margin-bottom: 2.5rem;
+.home-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    flex: 1;
 }
 
-.hero-icon {
-    width: 120px;
-    height: 120px;
-    margin-bottom: 1rem;
-    border-radius: 1.25rem;
+.home-logo {
+    width: 36px;
+    height: 36px;
+    border-radius: 7px;
 }
 
-.hero h1 {
-    margin: 0 0 0.5rem 0;
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--text-primary);
-}
-
-.hero-subtitle {
-    margin: 0;
+.home-title {
     font-size: 1rem;
-    color: var(--text-secondary, #6c757d);
-}
-
-/* Module grid — equidistant, responsive, room for future cards */
-.module-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-    gap: 1.5rem;
-    width: 100%;
-}
-
-/* Module card */
-.module-card {
-    background: var(--card-bg, #fff);
-    border: 1px solid var(--border-color, #dee2e6);
-    border-radius: 1rem;
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-}
-
-.module-header {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.75rem;
-}
-
-.module-icon-img {
-    width: 26px;
-    height: 26px;
-    flex-shrink: 0;
-}
-
-.module-icon-bi {
-    font-size: 1.75rem;
-    color: var(--accent-color, #10b981);
-    flex-shrink: 0;
-}
-
-.module-header h3 {
-    margin: 0;
-    font-size: 1.15rem;
     font-weight: 600;
-    color: var(--text-primary);
 }
 
-/* Pill button links inside cards */
-.module-links {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.5rem;
-}
-
-.pill-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.35rem 0.7rem;
-    border-radius: 8px;
-    background: transparent;
-    border: 1px solid var(--text-secondary, #6c757d);
-    color: var(--text-primary);
-    font-size: 0.82rem;
-    font-weight: 500;
-    text-decoration: none;
-    transition: background 0.15s, transform 0.1s;
-    white-space: nowrap;
-}
-
-.pill-link:hover {
-    background: var(--hover-bg, rgba(255, 255, 255, 0.06));
-    transform: translateY(-1px);
-    text-decoration: none;
-    color: var(--text-primary);
-}
-
-.pill-link:active {
-    transform: translateY(0);
-}
-
-.pill-emoji {
-    font-size: 1rem;
-    line-height: 1;
-}
-
-.pill-link i.bi {
-    font-size: 0.9rem;
-}
-
-.pill-icon-img {
-    width: 1em;
-    height: 1em;
-    object-fit: contain;
-    flex-shrink: 0;
-}
-
-/* Empty state */
-.empty-state {
-    text-align: center;
-    padding: 3rem;
-    color: var(--text-secondary, #6c757d);
-}
-
-.empty-state i {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    display: block;
-}
-
-/* Responsive */
-@media (max-width: 640px) {
-    .module-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .hero-icon {
-        width: 80px;
-        height: 80px;
-    }
-
-    .hero h1 {
-        font-size: 1.5rem;
-    }
+.home-status {
+    font-size: 0.6875rem;
+    color: var(--text-muted, #888);
 }
