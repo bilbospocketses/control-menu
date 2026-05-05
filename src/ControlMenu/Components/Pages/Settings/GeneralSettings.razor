@@ -140,14 +140,14 @@
         <SettingsGridCell>
             <Label>Deployment Mode</Label>
             <ChildContent>
-                <div class="radio-group">
-                    <label>
+                <div class="radio-group" style="display:flex;flex-direction:column;gap:8px;">
+                    <label style="display:block;">
                         <input type="radio" name="wsscrcpyMode" value="managed"
                                checked="@(_wsscrcpyMode == "managed")"
                                @onchange="SetModeManaged" />
                         <strong>Managed</strong> — Control Menu spawns and watches the node process on port 8000.
                     </label>
-                    <label>
+                    <label style="display:block;">
                         <input type="radio" name="wsscrcpyMode" value="external"
                                checked="@(_wsscrcpyMode == "external")"
                                @onchange="SetModeExternal" />

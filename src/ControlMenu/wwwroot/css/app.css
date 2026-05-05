@@ -300,3 +300,7 @@ select.form-control { appearance: auto; }
     font-size: 13px;
     color: var(--text-secondary);
 }
+
+.settings-section-table tbody td {
+    background: var(--surface-recessed);
+}
