@@ -105,6 +105,12 @@
     private bool Collapsed { get; set; }
     private readonly HashSet<string> _expandedGroups = new();
     private bool _allExpanded;
+    private string? _flyoutModuleId;
+    private double _flyoutTopPx;
+    private int? _resizeSubscriptionToken;
+    private DotNetObjectReference<Sidebar>? _selfRef;
+    private ElementReference _flyoutRef;
+    private bool _shouldFocusFlyout;
 
     private static readonly Dictionary<string, string> ModuleImageMap = new()
     {
@@ -161,9 +167,26 @@
             UpdateAllExpandedFlag();
             StateHasChanged();
         }
+
+        if (_shouldFocusFlyout && _flyoutModuleId is not null)
+        {
+            _shouldFocusFlyout = false;
+            try
+            {
+                await _flyoutRef.FocusAsync();
+            }
+            catch { /* element may have been removed; ignore */ }
+        }
     }
 
-    private void ToggleCollapsed() => Collapsed = !Collapsed;
+    private async Task ToggleCollapsed()
+    {
+        if (_flyoutModuleId is not null)
+        {
+            await CloseFlyout();
+        }
+        Collapsed = !Collapsed;
+    }
 
     private async Task ToggleGroup(string moduleId)
     {
@@ -171,6 +194,59 @@
             _expandedGroups.Add(moduleId);
         UpdateAllExpandedFlag();
         await PersistState();
+    }
+
+    private async Task OpenFlyout(Modules.IToolModule module)
+    {
+        if (!Collapsed) return;
+        if (!VisibleEntries(module).Any()) return;
+
+        _flyoutTopPx = await JS.InvokeAsync<double>("controlMenu.getModuleIconRectTop", module.Id);
+        _flyoutModuleId = module.Id;
+        _shouldFocusFlyout = true;
+
+        if (_resizeSubscriptionToken is null)
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            _resizeSubscriptionToken = await JS.InvokeAsync<int>(
+                "controlMenu.subscribeFlyoutResize", _selfRef);
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task CloseFlyout()
+    {
+        _flyoutModuleId = null;
+        _shouldFocusFlyout = false;
+
+        if (_resizeSubscriptionToken is not null)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("controlMenu.unsubscribeFlyoutResize", _resizeSubscriptionToken);
+            }
+            catch { /* JS context torn down — nothing to do */ }
+            _resizeSubscriptionToken = null;
+        }
+    }
+
+    private async Task HandleFlyoutKeydown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            await CloseFlyout();
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnWindowResize()
+    {
+        if (_flyoutModuleId is not null)
+        {
+            await CloseFlyout();
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task ToggleAll()
@@ -201,5 +277,19 @@
 
     private bool IsGroupExpanded(string moduleId) => _expandedGroups.Contains(moduleId);
 
-    public void Dispose() => DeviceTypeCache.CacheUpdated -= OnCacheUpdated;
+    public void Dispose()
+    {
+        DeviceTypeCache.CacheUpdated -= OnCacheUpdated;
+
+        if (_resizeSubscriptionToken is not null)
+        {
+            try
+            {
+                _ = JS.InvokeVoidAsync("controlMenu.unsubscribeFlyoutResize", _resizeSubscriptionToken);
+            }
+            catch { /* swallow */ }
+        }
+
+        _selfRef?.Dispose();
+    }
 }
