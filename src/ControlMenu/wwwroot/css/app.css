@@ -294,3 +294,9 @@ select.form-control { appearance: auto; }
     color: var(--text-color, #212529);
     margin-bottom: 0.5rem;
 }
+
+.settings-section-intro {
+    padding: 10px 14px 0;
+    font-size: 13px;
+    color: var(--muted);
+}
