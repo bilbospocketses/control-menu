@@ -168,8 +168,31 @@ public class CameraScanService : ICameraScanService
             await cameraService.UpdateLastSeenAsync(id);
             return;
         }
-        lock (_hitsLock) _hits.Add(hit);
-        Emit(new CameraScanHitEvent(hit));
+
+        bool shouldEmit;
+        lock (_hitsLock)
+        {
+            var idx = _hits.FindIndex(h => h.IpAddress == hit.IpAddress);
+            if (idx < 0)
+            {
+                // First time seeing this IP within this scan
+                _hits.Add(hit);
+                shouldEmit = true;
+            }
+            else if (hit.IsOnvif && !_hits[idx].IsOnvif)
+            {
+                // Upgrade: TCP-only entry replaced by richer ONVIF entry
+                _hits[idx] = hit;
+                shouldEmit = true;
+            }
+            else
+            {
+                // Duplicate (TCP-after-ONVIF, or TCP-after-TCP, or ONVIF-after-ONVIF) — skip
+                shouldEmit = false;
+            }
+        }
+
+        if (shouldEmit) Emit(new CameraScanHitEvent(hit));
     }
 
     private void Emit(CameraScanEvent ev)

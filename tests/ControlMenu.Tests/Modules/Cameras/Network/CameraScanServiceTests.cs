@@ -117,6 +117,34 @@ public class CameraScanServiceTests
     }
 
     [Fact]
+    public async Task StartScanAsync_OnvifResponseAfterTcpHit_UpgradesToOnvif()
+    {
+        // Simulate the race: TCP probe returns first (synchronous mock), ONVIF probe returns later
+        // with richer metadata for the SAME IP. The Hits list should end with ONE entry, IsOnvif=true,
+        // with the manufacturer/model populated.
+        _onvifDisc.Setup(d => d.ProbeAsync(It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .Returns(async (TimeSpan _, CancellationToken _) =>
+            {
+                await Task.Delay(50); // Force ONVIF to land after TCP
+                return new List<OnvifProbeResponse>
+                {
+                    new("192.168.86.10", "Hikvision", "DS-2CD2143G0-I", "http://192.168.86.10/onvif/device_service")
+                };
+            });
+        _rtsp.Setup(r => r.ProbeTcpAsync("192.168.86.10", 554, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _rtsp.Setup(r => r.ProbeTcpAsync(It.Is<string>(s => s != "192.168.86.10"), 554, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var sut = CreateSut();
+        await sut.StartScanAsync(new[] { Subnet("192.168.86.0/24") });
+
+        Assert.Single(sut.Hits);
+        Assert.True(sut.Hits[0].IsOnvif);
+        Assert.Equal("Hikvision", sut.Hits[0].Manufacturer);
+    }
+
+    [Fact]
     public async Task Subscribe_ReceivesEvents()
     {
         _onvifDisc.Setup(d => d.ProbeAsync(It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))

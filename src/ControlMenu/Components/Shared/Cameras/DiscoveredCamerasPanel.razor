@@ -144,7 +144,9 @@ else
                 _hits.Clear(); _errors.Clear();
                 break;
             case CameraScanHitEvent hitEv:
-                _hits.Add(hitEv.Hit);
+                var idx = _hits.FindIndex(h => h.IpAddress == hitEv.Hit.IpAddress);
+                if (idx >= 0) _hits[idx] = hitEv.Hit;
+                else _hits.Add(hitEv.Hit);
                 break;
         }
         InvokeAsync(StateHasChanged);
