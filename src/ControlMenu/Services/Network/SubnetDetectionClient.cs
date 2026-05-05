@@ -9,7 +9,7 @@ public sealed record DetectedSubnet(
     [property: JsonPropertyName("hostCount")] int HostCount,
     [property: JsonPropertyName("source")] string Source);
 
-public sealed class SubnetDetectionClient
+public class SubnetDetectionClient
 {
     private readonly IHttpClientFactory _httpFactory;
     private readonly WsScrcpyService _wsscrcpy;
@@ -26,7 +26,7 @@ public sealed class SubnetDetectionClient
     /// Returns the detected subnet, or null if the server returns a non-2xx or
     /// the call fails for any reason.
     /// </summary>
-    public async Task<DetectedSubnet?> DetectAsync(CancellationToken ct = default)
+    public virtual async Task<DetectedSubnet?> DetectAsync(CancellationToken ct = default)
     {
         try
         {

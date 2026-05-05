@@ -2,8 +2,10 @@
 @using ControlMenu.Components.Pages.HomeSections
 @using ControlMenu.Modules.AndroidDevices.Services
 @using ControlMenu.Modules.Cameras.Network
+@using ControlMenu.Modules.Cameras.Services
 @using ControlMenu.Services
 @using ControlMenu.Services.Network
+@implements IDisposable
 @inject IConfigurationService Config
 @inject IAdbService AdbService
 @inject ICameraScanService CameraScanService
@@ -11,6 +13,8 @@
 @inject IScanLifecycleHandler AndroidHandler
 @inject IDeviceChangeNotifier DeviceNotifier
 @inject ICameraChangeNotifier CameraNotifier
+@inject IDeviceService DeviceService
+@inject ICameraService CameraService
 
 <PageTitle>Control Menu</PageTitle>
 
@@ -37,6 +41,11 @@ else
                           OnScanAll="ScanAllAsync" />
         </header>
 
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="home-error alert alert-danger" role="alert">@_errorMessage</div>
+        }
+
         <HomeDiscoveredAndroid HasScanned="_androidScanned" OnDeviceAdded="HandleStatusRefresh" />
         <HomeDiscoveredCameras HasScanned="_camerasScanned" OnCameraAdded="HandleStatusRefresh" />
         <HomeModuleTiles />
@@ -51,14 +60,23 @@ else
     private bool _camerasRunning;
     private bool _allRunning;
     private DateTime? _lastScanUtc;
+    private int _registeredDevicesCount;
+    private int _registeredCamerasCount;
+    private string? _errorMessage;
 
     protected override async Task OnInitializedAsync()
     {
+        // Subscribe BEFORE the initial load (Batch B convention).
+        DeviceNotifier.Changed += HandleDeviceNotifierChanged;
+        CameraNotifier.CamerasChanged += HandleCameraNotifierChanged;
+
         var flag = await Config.GetSettingAsync("setup-completed");
         if (flag != "true") _setupDone = false;
+
+        await RefreshRegisteredCountsAsync();
     }
 
-    private string StatusLine
+    internal string StatusLine
     {
         get
         {
@@ -67,15 +85,52 @@ else
             var ago = _lastScanUtc.HasValue
                 ? $" · last scan {(DateTime.UtcNow - _lastScanUtc.Value).TotalSeconds:F0}s ago"
                 : "";
-            return $"{AndroidHandler.Discovered.Count} Android discovered{ago}";
+            var n = AndroidHandler.Discovered.Count;
+            var m = CameraScanService.Hits.Count;
+            var k = _registeredDevicesCount + _registeredCamerasCount;
+            return $"{n} Android · {m} Cameras discovered · {k} registered{ago}";
         }
+    }
+
+    private async Task RefreshRegisteredCountsAsync()
+    {
+        try
+        {
+            var devices = await DeviceService.GetAllDevicesAsync();
+            _registeredDevicesCount = devices.Count;
+        }
+        catch
+        {
+            _registeredDevicesCount = 0;
+        }
+
+        try
+        {
+            var cameras = await CameraService.GetAllAsync();
+            _registeredCamerasCount = cameras.Count;
+        }
+        catch
+        {
+            _registeredCamerasCount = 0;
+        }
+    }
+
+    private async void HandleDeviceNotifierChanged()
+    {
+        await RefreshRegisteredCountsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async void HandleCameraNotifierChanged()
+    {
+        await RefreshRegisteredCountsAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ScanAndroidAsync()
     {
         if (_androidRunning) return;
         _androidRunning = true;
-        StateHasChanged();
         try { await AdbService.ScanMdnsAsync(); }
         finally
         {
@@ -90,25 +145,36 @@ else
     {
         if (_camerasRunning) return;
         _camerasRunning = true;
-        StateHasChanged();
+        var ranScan = false;
         try
         {
             // Mirror CameraSettings.QuickScan: detect subnet, parse, then run ONVIF-only scan.
             var detected = await SubnetDetector.DetectAsync();
-            if (detected is not null)
+            if (detected is null)
             {
-                var parseResult = SubnetParser.Parse(detected.Cidr);
-                if (parseResult.IsSuccess && parseResult.Value is not null)
-                {
-                    await CameraScanService.StartOnvifOnlyScanAsync(new[] { parseResult.Value });
-                }
+                _errorMessage = "Could not auto-detect a network subnet — verify ws-scrcpy-web is running. Use Scan Network to enter a subnet manually.";
+                return;
             }
+
+            var parseResult = SubnetParser.Parse(detected.Cidr);
+            if (!parseResult.IsSuccess || parseResult.Value is null)
+            {
+                _errorMessage = $"Auto-detected subnet '{detected.Cidr}' could not be parsed. Use Scan Network to enter a subnet manually.";
+                return;
+            }
+
+            await CameraScanService.StartOnvifOnlyScanAsync(new[] { parseResult.Value });
+            ranScan = true;
+            _errorMessage = null;
         }
         finally
         {
             _camerasRunning = false;
-            _camerasScanned = true;
-            _lastScanUtc = DateTime.UtcNow;
+            if (ranScan)
+            {
+                _camerasScanned = true;
+                _lastScanUtc = DateTime.UtcNow;
+            }
             StateHasChanged();
         }
     }
@@ -117,7 +183,6 @@ else
     {
         if (_allRunning) return;
         _allRunning = true;
-        StateHasChanged();
         var androidTask = _androidRunning ? Task.CompletedTask : ScanAndroidAsync();
         var camerasTask = _camerasRunning ? Task.CompletedTask : ScanCamerasAsync();
         try { await Task.WhenAll(androidTask, camerasTask); }
@@ -128,9 +193,15 @@ else
         }
     }
 
-    private Task HandleStatusRefresh()
+    private async Task HandleStatusRefresh()
     {
+        await RefreshRegisteredCountsAsync();
         StateHasChanged();
-        return Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        DeviceNotifier.Changed -= HandleDeviceNotifierChanged;
+        CameraNotifier.CamerasChanged -= HandleCameraNotifierChanged;
     }
 }

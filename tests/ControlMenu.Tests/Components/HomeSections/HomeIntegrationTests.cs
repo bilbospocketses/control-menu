@@ -11,6 +11,7 @@ using ControlMenu.Modules.Cameras.Services;
 using ControlMenu.Services;
 using ControlMenu.Services.Network;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -41,7 +42,9 @@ public class HomeIntegrationTests : TestContext
         Services.AddSingleton(_config.Object);
 
         Services.AddSingleton(new Mock<IAdbService>().Object);
-        Services.AddSingleton(new Mock<ICameraScanService>().Object);
+        var cameraScan = new Mock<ICameraScanService>();
+        cameraScan.Setup(s => s.Hits).Returns(Array.Empty<CameraScanHit>());
+        Services.AddSingleton(cameraScan.Object);
         Services.AddSingleton(new Mock<IDeviceChangeNotifier>().Object);
         Services.AddSingleton(new Mock<ICameraChangeNotifier>().Object);
 
@@ -95,5 +98,103 @@ public class HomeIntegrationTests : TestContext
         var cut = RenderComponent<ControlMenu.Components.Pages.Home>();
 
         Assert.Empty(cut.FindAll(".home-header"));
+    }
+
+    [Fact]
+    public void StatusLine_BeforeAnyScan_ShowsEmptyStateCopy()
+    {
+        var cut = RenderComponent<ControlMenu.Components.Pages.Home>();
+
+        var status = cut.Find(".home-status").TextContent;
+        Assert.Contains("Find devices and cameras", status);
+    }
+
+    [Fact]
+    public void StatusLine_AfterScan_ShowsSpecFormatWithCounts()
+    {
+        // Arrange: replace the default services with ones that yield non-zero counts.
+        Services.RemoveAll<IScanLifecycleHandler>();
+        var handler = new Mock<IScanLifecycleHandler>();
+        handler.Setup(h => h.Discovered).Returns(new List<DiscoveredDevice>
+        {
+            new("svc1", "10.0.0.1", 5555, "AA:BB:CC:DD:EE:01"),
+            new("svc2", "10.0.0.2", 5555, "AA:BB:CC:DD:EE:02"),
+        });
+        handler.Setup(h => h.Phase).Returns(ScanPhase.Idle);
+        Services.AddSingleton(handler.Object);
+
+        Services.RemoveAll<ICameraScanService>();
+        var scan = new Mock<ICameraScanService>();
+        scan.Setup(s => s.Hits).Returns(new List<CameraScanHit>
+        {
+            new("10.0.0.10", 80, true, "vendor", "model", null),
+            new("10.0.0.11", 80, true, "vendor", "model", null),
+            new("10.0.0.12", 80, true, "vendor", "model", null),
+        });
+        Services.AddSingleton(scan.Object);
+
+        Services.RemoveAll<IDeviceService>();
+        var deviceService = new Mock<IDeviceService>();
+        deviceService.Setup(s => s.GetAllDevicesAsync())
+            .ReturnsAsync((IReadOnlyList<Device>)new List<Device>
+            {
+                new() { Name = "d1", MacAddress = "AA:BB:CC:DD:EE:01", ModuleId = "android" },
+                new() { Name = "d2", MacAddress = "AA:BB:CC:DD:EE:02", ModuleId = "android" },
+                new() { Name = "d3", MacAddress = "AA:BB:CC:DD:EE:03", ModuleId = "android" },
+                new() { Name = "d4", MacAddress = "AA:BB:CC:DD:EE:04", ModuleId = "android" },
+            });
+        Services.AddSingleton(deviceService.Object);
+
+        Services.RemoveAll<ICameraService>();
+        var cameraService = new Mock<ICameraService>();
+        cameraService.Setup(s => s.GetAllAsync())
+            .ReturnsAsync((IReadOnlyList<Camera>)new List<Camera> { new() { Name = "c1", IpAddress = "10.0.0.20" } });
+        Services.AddSingleton(cameraService.Object);
+
+        var cut = RenderComponent<ControlMenu.Components.Pages.Home>();
+
+        // Force the post-scan branch by setting _androidScanned via reflection
+        // (the StatusLine getter switches branches on this flag).
+        var instance = cut.Instance;
+        typeof(ControlMenu.Components.Pages.Home)
+            .GetField("_androidScanned", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(instance, true);
+        cut.Render();
+
+        var status = cut.Find(".home-status").TextContent;
+        // N=2 Android, M=3 Cameras, K=4+1=5 registered
+        Assert.Contains("2 Android", status);
+        Assert.Contains("3 Cameras discovered", status);
+        Assert.Contains("5 registered", status);
+    }
+
+    [Fact]
+    public async Task ScanCameras_WhenSubnetDetectionReturnsNull_ShowsErrorAndDoesNotMarkScanned()
+    {
+        // Arrange: replace SubnetDetectionClient with a mock returning null.
+        Services.RemoveAll<SubnetDetectionClient>();
+        var detector = new Mock<SubnetDetectionClient>(
+            new Mock<IHttpClientFactory>().Object,
+            new WsScrcpyService(new Mock<IServiceScopeFactory>().Object, NullLogger<WsScrcpyService>.Instance));
+        detector.Setup(d => d.DetectAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((DetectedSubnet?)null);
+        Services.AddSingleton(detector.Object);
+
+        var cut = RenderComponent<ControlMenu.Components.Pages.Home>();
+
+        // Act: invoke the private ScanCamerasAsync method directly.
+        var instance = cut.Instance;
+        var method = typeof(ControlMenu.Components.Pages.Home)
+            .GetMethod("ScanCamerasAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        await cut.InvokeAsync(async () => await (Task)method.Invoke(instance, null)!);
+
+        // Assert: error rendered, _camerasScanned stayed false.
+        var error = cut.Find(".home-error").TextContent;
+        Assert.Contains("Could not auto-detect", error);
+
+        var camerasScanned = (bool)typeof(ControlMenu.Components.Pages.Home)
+            .GetField("_camerasScanned", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(instance)!;
+        Assert.False(camerasScanned);
     }
 }
