@@ -7,7 +7,7 @@
 @using ControlMenu.Services.Network
 @implements IDisposable
 @inject IConfigurationService Config
-@inject IAdbService AdbService
+@inject IDeviceQuickScanService QuickScan
 @inject ICameraScanService CameraScanService
 @inject SubnetDetectionClient SubnetDetector
 @inject IScanLifecycleHandler AndroidHandler
@@ -48,7 +48,9 @@ else
 
         <HomeDiscoveredAndroid HasScanned="_androidScanned" OnDeviceAdded="HandleStatusRefresh" />
         <HomeDiscoveredCameras HasScanned="_camerasScanned" OnCameraAdded="HandleStatusRefresh" />
-        <HomeModuleTiles />
+        <div class="home-tiles-anchor">
+            <HomeModuleTiles />
+        </div>
     </div>
 }
 
@@ -131,7 +133,14 @@ else
     {
         if (_androidRunning) return;
         _androidRunning = true;
-        try { await AdbService.ScanMdnsAsync(); }
+        try
+        {
+            // Mirror Settings -> Device Management -> Quick Scan: run the shared
+            // mDNS + ARP merge pipeline so hits land in Handler.Discovered. Without
+            // this the HomeDiscoveredAndroid panel never populates.
+            var registered = await DeviceService.GetAllDevicesAsync();
+            await QuickScan.RunMdnsAndMergeAsync(registered.ToList());
+        }
         finally
         {
             _androidRunning = false;

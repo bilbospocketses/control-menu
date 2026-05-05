@@ -42,6 +42,7 @@ public class HomeIntegrationTests : TestContext
         Services.AddSingleton(_config.Object);
 
         Services.AddSingleton(new Mock<IAdbService>().Object);
+        Services.AddSingleton(new Mock<IDeviceQuickScanService>().Object);
         var cameraScan = new Mock<ICameraScanService>();
         cameraScan.Setup(s => s.Hits).Returns(Array.Empty<CameraScanHit>());
         Services.AddSingleton(cameraScan.Object);
