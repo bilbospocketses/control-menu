@@ -10,6 +10,7 @@ using ControlMenu.Modules.Jellyfin.Services;
 using ControlMenu.Modules.Utilities.Services;
 using ControlMenu.Services;
 using ControlMenu.Services.Network;
+using ControlMenu.Services.Startup;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -114,6 +115,7 @@ builder.Services.AddScoped<IDependencyManagerService>(sp =>
     return new DependencyManagerService(dbFactory, modules, executor, httpFactory, config, wsScrcpy, go2Rtc, resolver, logger);
 });
 builder.Services.AddHostedService<DependencyCheckHostedService>();
+builder.Services.AddHostedService<ObsoleteSettingsCleanupService>();
 
 // Module discovery — scans the main assembly for IToolModule implementations
 builder.Services.AddSingleton(new ModuleDiscoveryService(
