@@ -1,21 +1,28 @@
 @* HomeDiscoveredCameras.razor *@
 @using ControlMenu.Components.Shared.Cameras
 @using ControlMenu.Modules.Cameras.Network
+@using ControlMenu.Modules.Cameras.Services
 @using ControlMenu.Services
 @inject ICameraScanService ScanService
+@inject ICameraService CameraService
 @inject ICameraChangeNotifier Notifier
 @implements IDisposable
 
 @* Section ALWAYS renders now: cold and post-scan-empty both show the outlined
    placeholder card. HasScanned remains a parameter for API symmetry with
    HomeDiscoveredAndroid (Home.razor still tracks _camerasScanned for the
-   status-line tagline), but no longer keys the section's visibility. *@
+   status-line tagline), but no longer keys the section's visibility.
+
+   The count badge and placeholder-vs-panel decision both use the FILTERED hit
+   count (raw hits minus already-registered cameras) so the badge matches what
+   the embedded panel actually renders. Without this, a scan that finds 8 IPs
+   already in the registry shows badge "8" with zero rows underneath. *@
 <section class="home-disc-section">
     <div class="home-disc-header">
         <span class="home-disc-label">DISCOVERED — CAMERAS</span>
-        <span class="home-disc-count home-disc-count-cameras">@ScanService.Hits.Count</span>
+        <span class="home-disc-count home-disc-count-cameras">@FilteredHitsCount</span>
     </div>
-    @if (ScanService.Hits.Count > 0)
+    @if (FilteredHitsCount > 0)
     {
         <DiscoveredCamerasPanel OnCameraAdded="HandleCameraAdded" />
     }
@@ -32,16 +39,33 @@
     [Parameter] public EventCallback OnCameraAdded { get; set; }
 
     private IDisposable? _subscription;
+    private HashSet<string> _registeredCameraIps = new(StringComparer.OrdinalIgnoreCase);
 
-    protected override void OnInitialized()
+    private int FilteredHitsCount =>
+        ScanService.Hits.Count(h => !_registeredCameraIps.Contains(h.IpAddress));
+
+    protected override async Task OnInitializedAsync()
     {
         // Subscribe-before-load: wire up notifications first so any mutation
         // that happens during initialization doesn't get lost.
         Notifier.CamerasChanged += HandleCamerasChanged;
         _subscription = ScanService.Subscribe(HandleScanEvent);
+        await RefreshRegisteredIpsAsync();
     }
 
-    private void HandleCamerasChanged() => InvokeAsync(StateHasChanged);
+    private async Task RefreshRegisteredIpsAsync()
+    {
+        var cameras = await CameraService.GetAllAsync();
+        _registeredCameraIps = cameras
+            .Select(c => c.IpAddress)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async void HandleCamerasChanged()
+    {
+        await RefreshRegisteredIpsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
 
     private void HandleScanEvent(CameraScanEvent _) => InvokeAsync(StateHasChanged);
 

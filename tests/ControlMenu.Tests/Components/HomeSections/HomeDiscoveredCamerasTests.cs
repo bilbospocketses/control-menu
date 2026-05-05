@@ -76,11 +76,68 @@ public class HomeDiscoveredCamerasTests : TestContext
             new CameraScanHit("10.0.0.3", 554, false, null, null, null),
         };
         _scanService.Setup(s => s.Hits).Returns(hits);
+        // No registered cameras: all 3 hits are unfiltered, badge shows 3.
+        _cameraService.Setup(s => s.GetAllAsync())
+            .ReturnsAsync((IReadOnlyList<Camera>)new List<Camera>());
 
         var cut = RenderComponent<HomeDiscoveredCameras>(p => p
             .Add(c => c.HasScanned, true));
 
         var badge = cut.Find(".home-disc-count-cameras");
         Assert.Equal("3", badge.TextContent);
+    }
+
+    [Fact]
+    public void PostScan_SomeHitsAlreadyRegistered_BadgeReflectsFilteredCount()
+    {
+        var hits = new[]
+        {
+            new CameraScanHit("10.0.0.1", 80, true, null, null, "http://10.0.0.1/onvif"),
+            new CameraScanHit("10.0.0.2", 80, true, null, null, "http://10.0.0.2/onvif"),
+            new CameraScanHit("10.0.0.3", 554, false, null, null, null),
+        };
+        _scanService.Setup(s => s.Hits).Returns(hits);
+        _cameraService.Setup(s => s.GetAllAsync())
+            .ReturnsAsync((IReadOnlyList<Camera>)new List<Camera>
+            {
+                new() { Name = "A", IpAddress = "10.0.0.1" },
+                new() { Name = "B", IpAddress = "10.0.0.2" },
+            });
+
+        var cut = RenderComponent<HomeDiscoveredCameras>(p => p
+            .Add(c => c.HasScanned, true));
+
+        var badge = cut.Find(".home-disc-count-cameras");
+        Assert.Equal("1", badge.TextContent);
+        // 1 unfiltered hit remains, panel embeds (no placeholder card).
+        Assert.Empty(cut.FindAll(".home-disc-placeholder"));
+    }
+
+    [Fact]
+    public void PostScan_AllHitsAlreadyRegistered_RendersPlaceholderNotPanel()
+    {
+        var hits = new[]
+        {
+            new CameraScanHit("10.0.0.1", 80, true, null, null, "http://10.0.0.1/onvif"),
+            new CameraScanHit("10.0.0.2", 80, true, null, null, "http://10.0.0.2/onvif"),
+            new CameraScanHit("10.0.0.3", 554, false, null, null, null),
+        };
+        _scanService.Setup(s => s.Hits).Returns(hits);
+        _cameraService.Setup(s => s.GetAllAsync())
+            .ReturnsAsync((IReadOnlyList<Camera>)new List<Camera>
+            {
+                new() { Name = "A", IpAddress = "10.0.0.1" },
+                new() { Name = "B", IpAddress = "10.0.0.2" },
+                new() { Name = "C", IpAddress = "10.0.0.3" },
+            });
+
+        var cut = RenderComponent<HomeDiscoveredCameras>(p => p
+            .Add(c => c.HasScanned, true));
+
+        // Filtered count is 0: badge shows 0 and the outlined placeholder card renders.
+        var badge = cut.Find(".home-disc-count-cameras");
+        Assert.Equal("0", badge.TextContent);
+        Assert.Single(cut.FindAll(".home-disc-placeholder"));
+        Assert.Contains("No new cameras discovered", cut.Markup);
     }
 }
