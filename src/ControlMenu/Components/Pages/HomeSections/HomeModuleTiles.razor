@@ -1,0 +1,55 @@
+@* HomeModuleTiles.razor *@
+@using ControlMenu.Modules
+@inject ModuleDiscoveryService ModuleDiscovery
+@inject IServiceProvider ServiceProvider
+
+<div class="home-tiles-band">
+    <span class="home-tiles-label">MODULES</span>
+    <div class="home-tiles-grid">
+        @foreach (var module in ModuleDiscovery.Modules)
+        {
+            var href = ResolveHref(module);
+            <a class="home-tile" href="@href" data-module-id="@module.Id">
+                @if (ModuleImageMap.TryGetValue(module.Id, out var img))
+                {
+                    <img src="@img" alt="" class="home-tile-img" />
+                }
+                else
+                {
+                    <i class="bi @module.Icon home-tile-bi"></i>
+                }
+                <span class="home-tile-name">@module.DisplayName</span>
+            </a>
+        }
+        <a class="home-tile" href="/settings/general" data-module-id="settings">
+            <i class="bi bi-gear home-tile-bi"></i>
+            <span class="home-tile-name">Settings</span>
+        </a>
+    </div>
+</div>
+
+@code {
+    private static readonly Dictionary<string, string> ModuleImageMap = new()
+    {
+        ["android-devices"] = "/images/android-logo.svg",
+        ["jellyfin"] = "/images/jellyfin-logo.svg"
+    };
+
+    private string ResolveHref(IToolModule module)
+    {
+        var first = module.GetNavEntries()
+            .Where(e => e.IsVisible is null || e.IsVisible(ServiceProvider))
+            .OrderBy(e => e.SortOrder)
+            .FirstOrDefault();
+
+        if (first is not null)
+            return first.Href;
+
+        // Cameras with zero registered cameras yields no entries — fall back to Settings
+        if (module.Id == "cameras")
+            return "/settings/cameras";
+
+        // Generic fallback for any other module that has no visible entries
+        return "/";
+    }
+}
