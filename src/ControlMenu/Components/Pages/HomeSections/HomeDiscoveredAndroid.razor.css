@@ -30,6 +30,6 @@
 
 .home-disc-empty {
     color: var(--text-muted, #888);
-    font-size: 0.8125rem;
+    font-size: 1rem;
     margin: 0;
 }
