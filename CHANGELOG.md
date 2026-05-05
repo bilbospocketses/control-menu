@@ -9,7 +9,8 @@ and this project will adhere to [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 - **Background liveness probing for cameras and Android devices.** Two new hosted services (`CameraLivenessHostedService`, `AndroidLivenessHostedService`) periodically TCP-probe each registered camera (RTSP port) / device (ADB port) and bump `LastSeen` on success — keeping the Status dot accurate without user-initiated scans. Liveness path is per-target direct probing, not a subnet sweep, so the Discovered panel is **never** populated by the background loop (manual Scan Network is the only path that fills Discovered). Hot-reload via a new `IntervalChangeSignal` singleton: editing the interval in Settings breaks the service out of its outer Task.Delay so the new cadence takes effect immediately rather than after the current delay window.
-- **Liveness Interval setting on `Settings → Cameras`** (top of page). New `cameras-liveness-interval-seconds` config key. Allowed values: `0` (disabled) or `300–3600` seconds. Default `900` (15 min). Mirrors the Android Devices interval UI.
+- **Liveness Interval setting on `Settings → Cameras`** (top of page). New `cameras-liveness-interval-seconds` config key. Allowed values: `0` (disabled) or `300–3600` seconds. Default `300` (matches Android Devices default).
+- **Restore Default button** next to the Liveness Interval input on both `Settings → Cameras` and `Settings → Android Devices` — one click resets to `300s` and triggers immediate hot-reload of the corresponding hosted service.
 - Newly-added cameras seed `LastSeen = DateTime.UtcNow` on insert (`CameraService.AddAsync`) so freshly-registered cameras don't render as "Never" while waiting for the first liveness tick to land on them.
 
 ### Changed

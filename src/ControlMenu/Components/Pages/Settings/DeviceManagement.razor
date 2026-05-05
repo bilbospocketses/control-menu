@@ -16,8 +16,11 @@
     <h2>Device Discovery</h2>
     <div class="form-group" style="margin-bottom:1.5rem;">
         <label>Liveness Interval (seconds)</label>
-        <input type="number" class="form-control" style="max-width:200px;" min="0" max="3600"
-               value="@_discoveryInterval" @onchange="OnDiscoveryIntervalChanged" />
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+            <input type="number" class="form-control" style="max-width:200px;" min="0" max="3600"
+                   value="@_discoveryInterval" @onchange="OnDiscoveryIntervalChanged" />
+            <button class="btn btn-primary" @onclick="RestoreDefaultInterval">Restore Default</button>
+        </div>
         <div class="form-hint">How often to refresh device Status &amp; Last Seen by probing each registered device. Allowed: 0 (disabled) or 300–3600 seconds. Default 300.</div>
     </div>
 </div>
@@ -178,7 +181,8 @@
     private string? _message;
 
     private bool _messageIsError;
-    private int _discoveryInterval = 300;
+    private const int DefaultDiscoveryInterval = 300;
+    private int _discoveryInterval = DefaultDiscoveryInterval;
 
     protected override async Task OnInitializedAsync()
     {
@@ -213,6 +217,14 @@
         {
             await ShowMessage("Must be 0 (disabled) or between 300 and 3600 seconds.", true);
         }
+    }
+
+    private async Task RestoreDefaultInterval()
+    {
+        _discoveryInterval = DefaultDiscoveryInterval;
+        await Config.SetSettingAsync("discovery-interval", DefaultDiscoveryInterval.ToString());
+        IntervalSignal.Trigger(IntervalChangeSignal.AndroidLiveness);
+        await ShowMessage($"Restored default ({DefaultDiscoveryInterval}s).");
     }
 
     private async Task LoadDevices()

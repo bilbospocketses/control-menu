@@ -16,9 +16,12 @@
     <h2>Camera Discovery</h2>
     <div class="form-group" style="margin-bottom:1.5rem;">
         <label>Liveness Interval (seconds)</label>
-        <input type="number" class="form-control" style="max-width:200px;" min="0" max="3600"
-               value="@_livenessInterval" @onchange="OnLivenessIntervalChanged" />
-        <div class="form-hint">How often to refresh camera Status &amp; Last Seen by probing each registered camera. Allowed: 0 (disabled) or 300–3600 seconds. Default 900.</div>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+            <input type="number" class="form-control" style="max-width:200px;" min="0" max="3600"
+                   value="@_livenessInterval" @onchange="OnLivenessIntervalChanged" />
+            <button class="btn btn-primary" @onclick="RestoreDefaultInterval">Restore Default</button>
+        </div>
+        <div class="form-hint">How often to refresh camera Status &amp; Last Seen by probing each registered camera. Allowed: 0 (disabled) or 300–3600 seconds. Default 300.</div>
     </div>
 </div>
 
@@ -156,7 +159,8 @@
     private bool _showDeleteAllConfirm;
     private string? _message;
     private bool _messageIsError;
-    private int _livenessInterval = 900;
+    private const int DefaultLivenessInterval = 300;
+    private int _livenessInterval = DefaultLivenessInterval;
 
     protected override async Task OnInitializedAsync()
     {
@@ -180,6 +184,14 @@
         {
             await ShowMessage("Must be 0 (disabled) or between 300 and 3600 seconds.", true);
         }
+    }
+
+    private async Task RestoreDefaultInterval()
+    {
+        _livenessInterval = DefaultLivenessInterval;
+        await Config.SetSettingAsync("cameras-liveness-interval-seconds", DefaultLivenessInterval.ToString(), "cameras");
+        IntervalSignal.Trigger(IntervalChangeSignal.CameraLiveness);
+        await ShowMessage($"Restored default ({DefaultLivenessInterval}s).");
     }
 
     private async Task RefreshCamerasAsync()

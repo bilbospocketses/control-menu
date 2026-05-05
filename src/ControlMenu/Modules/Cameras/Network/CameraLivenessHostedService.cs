@@ -19,7 +19,7 @@ public class CameraLivenessHostedService : BackgroundService
     private static readonly TimeSpan OuterTick = TimeSpan.FromSeconds(30);
     private const string IntervalKey = "cameras-liveness-interval-seconds";
     private const string Module = "cameras";
-    private const int DefaultIntervalSeconds = 900;
+    private const int DefaultIntervalSeconds = 300;
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IntervalChangeSignal _signal;
