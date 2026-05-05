@@ -23,6 +23,20 @@
             }
         </div>
 
+        <!-- Cameras -->
+        <div class="summary-item">
+            @if (State.CamerasAdded > 0)
+            {
+                <i class="bi bi-check-circle-fill text-ok summary-icon"></i>
+                <span>@State.CamerasAdded camera(s) registered</span>
+            }
+            else
+            {
+                <i class="bi bi-dash-circle summary-icon text-neutral"></i>
+                <span>No cameras registered — <a href="/settings/cameras">add in Settings</a></span>
+            }
+        </div>
+
         <!-- Jellyfin -->
         <div class="summary-item">
             @if (State.JellyfinConfigured)
