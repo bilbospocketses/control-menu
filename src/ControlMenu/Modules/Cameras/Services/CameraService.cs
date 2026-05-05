@@ -98,4 +98,23 @@ public class CameraService : ICameraService
         camera.LastSeen = DateTime.UtcNow;
         await db.SaveChangesAsync();
     }
+
+    public async Task<int> DeleteAllAsync()
+    {
+        using var db = await _dbFactory.CreateDbContextAsync();
+        var cameras = await db.Cameras.ToListAsync();
+        if (cameras.Count == 0) return 0;
+
+        db.Cameras.RemoveRange(cameras);
+        await db.SaveChangesAsync();
+
+        foreach (var cam in cameras)
+        {
+            await _config.DeleteSettingAsync($"camera-{cam.Id:N}-username", Module);
+            await _config.DeleteSettingAsync($"camera-{cam.Id:N}-password", Module);
+        }
+
+        _notifier.NotifyChanged();
+        return cameras.Count;
+    }
 }

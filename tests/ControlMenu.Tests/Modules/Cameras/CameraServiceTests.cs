@@ -120,4 +120,28 @@ public class CameraServiceTests : IDisposable
         Assert.Equal("admin", result.Value.Username);
         Assert.Equal("secret", result.Value.Password);
     }
+
+    [Fact]
+    public async Task DeleteAllAsync_RemovesAllRows_RemovesSecrets_NotifiesOnce()
+    {
+        await _sut.AddAsync(NewCamera("A", "192.168.1.50"), "u1", "p1");
+        await _sut.AddAsync(NewCamera("B", "192.168.1.51"), "u2", "p2");
+        _notifier.Reset();
+
+        var deleted = await _sut.DeleteAllAsync();
+
+        Assert.Equal(2, deleted);
+        Assert.Empty(await _sut.GetAllAsync());
+        _config.Verify(c => c.DeleteSettingAsync(It.Is<string>(s => s.StartsWith("camera-")), "cameras"),
+            Times.Exactly(4)); // 2 cameras x (username + password)
+        _notifier.Verify(n => n.NotifyChanged(), Times.Once);
+    }
+
+    [Fact]
+    public async Task DeleteAllAsync_ReturnsZero_WhenEmpty()
+    {
+        var deleted = await _sut.DeleteAllAsync();
+        Assert.Equal(0, deleted);
+        _notifier.Verify(n => n.NotifyChanged(), Times.Never);
+    }
 }
