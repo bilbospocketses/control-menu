@@ -56,7 +56,7 @@ public class CamerasModule : IToolModule
         var index = 0;
         foreach (var cam in EnabledCameras)
         {
-            yield return new NavEntry(cam.Name, $"/cameras/{cam.Id:N}", "📷", index++);
+            yield return new NavEntry(cam.Name, $"/cameras/{cam.Id:N}", "/images/cameras-logo.svg", index++);
         }
     }
 
