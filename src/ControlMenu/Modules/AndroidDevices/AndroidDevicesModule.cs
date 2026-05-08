@@ -62,22 +62,12 @@ public class AndroidDevicesModule : IToolModule
             AssetPattern = @"scrcpy-win64-v[\d.]+\.zip",
             InstallPath = Path.Combine(DepsRoot, "scrcpy")
         },
-        new ModuleDependency
-        {
-            Name = "node",
-            ExecutableName = "node",
-            VersionCommand = "node --version",
-            VersionPattern = @"v([\d.]+)",
-            SourceType = UpdateSourceType.DirectUrl,
-            ProjectHomeUrl = "https://nodejs.org/",
-            DownloadUrl = "https://nodejs.org/en/download/",
-            VersionCheckUrl = "https://nodejs.org/dist/latest-v22.x/",
-            VersionCheckPattern = @"node-v(\d+\.\d+\.\d+)",
-            DownloadUrlTemplate = OperatingSystem.IsWindows()
-                ? "https://nodejs.org/dist/v{version}/node-v{version}-win-x64.zip"
-                : "https://nodejs.org/dist/v{version}/node-v{version}-linux-x64.tar.gz",
-            InstallPath = Path.Combine(DepsRoot, "node")
-        },
+        // node was a CM dependency when Managed-mode spawned the ws-scrcpy-web
+        // node process. External-mode-only refactor removed all process-spawn
+        // code; node is no longer invoked anywhere in CM. Declaration removed
+        // 2026-05-07. ws-scrcpy-web declaration below still references node as
+        // its ExecutableName for legacy version-check shape; that whole entry
+        // is rewritten under TODO #12 (GitHub-source / Velopack-bundled).
         new ModuleDependency
         {
             Name = "ws-scrcpy-web",
