@@ -22,6 +22,7 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
     private readonly ILogger<Go2RtcService> _logger;
     private readonly string _contentRoot;
     private readonly object _lock = new();
+    private readonly SemaphoreSlim _regenGate = new(1, 1);
     private Process? _process;
     private int _crashCount;
     private DateTime _lastCrash = DateTime.MinValue;
@@ -74,6 +75,12 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         }
 
         await GenerateConfigAsync();
+        // Kill EVERY existing go2rtc.exe regardless of port binding. Port-1984
+        // detection only catches the one that successfully bound; orphans that
+        // never bound (because port was already in use by yet another orphan)
+        // would otherwise survive forever. See Bug 1/2 in the v1.0.0 polish
+        // round — runtime CRUD churn could leak hundreds of instances.
+        KillAllOrphans();
         await KillOrphanOnPortAsync(cancellationToken);
 
         lock (_lock) { SpawnProcess(exePath); }
@@ -115,24 +122,38 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
 
     public async Task RegenerateConfigAsync()
     {
-        await GenerateConfigAsync();
-
-        if (_process is { HasExited: false })
+        // Serialize all regeneration calls. Concurrent CamerasChanged events
+        // (e.g., bulk camera scan adds 8 cameras in rapid succession) would
+        // otherwise all pass the alive-check before any reached the lock,
+        // then each would kill+spawn through the lock — leaking processes
+        // any time a kill silently fails (handle is reset to null while the
+        // OS-level process is still alive).
+        await _regenGate.WaitAsync();
+        try
         {
-            _logger.LogInformation("Restarting go2rtc after config change");
-            _crashCount = 0;
-            _disposed = false;
+            await GenerateConfigAsync();
 
-            var exePath = FindExecutable();
-            if (exePath is null) return;
-
-            lock (_lock)
+            if (_process is { HasExited: false })
             {
-                KillProcess();
-                SpawnProcess(exePath);
-            }
+                _logger.LogInformation("Restarting go2rtc after config change");
+                _crashCount = 0;
+                _disposed = false;
 
-            await WaitForReadyAsync();
+                var exePath = FindExecutable();
+                if (exePath is null) return;
+
+                lock (_lock)
+                {
+                    KillProcess();
+                    SpawnProcess(exePath);
+                }
+
+                await WaitForReadyAsync();
+            }
+        }
+        finally
+        {
+            _regenGate.Release();
         }
     }
 
@@ -293,18 +314,69 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         // Must be called under _lock
         if (_process is { HasExited: false })
         {
+            var pid = _process.Id;
             try
             {
                 _process.Kill(entireProcessTree: true);
-                _logger.LogInformation("go2rtc stopped");
+                // Process.Kill is async at the OS level. Wait for confirmation
+                // before returning; without this, the next SpawnProcess can
+                // race with the dying instance and bind-fail on port 1984.
+                if (!_process.WaitForExit(3000))
+                {
+                    _logger.LogWarning("go2rtc PID {Pid} did not exit within 3s of Kill; sweeping orphans defensively", pid);
+                    KillAllOrphans();
+                }
+                else
+                {
+                    _logger.LogInformation("go2rtc stopped (PID {Pid})", pid);
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to kill go2rtc process");
+                _logger.LogWarning(ex, "Failed to kill go2rtc PID {Pid}; sweeping orphans defensively", pid);
+                KillAllOrphans();
             }
         }
         _process?.Dispose();
         _process = null;
+    }
+
+    /// <summary>Kills every go2rtc.exe (or go2rtc on Linux) on the machine
+    /// except _process. Defensive sweep used at startup and as a fallback
+    /// when KillProcess can't confirm a clean exit. The thinking: if our
+    /// handle to the spawned process is uncertain or stale, the process is
+    /// no longer "ours" and it's safer to terminate everything by name and
+    /// let StartAsync respawn one fresh instance.</summary>
+    private void KillAllOrphans()
+    {
+        var exeName = OperatingSystem.IsWindows() ? "go2rtc" : "go2rtc";
+        var killed = 0;
+        foreach (var proc in Process.GetProcessesByName(exeName))
+        {
+            try
+            {
+                if (_process is not null && proc.Id == _process.Id)
+                {
+                    proc.Dispose();
+                    continue;
+                }
+                proc.Kill(entireProcessTree: true);
+                proc.WaitForExit(2000);
+                killed++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Could not kill go2rtc PID {Pid} during orphan sweep", proc.Id);
+            }
+            finally
+            {
+                proc.Dispose();
+            }
+        }
+        if (killed > 0)
+        {
+            _logger.LogWarning("Orphan sweep killed {Count} stray go2rtc instance(s)", killed);
+        }
     }
 
     private async Task KillOrphanOnPortAsync(CancellationToken cancellationToken)
