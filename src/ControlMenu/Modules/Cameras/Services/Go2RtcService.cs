@@ -131,7 +131,12 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         await _regenGate.WaitAsync();
         try
         {
-            await GenerateConfigAsync();
+            // GenerateConfigAsync now returns false when the YAML is unchanged,
+            // letting us skip the restart entirely for liveness-triggered
+            // CamerasChanged events that don't actually change go2rtc's view
+            // of the world.
+            var changed = await GenerateConfigAsync();
+            if (!changed) return;
 
             if (_process is { HasExited: false })
             {
@@ -157,7 +162,11 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         }
     }
 
-    private async Task GenerateConfigAsync()
+    /// <summary>Builds the go2rtc YAML and writes it to disk only if it
+    /// differs from what's already there. Returns true if the file was
+    /// written (config genuinely changed), false if the new content matched
+    /// what was on disk (no-op skip — caller can avoid the kill+spawn).</summary>
+    private async Task<bool> GenerateConfigAsync()
     {
         using var scope = _scopeFactory.CreateScope();
         var cameraService = scope.ServiceProvider.GetRequiredService<ICameraService>();
@@ -195,9 +204,29 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         sb.AppendLine("api:");
         sb.AppendLine("  listen: \":1984\"");
 
+        var newContent = sb.ToString();
         var configPath = Path.Combine(_contentRoot, "go2rtc.yaml");
-        await File.WriteAllTextAsync(configPath, sb.ToString());
+
+        // Skip the file write AND the downstream kill+spawn if the config is
+        // unchanged. Liveness probes fire ICameraChangeNotifier.CamerasChanged
+        // on every successful tick (so the Settings UI status dots refresh),
+        // which triggers RegenerateConfigAsync. LastSeen isn't part of the
+        // go2rtc YAML, so most of these regen calls produce identical output.
+        // Pre-fix this caused N kill+spawn cycles per liveness interval; with
+        // KillProcess silent failures sprinkled in, hundreds of zombies could
+        // accumulate over a long session.
+        if (File.Exists(configPath))
+        {
+            var existing = await File.ReadAllTextAsync(configPath);
+            if (existing == newContent)
+            {
+                return false;
+            }
+        }
+
+        await File.WriteAllTextAsync(configPath, newContent);
         _logger.LogInformation("Wrote go2rtc config with {Count} stream(s) to {Path}", cameras.Count, configPath);
+        return true;
     }
 
     private void OnCamerasChanged() => _ = RegenerateConfigAsync();
