@@ -1,6 +1,7 @@
 @inject ModuleDiscoveryService ModuleDiscovery
 @inject IJSRuntime JS
 @inject ControlMenu.Services.IDeviceTypeCache DeviceTypeCache
+@inject ControlMenu.Services.ICameraChangeNotifier CameraNotifier
 @inject IServiceProvider ServiceProvider
 @implements IDisposable
 
@@ -172,6 +173,7 @@
     protected override async Task OnInitializedAsync()
     {
         DeviceTypeCache.CacheUpdated += OnCacheUpdated;
+        CameraNotifier.CamerasChanged += OnCamerasChanged;
         await DeviceTypeCache.RefreshAsync();
     }
 
@@ -185,6 +187,18 @@
         {
             // Async-void handler: swallow to avoid terminating the circuit.
             // A missed StateHasChanged is non-fatal; user sees stale filter until next update.
+        }
+    }
+
+    private async void OnCamerasChanged()
+    {
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Same swallow rationale as OnCacheUpdated.
         }
     }
 
@@ -331,6 +345,7 @@
     public void Dispose()
     {
         DeviceTypeCache.CacheUpdated -= OnCacheUpdated;
+        CameraNotifier.CamerasChanged -= OnCamerasChanged;
 
         if (_resizeSubscriptionToken is not null)
         {

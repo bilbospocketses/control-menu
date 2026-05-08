@@ -13,6 +13,7 @@ namespace ControlMenu.Tests.Components.Layout;
 public class SidebarFlyoutTests : TestContext
 {
     private readonly Mock<IDeviceTypeCache> _cache = new();
+    private readonly Mock<ICameraChangeNotifier> _cameraNotifier = new();
 
     public SidebarFlyoutTests()
     {
@@ -20,7 +21,11 @@ public class SidebarFlyoutTests : TestContext
         _cache.SetupRemove(c => c.CacheUpdated -= It.IsAny<Action?>());
         _cache.Setup(c => c.RefreshAsync()).Returns(Task.CompletedTask);
 
+        _cameraNotifier.SetupAdd(n => n.CamerasChanged += It.IsAny<Action?>());
+        _cameraNotifier.SetupRemove(n => n.CamerasChanged -= It.IsAny<Action?>());
+
         Services.AddSingleton(_cache.Object);
+        Services.AddSingleton(_cameraNotifier.Object);
         Services.AddSingleton<IServiceProvider>(sp => sp);
 
         JSInterop.Mode = JSRuntimeMode.Loose;

@@ -159,22 +159,26 @@ using (var scope = app.Services.CreateScope())
     var depManager = scope.ServiceProvider.GetRequiredService<IDependencyManagerService>();
     await depManager.SyncDependenciesAsync();
 
-    // Load camera names for sidebar nav entries (module can't do async)
+    // Load enabled camera names for sidebar nav entries (module can't do async)
     var cameraService = scope.ServiceProvider.GetRequiredService<ICameraService>();
     var allCameras = await cameraService.GetAllAsync();
     CamerasModule.EnabledCameras = allCameras
+        .Where(c => c.Enabled)
         .Select(c => (c.Id, c.Name))
         .ToList();
 }
 
-// Refresh sidebar nav when cameras change (Add/Update/Delete)
+// Refresh sidebar nav when cameras change (Add/Update/Delete/Enabled-toggle/Rename)
 var cameraNotifier = app.Services.GetRequiredService<ICameraChangeNotifier>();
 cameraNotifier.CamerasChanged += () =>
 {
     using var scope = app.Services.CreateScope();
     var svc = scope.ServiceProvider.GetRequiredService<ICameraService>();
     var fresh = svc.GetAllAsync().GetAwaiter().GetResult();
-    CamerasModule.EnabledCameras = fresh.Select(c => (c.Id, c.Name)).ToList();
+    CamerasModule.EnabledCameras = fresh
+        .Where(c => c.Enabled)
+        .Select(c => (c.Id, c.Name))
+        .ToList();
 };
 
 await app.RunAsync();
