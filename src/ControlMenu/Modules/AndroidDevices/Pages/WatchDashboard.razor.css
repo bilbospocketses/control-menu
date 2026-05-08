@@ -149,7 +149,11 @@
     overflow: hidden;
     flex: 1;
     min-height: 0;
-    /* aspect-ratio set via inline style — width derived from flex height */
+    background: #000;
+    /* aspect-ratio set via inline style — width derived from flex height.
+       Background #000 blends any aspect-ratio mismatch between the computed
+       ratio and ws-scrcpy-web's actual toolbar+content width into a uniform
+       bezel rather than appearing as letterbox bars. */
 }
 
 .mirror-panel ::deep .scrcpy-mirror {
