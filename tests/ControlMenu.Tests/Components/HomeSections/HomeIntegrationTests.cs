@@ -72,7 +72,7 @@ public class HomeIntegrationTests : TestContext
         // tests never trigger the scan, so DetectAsync is never called.
         var httpFactory = new Mock<IHttpClientFactory>();
         var scopeFactory = new Mock<IServiceScopeFactory>();
-        var wsScrcpy = new WsScrcpyService(scopeFactory.Object, NullLogger<WsScrcpyService>.Instance);
+        var wsScrcpy = new WsScrcpyService(scopeFactory.Object, httpFactory.Object, NullLogger<WsScrcpyService>.Instance);
         Services.AddSingleton(new SubnetDetectionClient(httpFactory.Object, wsScrcpy));
 
         Services.AddSingleton(MakeDiscovery(Array.Empty<IToolModule>()));
@@ -176,7 +176,7 @@ public class HomeIntegrationTests : TestContext
         Services.RemoveAll<SubnetDetectionClient>();
         var detector = new Mock<SubnetDetectionClient>(
             new Mock<IHttpClientFactory>().Object,
-            new WsScrcpyService(new Mock<IServiceScopeFactory>().Object, NullLogger<WsScrcpyService>.Instance));
+            new WsScrcpyService(new Mock<IServiceScopeFactory>().Object, new Mock<IHttpClientFactory>().Object, NullLogger<WsScrcpyService>.Instance));
         detector.Setup(d => d.DetectAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync((DetectedSubnet?)null);
         Services.AddSingleton(detector.Object);

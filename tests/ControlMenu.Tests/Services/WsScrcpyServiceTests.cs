@@ -20,6 +20,7 @@ public class WsScrcpyServiceTests
         var provider = services.BuildServiceProvider();
         return new WsScrcpyService(
             provider.GetRequiredService<IServiceScopeFactory>(),
+            new Mock<IHttpClientFactory>().Object,
             _mockLogger.Object);
     }
 

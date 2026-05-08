@@ -19,6 +19,7 @@ public class NetworkScanServiceTests
         var provider = services.BuildServiceProvider();
         _wsScrcpy = new WsScrcpyService(
             provider.GetRequiredService<IServiceScopeFactory>(),
+            new Mock<IHttpClientFactory>().Object,
             NullLogger<WsScrcpyService>.Instance);
     }
 

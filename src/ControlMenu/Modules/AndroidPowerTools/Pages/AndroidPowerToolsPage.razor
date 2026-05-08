@@ -5,11 +5,22 @@
 <PageTitle>Android Power Tools</PageTitle>
 
 <div class="power-tools-page">
-    @if (!WsScrcpy.IsRunning)
+    @if (_reachable is null)
+    {
+        <div class="alert alert-info">
+            <i class="bi bi-hourglass-split"></i>
+            Checking ws-scrcpy-web reachability…
+        </div>
+    }
+    else if (_reachable == false)
     {
         <div class="alert alert-warning">
             <i class="bi bi-exclamation-triangle"></i>
-            ws-scrcpy-web isn't running. Configure its path in Settings &gt; Dependencies and restart the app.
+            ws-scrcpy-web isn't reachable at <code>@WsScrcpy.BaseUrl</code>.
+            Verify the URL in Settings &gt; General &gt; External Dependencies, and confirm the ws-scrcpy-web instance is running.
+            <button class="btn btn-sm btn-outline-secondary" style="margin-left:1rem" @onclick="ProbeAsync">
+                <i class="bi bi-arrow-clockwise"></i> Re-check
+            </button>
         </div>
     }
     else
@@ -19,3 +30,16 @@
                 title="ws-scrcpy-web"></iframe>
     }
 </div>
+
+@code {
+    private bool? _reachable;
+
+    protected override async Task OnInitializedAsync() => await ProbeAsync();
+
+    private async Task ProbeAsync()
+    {
+        _reachable = null;
+        StateHasChanged();
+        _reachable = await WsScrcpy.ProbeAsync();
+    }
+}

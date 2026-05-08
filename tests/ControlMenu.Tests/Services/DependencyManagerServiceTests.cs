@@ -35,6 +35,7 @@ public class DependencyManagerServiceTests : IDisposable
         var provider = services.BuildServiceProvider();
         _wsScrcpy = new WsScrcpyService(
             provider.GetRequiredService<IServiceScopeFactory>(),
+            _mockHttpFactory.Object,
             NullLogger<WsScrcpyService>.Instance);
         _tempRoot = Path.Combine(Path.GetTempPath(), "ControlMenuTests", Guid.NewGuid().ToString());
         Directory.CreateDirectory(_tempRoot);

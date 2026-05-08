@@ -32,6 +32,7 @@ public class DependencyScanTests : IDisposable
         var provider = services.BuildServiceProvider();
         _wsScrcpy = new WsScrcpyService(
             provider.GetRequiredService<IServiceScopeFactory>(),
+            _mockHttpFactory.Object,
             NullLogger<WsScrcpyService>.Instance);
     }
 
