@@ -165,12 +165,14 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] In a discovered ONVIF row, type a known-good username + password and click Add. Camera moves to the Configured table. Open Cameras live-view: stream plays.
 - [ ] Repeat with a wrong password. Inline error "Authentication failed at HH:MM:SS" appears, row stays in panel.
 - [ ] Manually configure a non-ONVIF RTSP camera (or temporarily disable ONVIF on a test camera). Discovered panel shows it as "RTSP only". Click "Add manually...". Modal appears with IP pre-filled. Enter name, manufacturer, creds, stream path. Submit; camera saves and streams.
-- [ ] In the Configured table, click ✎ on a camera. Edit modal opens. Rename + save; verify renamed in the table and (if applicable) in the live-view label.
-- [ ] Toggle the Enabled checkbox off on a camera. Verify it disappears from the live view (within seconds — go2rtc restarts via notifier-driven regen).
+- [ ] In the Configured table, click ✎ on a camera. Edit modal opens. Rename + save; verify the new name appears in the table AND in the left-nav sidebar entry within seconds (no manual refresh).
+- [ ] Toggle the Enabled checkbox off on a camera. Verify the camera's left-nav sidebar entry disappears within seconds (go2rtc regenerates config; sidebar subscribes to ICameraChangeNotifier).
+- [ ] Toggle Enabled back on. Verify the sidebar entry reappears within seconds.
+- [ ] Open Control Menu in a second browser tab. Add/delete/enable-toggle/rename a camera in tab #1; verify tab #2's sidebar updates without requiring its own refresh (cross-circuit notifier propagation).
 - [ ] Delete a camera. Verify it's gone from the table; no orphan secret rows in the DB.
 - [ ] Set `cameras-scan-interval-minutes` to `1`; wait ~90 seconds; verify periodic-scan log line appears. Set to `0`; verify scans stop within 1 minute.
 - [ ] Add a subnet via the AddSubnetModal; verify next scan covers it.
-- [ ] Cancel a long-running scan via the modal's Cancel button. Verify partial Hits remain visible; Phase returns to Idle.
+- [ ] Close the camera scan modal while a scan is running. Verify the modal closes, the scan continues in the background, and partial Hits accumulate as discovered.
 
 ## 7. Settings > Jellyfin
 
@@ -236,22 +238,27 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Breadcrumb in TopBar reads **"Android Power Tools"** (not "Android Devices" — page-title switch has a specific case above the `android` fallback)
 - [ ] Full ws-scrcpy-web home page loads inside an iframe: device cards, Available Network Devices / Scan Network / Manually Add Device panel, Dependencies panel
 - [ ] Iframe fills the content area below TopBar without introducing its own scrollbar (body scroll is locked, page-level scroll lives inside the iframe only when content actually overflows)
-- [ ] If ws-scrcpy-web is not running: a "ws-scrcpy-web isn't running" warning alert is shown instead of a broken iframe
+- [ ] If ws-scrcpy-web is not reachable: an HTTP probe runs on page init, the iframe is suppressed, and a warning alert is shown ("ws-scrcpy-web isn't reachable at <url>") with a Re-check button. Clicking Re-check re-runs the probe.
 - [ ] Clicking `shell` on a device card opens the xterm modal inside the iframe; terminal is interactive (typing reaches the device, output renders)
 - [ ] Clicking `list files` opens the file browser modal inside the iframe; sticky header stays pinned on scroll; hover icons scale with the size picker
 - [ ] Clicking `config stream` opens ConfigureScrcpy; codec / encoder dropdowns filter correctly; Connect opens ConnectModal and the stream plays inside the iframe
 - [ ] All modals' backdrops cover only the iframe viewport (not Control Menu's TopBar / sidebar — they remain usable)
-- [ ] ws-scrcpy-web's own theme toggle is independent of Control Menu's (iframe has its own localStorage origin). Not a bug; just worth noting
+- [ ] ws-scrcpy-web's theme syncs bidirectionally with Control Menu via the iframe theme bridge. Toggle CM's theme — iframe content + ws-scrcpy-web's own toggle icon flip in sync. Toggle inside the iframe — CM's TopBar theme icon flips too. Reload either side — both adopt CM's persisted theme.
 
-## 12. Cameras > Camera View
+## 12. Cameras > Camera View (post-scanner architecture)
 
-- [ ] Navigate to `/cameras/1` with unconfigured camera — "Camera 1 not configured" message with link to settings
-- [ ] Configure Camera 1 with name, IP, credentials — save, refresh, navigate to `/cameras/1`
-- [ ] Configured camera shows iframe with RTSP stream via go2rtc
-- [ ] If go2rtc is not running — "Streaming service unavailable" message
-- [ ] Camera sidebar entries use camera emoji icon
-- [ ] Configured cameras show custom names in sidebar (e.g., "Front Door")
-- [ ] Default cameras show "Camera 1", "Camera 2", etc.
+- [ ] Configured cameras live in the `Cameras` DB table; each gets a sidebar nav entry with the user-assigned name and the bespoke 3D-style camera SVG icon.
+- [ ] Navigate to `/cameras/{guid}` for a registered camera — page renders the go2rtc-proxied stream inside an iframe.
+- [ ] Navigate to a deleted camera's URL — "Camera not found" message with a link back to Settings → Cameras.
+- [ ] Add a camera via Settings → Cameras → Add Camera Manually (IP and Port fields editable; full RTSP path entry).
+- [ ] Add a camera via the toolbar Quick Scan / Scan Network → discovered ONVIF row → inline credentials → Add. Camera moves from Discovered into Configured.
+- [ ] Add a camera via the Home page Discovered Cameras scanner — same flow as Settings.
+- [ ] Add a camera via the Setup Wizard's Cameras step — registers correctly and shows in the wizard's summary table at the bottom.
+- [ ] In all four add paths, the new camera's sidebar entry appears within seconds without manual refresh (cross-circuit if multiple tabs are open).
+- [ ] Edit a camera's name → sidebar label updates within seconds.
+- [ ] Toggle Enabled off → sidebar entry disappears; toggle back on → entry reappears.
+- [ ] Delete a camera → sidebar entry disappears; go2rtc.yaml drops the stream; navigating to the old URL shows "Camera not found".
+- [ ] If go2rtc is not running — Camera View page shows "Streaming service unavailable" message.
 
 ## 13. Cameras > go2rtc Service
 
@@ -288,9 +295,8 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Settings > Dependencies: Check ADB — version appears (not "Not found" if installed locally)
 - [ ] ADB shows correct local version, not a stale system PATH version
 - [ ] If ADB update available: "Update" button resolves to a versioned URL (not `-latest-`)
-- [ ] Node.js version check resolves (shows installed version)
-- [ ] Node.js update URL resolves to versioned dist URL (not generic download page)
 - [ ] After updating a dependency: no infinite update loop (status stays "Up to date")
+- [ ] Node.js does NOT appear in the dependency list (removed in v1.0.0; CM no longer invokes node directly).
 
 ## 17. Cast & Crew Email Notifications
 
@@ -361,24 +367,26 @@ If you're short on time, just hit these:
 - [ ] Theme buttons toggle theme immediately.
 - [ ] Email (SMTP) renders as 4-row 2-col grid; per-field auto-save still works.
 - [ ] Test Email button alone in the bottom row.
-- [ ] ws-scrcpy-web URL field disabled in Managed mode.
-- [ ] Switch to External → URL editable; blur saves with "Restart to apply" notification.
+- [ ] ws-scrcpy-web URL field is editable; blur saves with "Restart to apply" notification.
+- [ ] Docker executable path field is editable; blur saves with "Docker path saved." notification (or "Docker path cleared." when emptied).
+- [ ] Hover over any settings row — background-color transition is subtle (~280ms ease-out, partial opacity); no abrupt color flip.
 
 ### Jellyfin page — non-migration sections
 
 - [ ] Docker Compose parse-result table shows only Container Name + Database Path (no Backup Directory).
-- [ ] Jellyfin API has a single bottom-right Save button (bi-floppy icon). Edit + Save persists all three fields (verify via reload).
-- [ ] Cast & Crew Notifications has a single Save Notification Email button.
+- [ ] Save & Parse button under Docker Compose persists the path AND reparses YAML (compound action; only explicit save button on the page).
+- [ ] Jellyfin API fields (URL, key, user ID) auto-save on blur; reload page to verify all three persisted.
+- [ ] Cast & Crew notification email auto-saves on blur; reload to verify.
 
 ### Jellyfin page — Logging, Backup & Retention
 
 - [ ] Section title reads "Logging, Backup & Retention".
-- [ ] Three rows: Backups, Logs, Retention. Each row has its own Save button.
+- [ ] Three rows: Backups path, Logs path, Retention day count. Path/value changes auto-save on blur.
 - [ ] Stats show file count + total size for Backups, file count for Logs.
 - [ ] Backups path migration: change path to a new empty dir → existing `.db` files move; notification confirms count.
 - [ ] Logs path migration: at least one log file likely locked → partial-success notification mentions the locked file by name.
-- [ ] Retry-after-restart-or-rotation: re-clicking Save migrates remaining files.
-- [ ] Retention save persists the new day count.
+- [ ] Retry-after-restart-or-rotation: re-blur the path field to migrate remaining files.
+- [ ] Retention day count persists on blur.
 
 ## External Dependencies Refactor (2026-05-05)
 
@@ -397,11 +405,6 @@ If you're short on time, just hit these:
 - [ ] docker row: **No Update or Install button** — only Check + project-link.
 - [ ] ws-scrcpy-web row: same shape — read-only Install Path showing `External: <url>`, no Update button.
 - [ ] After configuring a valid Docker path on General Settings, the Dependencies page Docker row shows actual installed Docker version after Check (not `–`).
-
-### Settings cleanup (idempotent on every boot)
-
-- [ ] On first run after upgrade, the `wsscrcpy-mode` and `ws_scrcpy_web_path` (module=android-devices) settings rows are removed from the DB.
-- [ ] Subsequent boots: cleanup is a no-op (verified via log: no "Removed obsolete setting…" lines after first run).
 
 ## Sidebar Fly-out (2026-05-05)
 
