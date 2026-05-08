@@ -89,8 +89,7 @@ else
                 : "";
             var n = AndroidHandler.Discovered.Count;
             var m = CameraScanService.Hits.Count;
-            var k = _registeredDevicesCount + _registeredCamerasCount;
-            return $"{n} Android · {m} Cameras discovered · {k} registered{ago}";
+            return $"{n} Android · {m} Cameras discovered · {_registeredDevicesCount} Androids and {_registeredCamerasCount} Cameras registered{ago}";
         }
     }
 

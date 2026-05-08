@@ -163,10 +163,10 @@ public class HomeIntegrationTests : TestContext
         cut.Render();
 
         var status = cut.Find(".home-status").TextContent;
-        // N=2 Android, M=3 Cameras, K=4+1=5 registered
+        // N=2 Android discovered, M=3 Cameras discovered, 4 Android + 1 Camera registered
         Assert.Contains("2 Android", status);
         Assert.Contains("3 Cameras discovered", status);
-        Assert.Contains("5 registered", status);
+        Assert.Contains("4 Androids and 1 Cameras registered", status);
     }
 
     [Fact]

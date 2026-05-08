@@ -17,7 +17,7 @@
     align-items: center;
     gap: 0.875rem;
     padding: 0.875rem 1.5rem;
-    border-bottom: 1px solid var(--border-subtle, #2a2a2a);
+    border-bottom: 1px solid var(--border-color);
 }
 
 .home-brand {
@@ -28,9 +28,9 @@
 }
 
 .home-logo {
-    width: 36px;
-    height: 36px;
-    border-radius: 7px;
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
 }
 
 .home-title {
@@ -39,6 +39,6 @@
 }
 
 .home-status {
-    font-size: 0.6875rem;
-    color: var(--text-muted, #888);
+    font-size: 0.875rem;
+    color: var(--text-muted);
 }
