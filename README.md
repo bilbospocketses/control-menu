@@ -25,7 +25,7 @@ Control Menu replaces a collection of PowerShell scripts with a cross-platform w
 - **Cameras** &mdash; View LTS/Hikvision CCTV cameras via [go2rtc](https://github.com/AlexxIT/go2rtc) RTSP-to-browser streaming. Configurable camera count with encrypted credential storage. go2rtc is auto-installed and updated via the dependency manager.
 - **Jellyfin Media Server** &mdash; Database date updates, cast & crew image refresh (background worker with resume support), Docker container management, automated backups with configurable retention
 - **Utilities** &mdash; Image-to-ICO icon conversion (PNG, JPG, BMP, GIF, WEBP, TIFF via SkiaSharp) with native file picker, Windows Zone.Identifier file unblocker
-- **Dependency Management** &mdash; Auto-installs and updates ADB, scrcpy, Node.js, sqlite3, and go2rtc to a self-contained `dependencies/` folder. Configurable install paths per tool. Version checks via GitHub API and direct URL scraping. Services are automatically stopped before binary updates and restarted after.
+- **Dependency Management** &mdash; Auto-installs and updates ADB, scrcpy, sqlite3, and go2rtc to a self-contained `dependencies/` folder. Configurable install paths per tool. Version checks via GitHub API and direct URL scraping. Services are automatically stopped before binary updates and restarted after. Docker and ws-scrcpy-web are externally managed (configured in Settings → General).
 
 ## Features
 
