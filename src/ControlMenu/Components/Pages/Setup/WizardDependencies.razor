@@ -17,8 +17,14 @@
     }
     else if (_results.Count > 0)
     {
-        @* --- External dependencies (not configurable path) --- *@
-        var external = _results.Where(r => !DepManager.IsConfigurable(r.Name, r.ModuleId)).ToList();
+        @* --- External dependencies (manual install or externally configured) --- *@
+        @* docker + ws-scrcpy-web are pinned to the External section even though
+           docker is technically configurable, matching Settings > Dependencies. *@
+        var external = _results
+            .Where(r => IsExternallyConfigured(r.Name) || !DepManager.IsConfigurable(r.Name, r.ModuleId))
+            .OrderBy(r => IsExternallyConfigured(r.Name) ? 0 : 1)
+            .ThenBy(r => r.Name)
+            .ToList();
         @if (external.Count > 0)
         {
             <h3 style="margin-top:1rem; font-size:0.95rem; color:var(--text-secondary);">External (installed separately)</h3>
@@ -59,7 +65,10 @@
         }
 
         @* --- Managed dependencies (configurable install path) --- *@
-        var managed = _results.Where(r => DepManager.IsConfigurable(r.Name, r.ModuleId)).ToList();
+        var managed = _results
+            .Where(r => DepManager.IsConfigurable(r.Name, r.ModuleId) && !IsExternallyConfigured(r.Name))
+            .OrderBy(r => r.Name)
+            .ToList();
         @if (managed.Count > 0)
         {
             <h3 style="margin-top:1.5rem; font-size:0.95rem; color:var(--text-secondary);">Managed (auto-installable)</h3>
@@ -245,4 +254,9 @@
         State.DependenciesTotal = _results.Count;
         State.DependenciesFound = _results.Count(r => r.Found);
     }
+
+    // Match Settings > Dependencies: docker + ws-scrcpy-web always render in
+    // the External section (top), alphabetized within their own group.
+    private static bool IsExternallyConfigured(string name) =>
+        name == "docker" || name == "ws-scrcpy-web";
 }
