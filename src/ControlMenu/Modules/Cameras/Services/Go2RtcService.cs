@@ -35,7 +35,8 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         IServiceScopeFactory scopeFactory,
         ILogger<Go2RtcService> logger,
         IConfiguration configuration,
-        ICameraChangeNotifier cameraNotifier)
+        ICameraChangeNotifier cameraNotifier,
+        IHostApplicationLifetime appLifetime)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
@@ -43,6 +44,24 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
             ?? AppContext.BaseDirectory;
         _cameraNotifier = cameraNotifier;
         _cameraNotifier.CamerasChanged += OnCamerasChanged;
+
+        // Belt-and-suspenders: IHostedService.StopAsync is the canonical stop
+        // hook, but ApplicationStopping fires earlier in the host lifecycle and
+        // ProcessExit catches non-graceful shutdowns (terminal close, debugger
+        // stop, force-quit) that may skip IHostedService.StopAsync entirely.
+        // All three call into the same idempotent KillProcess path.
+        appLifetime.ApplicationStopping.Register(() =>
+        {
+            _disposed = true;
+            _serviceReady = false;
+            lock (_lock) { KillProcess(); }
+        });
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            _disposed = true;
+            _serviceReady = false;
+            lock (_lock) { KillProcess(); }
+        };
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
