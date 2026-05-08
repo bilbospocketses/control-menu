@@ -1,13 +1,13 @@
 /* HomeModuleTiles.razor.css */
 .home-tiles-band {
     padding: 0.875rem 1.5rem;
-    border-top: 1px solid var(--border-subtle, #2a2a2a);
+    border-top: 1px solid var(--border-color);
 }
 
 .home-tiles-label {
     display: block;
     font-size: 0.6875rem;
-    color: var(--text-muted, #888);
+    color: var(--text-muted);
     letter-spacing: 0.5px;
     margin-bottom: 0.625rem;
 }
@@ -30,15 +30,16 @@
     flex-direction: column;
     align-items: center;
     gap: 0.25rem;
-    background: var(--bg-card, #2a2a2a);
-    color: var(--text-primary, #e0e0e0);
+    background: var(--card-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
     padding: 0.75rem 0.375rem;
     border-radius: 6px;
     text-decoration: none;
     text-align: center;
     transition: background 0.15s ease;
 }
-.home-tile:hover { background: var(--bg-card-hover, #333); }
+.home-tile:hover { background: var(--hover-bg); }
 
 .home-tile-img { width: 24px; height: 24px; }
 .home-tile-bi  { font-size: 1.25rem; }

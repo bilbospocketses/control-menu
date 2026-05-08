@@ -1,8 +1,8 @@
 /* HomeDiscoveredCameras.razor.css */
 .home-disc-section {
     padding: 1rem 1.5rem;
-    background: var(--bg-elevated, #1a1a1a);
-    border-bottom: 1px solid var(--border-subtle, #2a2a2a);
+    background: var(--surface-recessed);
+    border-bottom: 1px solid var(--border-color);
 }
 
 .home-disc-header {
@@ -14,7 +14,7 @@
 
 .home-disc-label {
     font-size: 1.125rem;
-    color: var(--text-muted, #888);
+    color: var(--text-muted);
     letter-spacing: 0.5px;
 }
 
@@ -35,9 +35,9 @@
     text-align: center;
     min-height: 110px;
     padding: 1.5rem 1rem;
-    border: 2px dashed var(--border-subtle, #444);
+    border: 2px dashed var(--border-color);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.02);
-    color: var(--text-muted, #888);
+    background: var(--card-bg);
+    color: var(--text-muted);
     font-size: 1rem;
 }
