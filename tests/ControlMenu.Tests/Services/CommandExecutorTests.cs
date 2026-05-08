@@ -9,10 +9,26 @@ public class CommandExecutorTests
     [Fact]
     public async Task ExecuteAsync_SimpleCommand_ReturnsOutput()
     {
-        var result = await _executor.ExecuteAsync("echo", "hello");
+        var result = await _executor.ExecuteAsync(
+            OperatingSystem.IsWindows() ? "cmd" : "bash",
+            OperatingSystem.IsWindows() ? "/c echo hello" : "-c \"echo hello\"");
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("hello", result.StandardOutput);
         Assert.False(result.TimedOut);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_Cancellation_BareNameRespectsToken()
+    {
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+        // The cancellation must throw before Process.Start is reached, so a bare-name
+        // command (which can't be resolved on Windows) is fine here.
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => _executor.ExecuteAsync(
+                OperatingSystem.IsWindows() ? "cmd" : "bash",
+                OperatingSystem.IsWindows() ? "/c echo hello" : "-c \"echo hello\"",
+                cancellationToken: cts.Token));
     }
 
     [Fact]
