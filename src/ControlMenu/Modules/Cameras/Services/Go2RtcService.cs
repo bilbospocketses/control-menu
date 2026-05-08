@@ -344,6 +344,15 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         if (_process is { HasExited: false })
         {
             var pid = _process.Id;
+
+            // CRITICAL: detach the Exited handler before killing. Without this,
+            // the intentional kill triggers OnProcessExited which can't tell
+            // "we killed it" from "it crashed" and schedules a phantom respawn
+            // 2 seconds later. That phantom couldn't bind port 1984 (the real
+            // replacement was already spawned), but stayed alive anyway —
+            // leaking +1 process per CRUD operation.
+            _process.Exited -= OnProcessExited;
+
             try
             {
                 _process.Kill(entireProcessTree: true);
