@@ -20,5 +20,17 @@
 }
 
 .power-tools-page .alert {
-    margin: 1rem;
+    margin: 1rem auto;
+    font-size: 1.25rem;
+    line-height: 1.6;
+    max-width: 720px;
+    text-align: center;
+}
+
+/* When the page is in a non-iframe state (Checking… or warning), center
+   the alert vertically in the available space rather than pinning it to
+   the top — page is otherwise empty so a centered alert reads better. */
+.power-tools-page:has(.alert) {
+    justify-content: center;
+    align-items: center;
 }

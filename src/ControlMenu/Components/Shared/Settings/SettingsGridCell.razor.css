@@ -7,7 +7,7 @@
 }
 
 .settings-grid-cell:hover {
-    background-color: color-mix(in srgb, var(--hover-bg) 50%, transparent);
+    background-color: color-mix(in srgb, var(--hover-bg) 22%, transparent);
 }
 
 /* Cells in last column lose the right border (handled by sibling positioning).

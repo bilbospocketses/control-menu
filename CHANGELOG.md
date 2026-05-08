@@ -73,13 +73,14 @@ First official release.
 ### Changed
 
 - **Status line registered count split per-type.** From combined `K registered` to `X Androids and Y Cameras registered` so the inventory composition is self-documenting.
-- **Home page brand icon enlarged** from 36×36 to 44×44 to read as a peer of the Quick Scan buttons rather than a chip; cold-state status-line font bumped from 0.6875rem to 0.875rem for readability.
+- **Home page brand icon enlarged** from 36×36 to 52×52 to read as a peer of the Quick Scan buttons rather than a chip; cold-state status-line font bumped from 0.6875rem to 1rem for readability.
 - **Home section CSS tokens** — replaced undefined `--bg-elevated` / `--bg-card` / `--bg-card-hover` / `--border-subtle` with `--surface-recessed` / `--card-bg` / `--hover-bg` / `--border-color` (defined for both light + dark themes). Fixes light-mode dark-on-dark contrast bug where Discovered sections had dark backgrounds and module tile labels were nearly invisible.
 - **Mirror panel background** set to `#000` on Pixel/Tablet/Watch dashboards so any aspect-ratio mismatch between the computed iframe ratio and ws-scrcpy-web's actual toolbar+content width blends as a uniform bezel rather than appearing as letterbox bars on top/left/right.
 - **Sidebar subscribes to `ICameraChangeNotifier.CamerasChanged`** — camera CRUD (add/delete/enable-toggle/rename) now propagates to the sidebar in real-time, mirroring the Android device-type pattern. `CamerasModule.EnabledCameras` static list now correctly filters by `Enabled` so disabled cameras don't appear in the nav.
 - **Android Power Tools page** — gates iframe rendering on a real HTTP probe (`WsScrcpyService.ProbeAsync`) rather than the misleadingly-named `IsRunning` flag. Shows a friendly warning + Re-check button when ws-scrcpy-web is unreachable.
 - **Wizard Dependencies step** — docker grouped at the top of the External (installed separately) section alongside ws-scrcpy-web, matching Settings → Dependencies behavior.
-- **Settings grid cell hover transition softened** from 120ms full-opacity to 280ms ease-out at 50% opacity (via color-mix). Less abrupt visual flip on General + Jellyfin pages.
+- **Settings grid cell hover transition softened** from 120ms full-opacity to 280ms ease-out at 22% opacity (via color-mix). Subtle surface tint on General + Jellyfin pages instead of an abrupt color flip.
+- **Android Power Tools warning + checking alerts** are now centered both horizontally and vertically in the page area, with larger 1.25rem font and a 720px max-width for readability when ws-scrcpy-web is unreachable.
 - **Manual Add Camera form** — IP and Port fields are now editable on the manual-Add path (toolbar "Add Camera Manually" button). Previously hard-coded `disabled`, breaking manual entry. Discovered-row Add path still pre-fills these from the scan; user can adjust if needed.
 - **WizardDevices intro paragraph** now explicitly calls out the mDNS-only discovery limitation and directs older Android devices to Settings → Android Devices post-wizard.
 - **Settings sub-nav label "Devices" → "Android Devices"** (route identifier `devices` unchanged).

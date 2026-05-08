@@ -17,7 +17,7 @@ Redesign Home as a discovery-first dashboard: scan-action band at top, live Disc
 
 ### 1. Header band — branding + status + scan buttons (single row)
 
-- Left: 44×44 app icon and `Control Menu` title.
+- Left: 52×52 app icon and `Control Menu` title.
 - Center-left: status line summarizing current state — `N Android · M Cameras discovered · X Androids and Y Cameras registered · last scan Xs ago`. `N` and `M` count *all* hits in their respective Discovered lists (including hits that match an already-registered device); `X` and `Y` count the registered Android-device and registered-camera DB totals separately. Empty state (no scans run yet in this session, rendered at a slightly larger, more readable font size): `Find devices and cameras on your network, then manage them.`
 - Right: **three fixed-width scan buttons** in this order: `Scan Android` (blue), `Scan Cameras` (red), `Scan All` (grey). All three are the same width (~140px) and **never resize during state changes** — text changes inside the fixed footprint.
 

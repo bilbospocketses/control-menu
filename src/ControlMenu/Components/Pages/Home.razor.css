@@ -28,9 +28,9 @@
 }
 
 .home-logo {
-    width: 44px;
-    height: 44px;
-    border-radius: 8px;
+    width: 52px;
+    height: 52px;
+    border-radius: 9px;
 }
 
 .home-title {
@@ -39,6 +39,6 @@
 }
 
 .home-status {
-    font-size: 0.875rem;
+    font-size: 1rem;
     color: var(--text-muted);
 }
