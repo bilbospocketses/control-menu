@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`backups/origina tools-menu backup/ControlMenu.ps1`** — archived copy of the legacy PowerShell tools menu that this project replaced, kept for historical paper trail. Hardcoded Pixel 9 unlock PIN on line 841 redacted before commit (`<REDACTED>` placeholder).
+
 ### Changed
 
 ### Removed
