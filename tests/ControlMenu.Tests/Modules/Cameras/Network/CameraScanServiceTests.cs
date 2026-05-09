@@ -132,16 +132,16 @@ public class CameraScanServiceTests
                 await Task.Delay(50); // Force ONVIF to land after TCP
                 return new List<OnvifProbeResponse>
                 {
-                    new("192.168.86.10", "Hikvision", "DS-2CD2143G0-I", "http://192.168.86.10/onvif/device_service")
+                    new("192.168.1.10", "Hikvision", "DS-2CD2143G0-I", "http://192.168.1.10/onvif/device_service")
                 };
             });
-        _rtsp.Setup(r => r.ProbeTcpAsync("192.168.86.10", 554, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+        _rtsp.Setup(r => r.ProbeTcpAsync("192.168.1.10", 554, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
-        _rtsp.Setup(r => r.ProbeTcpAsync(It.Is<string>(s => s != "192.168.86.10"), 554, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+        _rtsp.Setup(r => r.ProbeTcpAsync(It.Is<string>(s => s != "192.168.1.10"), 554, It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         var sut = CreateSut();
-        await sut.StartScanAsync(new[] { Subnet("192.168.86.0/24") });
+        await sut.StartScanAsync(new[] { Subnet("192.168.1.0/24") });
 
         Assert.Single(sut.Hits);
         Assert.True(sut.Hits[0].IsOnvif);
@@ -159,7 +159,7 @@ public class CameraScanServiceTests
         var sut = CreateSut();
 
         // Act
-        await sut.StartOnvifOnlyScanAsync(new[] { Subnet("192.168.86.0/24") });
+        await sut.StartOnvifOnlyScanAsync(new[] { Subnet("192.168.1.0/24") });
 
         // Assert
         _onvifDisc.Verify(o => o.ProbeAsync(It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()), Times.Once);

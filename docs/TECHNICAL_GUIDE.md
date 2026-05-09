@@ -542,8 +542,8 @@ Hosted service (`IHostedService`) that manages the go2rtc child process. Registe
 **Config generation** (`GenerateConfigAsync`):
 ```yaml
 streams:
-  camera-1: rtsp://admin:password@192.168.86.x:554
-  camera-2: rtsp://admin:password@192.168.86.y:554
+  camera-1: rtsp://admin:password@192.168.1.x:554
+  camera-2: rtsp://admin:password@192.168.1.y:554
 api:
   listen: ":1984"
 ```

@@ -54,7 +54,7 @@ public class HikvisionIsapiClientTests
             Content = new StringContent(xml, Encoding.UTF8, "application/xml")
         });
 
-        var info = await sut.GetDeviceInfoAsync("192.168.86.10", 80, "admin", "secret", default);
+        var info = await sut.GetDeviceInfoAsync("192.168.1.10", 80, "admin", "secret", default);
 
         Assert.NotNull(info);
         Assert.Equal("Back Porch", info.DeviceName);
@@ -70,7 +70,7 @@ public class HikvisionIsapiClientTests
     {
         var xml = "<DeviceInfo><deviceName>Cam</deviceName></DeviceInfo>";
         var (sut, _) = CreateClient(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(xml) });
-        var info = await sut.GetDeviceInfoAsync("192.168.86.10", 80, "u", "p", default);
+        var info = await sut.GetDeviceInfoAsync("192.168.1.10", 80, "u", "p", default);
         Assert.NotNull(info);
         Assert.Equal("Cam", info.DeviceName);
         Assert.Null(info.MacAddress);
@@ -81,7 +81,7 @@ public class HikvisionIsapiClientTests
     public async Task GetDeviceInfoAsync_ReturnsNull_On401()
     {
         var (sut, _) = CreateClient(new HttpResponseMessage(HttpStatusCode.Unauthorized) { Content = new StringContent("") });
-        var info = await sut.GetDeviceInfoAsync("192.168.86.10", 80, "admin", "wrong", default);
+        var info = await sut.GetDeviceInfoAsync("192.168.1.10", 80, "admin", "wrong", default);
         Assert.Null(info);
     }
 
@@ -89,7 +89,7 @@ public class HikvisionIsapiClientTests
     public async Task GetDeviceInfoAsync_ReturnsNull_On404()
     {
         var (sut, _) = CreateClient(new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent("") });
-        var info = await sut.GetDeviceInfoAsync("192.168.86.10", 80, "admin", "secret", default);
+        var info = await sut.GetDeviceInfoAsync("192.168.1.10", 80, "admin", "secret", default);
         Assert.Null(info);
     }
 
@@ -100,7 +100,7 @@ public class HikvisionIsapiClientTests
         {
             Content = new StringContent("not xml")
         });
-        var info = await sut.GetDeviceInfoAsync("192.168.86.10", 80, "admin", "secret", default);
+        var info = await sut.GetDeviceInfoAsync("192.168.1.10", 80, "admin", "secret", default);
         Assert.Null(info);
     }
 }

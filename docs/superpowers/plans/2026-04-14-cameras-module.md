@@ -159,14 +159,14 @@ public class CameraServiceTests
     public async Task GetCameraAsync_ReturnsConfig_WhenConfigured()
     {
         _config.Setup(c => c.GetSettingAsync("camera-1-name", "cameras")).ReturnsAsync("Front Door");
-        _config.Setup(c => c.GetSettingAsync("camera-1-ip", "cameras")).ReturnsAsync("192.168.86.101");
+        _config.Setup(c => c.GetSettingAsync("camera-1-ip", "cameras")).ReturnsAsync("192.168.1.101");
         _config.Setup(c => c.GetSettingAsync("camera-1-port", "cameras")).ReturnsAsync("80");
 
         var result = await _sut.GetCameraAsync(1);
 
         Assert.NotNull(result);
         Assert.Equal("Front Door", result.Name);
-        Assert.Equal("192.168.86.101", result.IpAddress);
+        Assert.Equal("192.168.1.101", result.IpAddress);
         Assert.Equal(80, result.Port);
     }
 
@@ -174,7 +174,7 @@ public class CameraServiceTests
     public async Task GetCameraAsync_DefaultsPort80_WhenNotSet()
     {
         _config.Setup(c => c.GetSettingAsync("camera-3-name", "cameras")).ReturnsAsync("Garage");
-        _config.Setup(c => c.GetSettingAsync("camera-3-ip", "cameras")).ReturnsAsync("192.168.86.103");
+        _config.Setup(c => c.GetSettingAsync("camera-3-ip", "cameras")).ReturnsAsync("192.168.1.103");
         _config.Setup(c => c.GetSettingAsync("camera-3-port", "cameras")).ReturnsAsync((string?)null);
 
         var result = await _sut.GetCameraAsync(3);
@@ -188,7 +188,7 @@ public class CameraServiceTests
     {
         // Camera 1 configured, cameras 2-8 not
         _config.Setup(c => c.GetSettingAsync("camera-1-name", "cameras")).ReturnsAsync("Front Door");
-        _config.Setup(c => c.GetSettingAsync("camera-1-ip", "cameras")).ReturnsAsync("192.168.86.101");
+        _config.Setup(c => c.GetSettingAsync("camera-1-ip", "cameras")).ReturnsAsync("192.168.1.101");
         _config.Setup(c => c.GetSettingAsync("camera-1-port", "cameras")).ReturnsAsync("80");
         // All others return null by default
 
@@ -201,10 +201,10 @@ public class CameraServiceTests
     [Fact]
     public async Task SaveCameraAsync_StoresAllFields()
     {
-        await _sut.SaveCameraAsync(2, "Garage", "192.168.86.102", 8080);
+        await _sut.SaveCameraAsync(2, "Garage", "192.168.1.102", 8080);
 
         _config.Verify(c => c.SetSettingAsync("camera-2-name", "Garage", "cameras"));
-        _config.Verify(c => c.SetSettingAsync("camera-2-ip", "192.168.86.102", "cameras"));
+        _config.Verify(c => c.SetSettingAsync("camera-2-ip", "192.168.1.102", "cameras"));
         _config.Verify(c => c.SetSettingAsync("camera-2-port", "8080", "cameras"));
     }
 
@@ -732,7 +732,7 @@ git commit -m "feat(cameras): add CameraView page with full-page iframe"
             <label>IP Address</label>
             <input class="form-control" value="@_ips[index]"
                    @onchange="e => _ips[index] = e.Value?.ToString() ?? """
-                   placeholder="e.g. 192.168.86.101" />
+                   placeholder="e.g. 192.168.1.101" />
         </div>
         <div class="form-row">
             <label>Port</label>

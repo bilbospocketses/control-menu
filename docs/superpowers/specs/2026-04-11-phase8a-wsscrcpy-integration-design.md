@@ -35,7 +35,7 @@ ws-scrcpy-web remains a fully standalone project. No Control Menu-specific code 
 **Responsibility:** Reusable iframe embed for both dashboards.
 
 **Parameters:**
-- `string Udid` — device address (e.g., `192.168.86.43:5555`)
+- `string Udid` — device address (e.g., `192.168.1.43:5555`)
 
 **Behavior:**
 - Injects `WsScrcpyService` to get `BaseUrl` and `IsRunning`
@@ -72,7 +72,7 @@ User opens Google TV Dashboard
   -> sees device controls + "Screen Mirror" button
   -> clicks "Screen Mirror"
     -> ScrcpyMirror component toggles visible
-    -> iframe src = "http://localhost:8000/#!action=stream&udid=192.168.86.43:5555&player=webcodecs"
+    -> iframe src = "http://localhost:8000/#!action=stream&udid=192.168.1.43:5555&player=webcodecs"
     -> ws-scrcpy-web handles everything (device connection, scrcpy-server push, streaming)
 
 User clicks "Screen Mirror" again (or navigates away)

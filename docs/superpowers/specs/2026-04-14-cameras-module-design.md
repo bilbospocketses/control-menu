@@ -51,7 +51,7 @@ All settings scoped to `moduleId = "cameras"`:
 | Key | Type | Example |
 |-----|------|---------|
 | `camera-{index}-name` | Setting | "Front Door" |
-| `camera-{index}-ip` | Setting | "192.168.86.101" |
+| `camera-{index}-ip` | Setting | "192.168.1.101" |
 | `camera-{index}-port` | Setting | "80" |
 | `camera-{index}-username` | Secret | "admin" |
 | `camera-{index}-password` | Secret | "password123" |

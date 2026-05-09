@@ -844,7 +844,7 @@ public class NetworkScanServiceTests
         svc.TestOnlyInject(new ScanStartedEvent(256, 1, 0));
         svc.TestOnlyInject(new ScanProgressEvent(10, 256, 0));
         svc.TestOnlyInject(new ScanHitEvent(new ScanHit(
-            DiscoverySource.Mdns, "192.168.86.43:5555", "ABC123", "adb-ABC123", "", null)));
+            DiscoverySource.Mdns, "192.168.1.43:5555", "ABC123", "adb-ABC123", "", null)));
 
         var received = new List<ScanEvent>();
         using var sub = svc.Subscribe(e => received.Add(e));

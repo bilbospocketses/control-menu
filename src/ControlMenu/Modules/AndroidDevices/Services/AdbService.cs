@@ -141,8 +141,8 @@ public partial class AdbService : IAdbService
     /// Discovers ADB-advertising devices on the local network via <c>adb mdns services</c>.
     /// Output format (tab-separated, one device per line):
     /// <code>
-    /// adb-&lt;serial&gt;    _adb._tcp           192.168.86.43:5555
-    /// adb-&lt;serial&gt;    _adb-tls-connect._tcp  192.168.86.169:43423
+    /// adb-&lt;serial&gt;    _adb._tcp           192.168.1.43:5555
+    /// adb-&lt;serial&gt;    _adb-tls-connect._tcp  192.168.1.169:43423
     /// </code>
     /// A "List of discovered mdns services" header line is silently skipped
     /// (lacks three tab-separated columns).

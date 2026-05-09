@@ -147,7 +147,7 @@ User clicks [Cancel] next to chip
 │                                            │
 │ Subnets to scan                            │
 │ ┌────────────────────────────────────────┐ │
-│ │ Detected: 192.168.86.0/24 (254 hosts)  │ │
+│ │ Detected: 192.168.1.0/24 (254 hosts)  │ │
 │ │           [use this]                   │ │
 │ │                                        │ │
 │ │ ● 192.168.1.0/24  254 hosts [Remove]   │ │

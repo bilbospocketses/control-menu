@@ -86,7 +86,7 @@ public class NetworkDiscoveryServiceTests
             Interface: 192.168.1.100 --- 0x4
               Internet Address      Physical Address      Type
               192.168.1.1           a0-b1-c2-d3-e4-f5     dynamic
-              192.168.1.50          b8-7b-d4-f3-ae-84     dynamic
+              192.168.1.50          aa-bb-cc-dd-ee-ff     dynamic
               192.168.1.255         ff-ff-ff-ff-ff-ff     static
             """;
 
@@ -98,7 +98,7 @@ public class NetworkDiscoveryServiceTests
 
         Assert.Equal(3, entries.Count);
         Assert.Contains(entries, e => e.IpAddress == "192.168.1.1" && e.MacAddress == "a0-b1-c2-d3-e4-f5");
-        Assert.Contains(entries, e => e.IpAddress == "192.168.1.50" && e.MacAddress == "b8-7b-d4-f3-ae-84");
+        Assert.Contains(entries, e => e.IpAddress == "192.168.1.50" && e.MacAddress == "aa-bb-cc-dd-ee-ff");
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class NetworkDiscoveryServiceTests
     {
         var linuxOutput = """
             ? (192.168.1.1) at a0:b1:c2:d3:e4:f5 [ether] on eth0
-            ? (192.168.1.50) at b8:7b:d4:f3:ae:84 [ether] on eth0
+            ? (192.168.1.50) at aa:bb:cc:dd:ee:ff [ether] on eth0
             """;
 
         _mockExecutor.Setup(e => e.ExecuteAsync("arp", "-a", null, It.IsAny<CancellationToken>()))
@@ -117,7 +117,7 @@ public class NetworkDiscoveryServiceTests
 
         Assert.Equal(2, entries.Count);
         Assert.Contains(entries, e => e.IpAddress == "192.168.1.1" && e.MacAddress == "a0-b1-c2-d3-e4-f5");
-        Assert.Contains(entries, e => e.IpAddress == "192.168.1.50" && e.MacAddress == "b8-7b-d4-f3-ae-84");
+        Assert.Contains(entries, e => e.IpAddress == "192.168.1.50" && e.MacAddress == "aa-bb-cc-dd-ee-ff");
     }
 
     [Fact]
@@ -138,14 +138,14 @@ public class NetworkDiscoveryServiceTests
         var output = """
             Interface: 192.168.1.100 --- 0x4
               Internet Address      Physical Address      Type
-              192.168.1.50          b8-7b-d4-f3-ae-84     dynamic
+              192.168.1.50          aa-bb-cc-dd-ee-ff     dynamic
             """;
 
         _mockExecutor.Setup(e => e.ExecuteAsync("arp", "-a", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CommandResult(0, output, "", false));
 
         var service = CreateService();
-        var ip = await service.ResolveIpFromMacAsync("B8-7B-D4-F3-AE-84");
+        var ip = await service.ResolveIpFromMacAsync("AA-BB-CC-DD-EE-FF");
 
         Assert.Equal("192.168.1.50", ip);
     }
@@ -156,7 +156,7 @@ public class NetworkDiscoveryServiceTests
         var output = """
             Interface: 192.168.1.100 --- 0x4
               Internet Address      Physical Address      Type
-              192.168.1.50          b8-7b-d4-f3-ae-84     dynamic
+              192.168.1.50          aa-bb-cc-dd-ee-ff     dynamic
             """;
 
         _mockExecutor.Setup(e => e.ExecuteAsync("arp", "-a", null, It.IsAny<CancellationToken>()))
@@ -164,7 +164,7 @@ public class NetworkDiscoveryServiceTests
 
         var service = CreateService();
         // Pass MAC with colons — should still match
-        var ip = await service.ResolveIpFromMacAsync("b8:7b:d4:f3:ae:84");
+        var ip = await service.ResolveIpFromMacAsync("aa:bb:cc:dd:ee:ff");
 
         Assert.Equal("192.168.1.50", ip);
     }
@@ -175,7 +175,7 @@ public class NetworkDiscoveryServiceTests
         var output = """
             Interface: 192.168.1.100 --- 0x4
               Internet Address      Physical Address      Type
-              192.168.1.50          b8-7b-d4-f3-ae-84     dynamic
+              192.168.1.50          aa-bb-cc-dd-ee-ff     dynamic
             """;
 
         _mockExecutor.Setup(e => e.ExecuteAsync("arp", "-a", null, It.IsAny<CancellationToken>()))
@@ -218,9 +218,9 @@ public class NetworkDiscoveryServiceTests
     [Fact]
     public void NormalizeMac_ConvertsFormats()
     {
-        Assert.Equal("b8-7b-d4-f3-ae-84", NetworkDiscoveryService.NormalizeMac("B8-7B-D4-F3-AE-84"));
-        Assert.Equal("b8-7b-d4-f3-ae-84", NetworkDiscoveryService.NormalizeMac("b8:7b:d4:f3:ae:84"));
-        Assert.Equal("b8-7b-d4-f3-ae-84", NetworkDiscoveryService.NormalizeMac("B8:7B:D4:F3:AE:84"));
+        Assert.Equal("aa-bb-cc-dd-ee-ff", NetworkDiscoveryService.NormalizeMac("AA-BB-CC-DD-EE-FF"));
+        Assert.Equal("aa-bb-cc-dd-ee-ff", NetworkDiscoveryService.NormalizeMac("aa:bb:cc:dd:ee:ff"));
+        Assert.Equal("aa-bb-cc-dd-ee-ff", NetworkDiscoveryService.NormalizeMac("AA:BB:CC:DD:EE:FF"));
     }
 }
 ```
@@ -1193,13 +1193,13 @@ The device management section displays a table of all devices, allows Add/Edit/D
 
         <div class="form-group">
             <label>MAC Address</label>
-            <input class="form-control" @bind="Model.MacAddress" placeholder="b8-7b-d4-f3-ae-84" />
+            <input class="form-control" @bind="Model.MacAddress" placeholder="aa-bb-cc-dd-ee-ff" />
             <div class="form-hint">Used for automatic IP discovery via ARP table.</div>
         </div>
 
         <div class="form-group">
             <label>Serial Number (optional)</label>
-            <input class="form-control" @bind="Model.SerialNumber" placeholder="47121FDAQ000WC" />
+            <input class="form-control" @bind="Model.SerialNumber" placeholder="EXAMPLE12345" />
         </div>
 
         <div class="dialog-actions">

@@ -491,7 +491,7 @@ public class AppDbContextTests
             Id = Guid.NewGuid(),
             Name = "Living Room TV",
             Type = DeviceType.GoogleTV,
-            MacAddress = "b8-7b-d4-f3-ae-84",
+            MacAddress = "aa-bb-cc-dd-ee-ff",
             ModuleId = "android-devices",
             AdbPort = 5555
         };

@@ -123,8 +123,8 @@ Adding a new module requires only creating the folder structure and implementing
 | Id | GUID | Primary key |
 | Name | string | "Living Room Google TV" |
 | Type | enum | GoogleTV, AndroidPhone, etc. |
-| MacAddress | string | "b8-7b-d4-f3-ae-84" |
-| SerialNumber | string? | Nullable, e.g., "47121FDAQ000WC" |
+| MacAddress | string | "aa-bb-cc-dd-ee-ff" |
+| SerialNumber | string? | Nullable, e.g., "EXAMPLE12345" |
 | LastKnownIp | string? | Auto-populated from ARP |
 | AdbPort | int | Default 5555 |
 | LastSeen | DateTime? | Last successful ping |

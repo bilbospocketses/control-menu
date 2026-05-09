@@ -228,7 +228,7 @@ Run the app:
 dotnet run --project src/ControlMenu/ControlMenu.csproj -c Release --no-build
 ```
 
-Navigate to **Settings › Devices**. Either use an existing discovered device or run `Scan Network…` → Start to generate one. Click **Add** on a Discovered row. The device form opens. Watch the Serial Number field: within ~1 second of the form opening, it should populate with a value (e.g., `47121FDAQ000WC` for a Pixel). Save the device. Open the same device for **Edit**. Serial Number should persist.
+Navigate to **Settings › Devices**. Either use an existing discovered device or run `Scan Network…` → Start to generate one. Click **Add** on a Discovered row. The device form opens. Watch the Serial Number field: within ~1 second of the form opening, it should populate with a value (e.g., `EXAMPLE12345` for a Pixel). Save the device. Open the same device for **Edit**. Serial Number should persist.
 
 If the field stays empty, check:
 - Did `ConnectAsync` succeed? (Page shows no error toast either way — check browser console for ADB errors.)

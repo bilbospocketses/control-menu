@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Codebase scrub of identifying values** — replaced the user's actual hardware MAC `b8-7b-d4-f3-ae-84` (all 4 case/separator variants) with synthetic `aa-bb-cc-dd-ee-ff` (also 4 variants), Pixel 9 hardware serial `47121FDAQ000WC` with `EXAMPLE12345`, and home-network subnet prefix `192.168.86.x` with the more generic `192.168.1.x` across all source files, tests, design specs, and implementation plans. `src/ControlMenu/wwwroot/help/subnets.html` retains its mention of `192.168.86.0/24` because it appears as factual ISP-subnet documentation, not personal context. 383 tests still passing post-scrub. Affects 19 files.
+
 ### Removed
 
 ### Fixed

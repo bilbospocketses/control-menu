@@ -40,11 +40,11 @@ public class SubnetDetectionClientTests
     public async Task Detect_ReturnsSubnet_OnSuccess()
     {
         await ConfigureExternalAsync("http://localhost:8000");
-        var handler = new MockHttpHandler("{\"cidr\":\"192.168.86.0/24\",\"hostCount\":254,\"source\":\"gateway\"}");
+        var handler = new MockHttpHandler("{\"cidr\":\"192.168.1.0/24\",\"hostCount\":254,\"source\":\"gateway\"}");
         var client = new SubnetDetectionClient(FactoryFor(handler).Object, _wsScrcpy);
         var detected = await client.DetectAsync();
         Assert.NotNull(detected);
-        Assert.Equal("192.168.86.0/24", detected!.Cidr);
+        Assert.Equal("192.168.1.0/24", detected!.Cidr);
         Assert.Equal(254, detected.HostCount);
         Assert.Equal("gateway", detected.Source);
     }

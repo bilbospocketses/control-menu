@@ -113,7 +113,7 @@ public async Task StartOnvifOnlyScanAsync_DoesNotInvokeRtspProbe()
                      .ReturnsAsync(new List<ArpEntry>());
 
     var sut = BuildSut();
-    var subnet = SubnetParser.Parse("192.168.86.0/24").Value!;
+    var subnet = SubnetParser.Parse("192.168.1.0/24").Value!;
 
     // Act
     await sut.StartOnvifOnlyScanAsync(new[] { subnet });

@@ -159,7 +159,7 @@ Task StartOnvifOnlyScanAsync(IReadOnlyList<ParsedSubnet> subnets, CancellationTo
 
 ### Manual smoke
 
-- Reset the user's CM database state (`Cameras` table empty), run the wizard end-to-end against the 8-camera Hikvision/LTS fleet at home (subnet 192.168.86.0/24).
+- Reset the user's CM database state (`Cameras` table empty), run the wizard end-to-end against the 8-camera Hikvision/LTS fleet at home (subnet 192.168.1.0/24).
 - Verify Scan Network click → progress chip appears → cameras populate Discovered panel within ~5s → enter shared admin password once via bulk-creds → click Add per row → registered table grows.
 - Verify Skip from Cameras step → wizard advances cleanly with `CamerasAdded = 0`.
 - Verify Back from Cameras → Devices → Cameras → registered table restored from DB.

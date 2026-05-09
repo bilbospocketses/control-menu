@@ -915,7 +915,7 @@ Replace `src/ControlMenu/Components/Pages/Setup/WizardDevices.razor`:
 
         <div class="form-group">
             <label>MAC Address</label>
-            <input class="form-control" @bind="_mac" placeholder="b8-7b-d4-f3-ae-84" />
+            <input class="form-control" @bind="_mac" placeholder="aa-bb-cc-dd-ee-ff" />
             <div class="form-hint">Used for automatic IP discovery via ARP.</div>
         </div>
 
