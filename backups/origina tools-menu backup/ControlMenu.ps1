@@ -17,7 +17,7 @@ if (!([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]
 
 # Fill array with MAC address targets for Android devices
 
-$macAddressArray = @("b8-7b-d4-f3-ae-84" , "b8-7b-d4-dd-01-4b" , "08-8b-c8-5e-aa-1e") # Google TV Bedroom MAC, Google TV Living Room MAC, Pixel 9 MAC
+$macAddressArray = @("<REDACTED>" , "<REDACTED>" , "<REDACTED>") # Google TV Bedroom MAC, Google TV Living Room MAC, Pixel 9 MAC (hardware MACs redacted from archive)
 
 # Initialize an index variable to count through array
 
@@ -27,9 +27,9 @@ $index = 0
 
 # Ping each device once to bring it into the local ARP table
 
-ping -n 1 192.168.86.33 | Out-Null
-ping -n 1 192.168.86.67 | Out-Null
-ping -n 1 192.168.86.70 | Out-Null
+ping -n 1 <REDACTED> | Out-Null # LAN IP redacted from archive
+ping -n 1 <REDACTED> | Out-Null # LAN IP redacted from archive
+ping -n 1 <REDACTED> | Out-Null # LAN IP redacted from archive
 
 do {
 	# Get MAC address from array
@@ -793,7 +793,7 @@ function P {
 				Pause
 				Write-Host ""
 				$adbDevices = adb devices
-				if (!($adbDevices | Select-String -Pattern "47121FDAQ000WC")) {
+				if (!($adbDevices | Select-String -Pattern "<REDACTED>")) { # Pixel 9 hardware serial redacted from archive
 					Write-Host "Pixel 9 not connected to USB. Returning to Pixel 9 menu. " -ForegroundColor Green -NoNewline
 					Pause
 					Write-Host ""
