@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace ControlMenu.Common.Paths;
 
 /// <summary>
@@ -10,6 +12,11 @@ namespace ControlMenu.Common.Paths;
 /// </summary>
 public static class DataPathResolverFactory
 {
+    /// <summary>
+    /// Creates a resolver from an explicit exe path. Detects Velopack mode when
+    /// <c>Update.exe</c> is present adjacent to the install root; otherwise falls
+    /// back to <see cref="DevDataPathResolver"/>.
+    /// </summary>
     public static IDataPathResolver Create(string exePath, string? programData = null)
     {
         var exeDir = Path.GetDirectoryName(exePath) ?? throw new InvalidOperationException("exe has no parent dir");
@@ -23,9 +30,13 @@ public static class DataPathResolverFactory
         return new DevDataPathResolver(exeDir);
     }
 
+    /// <summary>
+    /// Creates a resolver from the currently-running process's exe path.
+    /// Convenience wrapper around <see cref="Create"/> for production entry points.
+    /// </summary>
     public static IDataPathResolver CreateFromCurrentProcess(string? programData = null)
     {
-        var exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName
+        var exe = Process.GetCurrentProcess().MainModule?.FileName
             ?? throw new InvalidOperationException("could not determine current process exe path");
         return Create(exe, programData);
     }

@@ -15,6 +15,7 @@ public sealed class DevDataPathResolver : IDataPathResolver
     public string GetInstallRoot() => _baseDir;
     public string GetCurrentDir() => _baseDir;
     public string GetDataRoot() => _baseDir;
+    /// <remarks>Dev mode collapses config into the data root by design — no subdirectory separation.</remarks>
     public string GetConfigDir() => _baseDir;
     public string GetDbPath() => Path.Combine(_baseDir, "controlmenu.db");
     public string GetAppConfigPath() => Path.Combine(_baseDir, "app-config.json");

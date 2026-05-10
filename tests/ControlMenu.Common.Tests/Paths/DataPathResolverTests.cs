@@ -59,7 +59,8 @@ public class DataPathResolverTests
     [Fact]
     public void Factory_DetectsDevMode_WhenNoAdjacentUpdateExe()
     {
-        var devExe = Path.Combine(Path.GetTempPath(), "dev-" + Guid.NewGuid().ToString("N"), "bin", "Release", "net10.0", "ControlMenu.exe");
+        var root = Path.Combine(Path.GetTempPath(), "dev-" + Guid.NewGuid().ToString("N"));
+        var devExe = Path.Combine(root, "bin", "Release", "net10.0", "ControlMenu.exe");
         Directory.CreateDirectory(Path.GetDirectoryName(devExe)!);
         File.WriteAllText(devExe, "stub");
         try
@@ -67,6 +68,6 @@ public class DataPathResolverTests
             var resolver = DataPathResolverFactory.Create(devExe, programData: @"C:\ProgramData");
             Assert.IsType<DevDataPathResolver>(resolver);
         }
-        finally { Directory.Delete(Path.GetDirectoryName(devExe)!, recursive: true); }
+        finally { Directory.Delete(root, recursive: true); }
     }
 }
