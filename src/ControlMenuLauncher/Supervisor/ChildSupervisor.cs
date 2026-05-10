@@ -67,7 +67,7 @@ public static class ChildSupervisor
         }
         catch (Exception ex)
         {
-            LauncherLogger.Error($"supervisor failed: {ex.Message}");
+            LauncherLogger.Error($"supervisor failed: {ex}");
             return 1;
         }
     }

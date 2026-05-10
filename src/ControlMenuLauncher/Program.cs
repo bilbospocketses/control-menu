@@ -23,7 +23,14 @@ internal static class Program
             // Last-resort: write to %TEMP% so we have a paper trail before exiting.
             // main.rs has a similar fallback for resolve_install_root failures.
             var fallbackLog = Path.Combine(Path.GetTempPath(), "ControlMenuLauncher-bootstrap-failure.log");
-            File.AppendAllText(fallbackLog, $"{DateTime.UtcNow:o} bootstrap failed: {ex}\n");
+            try
+            {
+                File.AppendAllText(fallbackLog, $"{DateTime.UtcNow:o} bootstrap failed: {ex}\n");
+            }
+            catch
+            {
+                // Best-effort: if %TEMP% is also unwritable, swallow silently.
+            }
             return 1;
         }
 
@@ -75,6 +82,9 @@ internal static class Program
         // Phase 3 marker: --local-takeover override (post-uninstall handoff)
         // sets is_service_mode = false here. (main.rs:183-194)
 
+        // Out of scope: job_object::release() (main.rs:206-220) — CM does not
+        // adopt the Job Object pattern (no Node child).
+
         try
         {
             // 4. VelopackApp init. MUST be the first executable code path on
@@ -105,8 +115,5 @@ internal static class Program
             instance.Dispose();
             LauncherLogger.Info("ControlMenuLauncher exiting");
         }
-
-        // Out of scope: job_object::release() (main.rs:206-220) — CM does not
-        // adopt the Job Object pattern (no Node child).
     }
 }
