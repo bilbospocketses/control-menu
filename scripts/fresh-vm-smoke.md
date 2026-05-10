@@ -29,7 +29,7 @@ After first successful pack, subsequent runs are offline-capable.
 
 ## Steps
 
-### 1. Build local alpha.1 Setup.exe on dev machine
+### 1. Build local alpha.1 Setup.msi on dev machine
 
 ```powershell
 pwsh scripts/local-pack.ps1 -Version 1.1.0-alpha.1
