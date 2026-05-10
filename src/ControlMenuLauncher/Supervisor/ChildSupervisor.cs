@@ -13,9 +13,8 @@ namespace ControlMenu.Launcher.Supervisor;
 /// orchestration (mirrors launcher/src/supervisor.rs:1-198 from
 /// ws-scrcpy-web HEAD 384c6fc).
 ///
-/// Note for the Phase 3 port: the apply-update flow needs pre-apply daemon
-/// hygiene (Task 13's PreApplyHygiene helper) BEFORE Velopack's apply call,
-/// to prevent file-handle conflicts during current\ rename.
+/// Phase 3 will: exit-75 → PreApplyHygiene.RunAsync → UpdateManager.ApplyUpdatesAndExit
+/// → Servy restart-delay handles relaunch.
 /// </summary>
 public static class ChildSupervisor
 {
@@ -56,12 +55,23 @@ public static class ChildSupervisor
 
             if (code == ExitCodeApplyUpdate)
             {
+                LauncherLogger.Info("child requested apply-update via exit-75; running pre-apply hygiene");
+                if (OperatingSystem.IsWindows())
+                {
+                    try
+                    {
+                        PreApplyHygiene.RunAsync(paths).GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        // Defensive: PreApplyHygiene swallows internally, but if its public surface
+                        // throws unexpectedly we log + continue rather than fail the launcher.
+                        LauncherLogger.Error($"pre-apply hygiene threw: {ex}");
+                    }
+                }
                 LauncherLogger.Info(
-                    "child requested apply-update via exit-75; Phase 1: log + exit. " +
-                    "Phase 3 will run pre-apply hygiene + invoke Velopack apply orchestration here.");
-                // Phase 1 ends here. Phase 3 will: invoke PreApplyHygiene.RunAsync
-                // (Task 13) → invoke UpdateManager.ApplyUpdatesAndExit → Servy
-                // restart-delay handles relaunch.
+                    "Phase 1: pre-apply hygiene complete; Velopack apply orchestration lands in Phase 3. " +
+                    "Launcher will exit with code 75; user must manually relaunch via Start Menu.");
             }
             return code;
         }
