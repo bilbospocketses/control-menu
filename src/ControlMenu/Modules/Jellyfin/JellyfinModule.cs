@@ -9,23 +9,7 @@ public class JellyfinModule : IToolModule
     public string Icon => "bi-film";
     public int SortOrder => 2;
 
-    private static readonly string DepsRoot = FindDepsRoot();
-
-    private static string FindDepsRoot()
-    {
-        var dir = AppContext.BaseDirectory;
-        for (var i = 0; i < 5; i++)
-        {
-            var candidate = Path.Combine(dir, "dependencies");
-            if (Directory.Exists(candidate)) return candidate;
-            var parent = Directory.GetParent(dir)?.FullName;
-            if (parent is null) break;
-            dir = parent;
-        }
-        var fallback = Path.Combine(AppContext.BaseDirectory, "dependencies");
-        Directory.CreateDirectory(fallback);
-        return fallback;
-    }
+    private static readonly string DepsRoot = ControlMenu.Services.DepsRootHolder.Path;
 
     public IEnumerable<ModuleDependency> Dependencies =>
     [

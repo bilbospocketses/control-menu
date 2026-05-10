@@ -1,6 +1,6 @@
 using ControlMenu.Modules.Jellyfin.Services;
-using ControlMenu.Modules.Jellyfin.Services;
 using ControlMenu.Services;
+using ControlMenu.Tests.TestHelpers;
 using Moq;
 
 namespace ControlMenu.Tests.Modules.Jellyfin;
@@ -22,15 +22,19 @@ public class JellyfinDirectoryResolverTests
     [Fact]
     public async Task GetBackupDirectory_NoOverride_ReturnsDefault()
     {
-        var resolver = new JellyfinDirectoryResolver(ConfigReturning().Object);
+        using var temp = new TempDir();
+        var paths = new TestPathResolver(temp.Path);
+        var resolver = new JellyfinDirectoryResolver(ConfigReturning().Object, paths);
         var dir = await resolver.GetBackupDirectoryAsync();
-        Assert.Equal(OperationLogger.GetDefaultBackupDirectory(), dir);
+        Assert.Equal(OperationLogger.GetDefaultBackupDirectory(paths), dir);
     }
 
     [Fact]
     public async Task GetBackupDirectory_OverrideSet_ReturnsOverride()
     {
-        var resolver = new JellyfinDirectoryResolver(ConfigReturning(backupOverride: "D:\\custom\\backups").Object);
+        using var temp = new TempDir();
+        var paths = new TestPathResolver(temp.Path);
+        var resolver = new JellyfinDirectoryResolver(ConfigReturning(backupOverride: "D:\\custom\\backups").Object, paths);
         var dir = await resolver.GetBackupDirectoryAsync();
         Assert.Equal("D:\\custom\\backups", dir);
     }
@@ -38,15 +42,19 @@ public class JellyfinDirectoryResolverTests
     [Fact]
     public async Task GetLogDirectory_NoOverride_ReturnsDefault()
     {
-        var resolver = new JellyfinDirectoryResolver(ConfigReturning().Object);
+        using var temp = new TempDir();
+        var paths = new TestPathResolver(temp.Path);
+        var resolver = new JellyfinDirectoryResolver(ConfigReturning().Object, paths);
         var dir = await resolver.GetLogDirectoryAsync();
-        Assert.Equal(OperationLogger.GetDefaultLogDirectory(), dir);
+        Assert.Equal(OperationLogger.GetDefaultLogDirectory(paths), dir);
     }
 
     [Fact]
     public async Task GetLogDirectory_OverrideSet_ReturnsOverride()
     {
-        var resolver = new JellyfinDirectoryResolver(ConfigReturning(logOverride: "D:\\custom\\logs").Object);
+        using var temp = new TempDir();
+        var paths = new TestPathResolver(temp.Path);
+        var resolver = new JellyfinDirectoryResolver(ConfigReturning(logOverride: "D:\\custom\\logs").Object, paths);
         var dir = await resolver.GetLogDirectoryAsync();
         Assert.Equal("D:\\custom\\logs", dir);
     }
@@ -54,9 +62,11 @@ public class JellyfinDirectoryResolverTests
     [Fact]
     public async Task GetBackupDirectory_OverrideEmpty_ReturnsDefault()
     {
-        var resolver = new JellyfinDirectoryResolver(ConfigReturning(backupOverride: "").Object);
+        using var temp = new TempDir();
+        var paths = new TestPathResolver(temp.Path);
+        var resolver = new JellyfinDirectoryResolver(ConfigReturning(backupOverride: "").Object, paths);
         var dir = await resolver.GetBackupDirectoryAsync();
-        Assert.Equal(OperationLogger.GetDefaultBackupDirectory(), dir);
+        Assert.Equal(OperationLogger.GetDefaultBackupDirectory(paths), dir);
     }
 
     [Fact]
@@ -67,7 +77,8 @@ public class JellyfinDirectoryResolverTests
         var newDir = Path.Combine(temp.Path, "new");
         Directory.CreateDirectory(oldDir);
 
-        var resolver = new JellyfinDirectoryResolver(ConfigReturning().Object);
+        var paths = new TestPathResolver(temp.Path);
+        var resolver = new JellyfinDirectoryResolver(ConfigReturning().Object, paths);
         var result = await resolver.MigrateFilesAsync(oldDir, newDir, "*.db");
 
         Assert.Equal(0, result.MovedCount);
@@ -85,7 +96,8 @@ public class JellyfinDirectoryResolverTests
         File.WriteAllText(Path.Combine(oldDir, "a.db"), "x");
         File.WriteAllText(Path.Combine(oldDir, "b.db"), "y");
 
-        var resolver = new JellyfinDirectoryResolver(ConfigReturning().Object);
+        var paths = new TestPathResolver(temp.Path);
+        var resolver = new JellyfinDirectoryResolver(ConfigReturning().Object, paths);
         var result = await resolver.MigrateFilesAsync(oldDir, newDir, "*.db");
 
         Assert.Equal(2, result.MovedCount);
@@ -104,7 +116,8 @@ public class JellyfinDirectoryResolverTests
         // Path with NUL char on Windows is invalid and cannot be created
         var badNewDir = Path.Combine(temp.Path, "bad\0path");
 
-        var resolver = new JellyfinDirectoryResolver(ConfigReturning().Object);
+        var paths = new TestPathResolver(temp.Path);
+        var resolver = new JellyfinDirectoryResolver(ConfigReturning().Object, paths);
         var result = await resolver.MigrateFilesAsync(oldDir, badNewDir, "*.db");
 
         Assert.False(result.Success);
@@ -125,7 +138,8 @@ public class JellyfinDirectoryResolverTests
         // Hold an exclusive lock on locked.db
         using var lockStream = new FileStream(lockedPath, FileMode.Open, FileAccess.Read, FileShare.None);
 
-        var resolver = new JellyfinDirectoryResolver(ConfigReturning().Object);
+        var paths = new TestPathResolver(temp.Path);
+        var resolver = new JellyfinDirectoryResolver(ConfigReturning().Object, paths);
         var result = await resolver.MigrateFilesAsync(oldDir, newDir, "*.db");
 
         Assert.Equal(1, result.MovedCount);

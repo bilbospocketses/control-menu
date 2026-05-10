@@ -17,9 +17,21 @@ using Microsoft.Extensions.Logging;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ContentRootPath = project dir in dev, published root in production
-var depsRoot = Path.Combine(builder.Environment.ContentRootPath, "dependencies");
-builder.Configuration["DependenciesRoot"] = depsRoot;
+// Resolve all writable-state paths through IDataPathResolver. Velopack mode
+// roots at C:\ProgramData\ControlMenu; dev mode roots at AppContext.BaseDirectory.
+// Selector probes for ..\..\Update.exe — present in Velopack installs.
+var dataPathResolver = ControlMenu.Common.Paths.DataPathResolverFactory.CreateFromCurrentProcess();
+Directory.CreateDirectory(dataPathResolver.GetConfigDir());
+Directory.CreateDirectory(dataPathResolver.GetLogsDir());
+Directory.CreateDirectory(dataPathResolver.GetKeysDir());
+Directory.CreateDirectory(dataPathResolver.GetDependenciesDir());
+
+// DepsRootHolder is read by static module-init for AndroidDevicesModule,
+// CamerasModule, JellyfinModule. Must be set before module discovery runs.
+ControlMenu.Services.DepsRootHolder.Path = dataPathResolver.GetDependenciesDir();
+
+builder.Services.AddSingleton<ControlMenu.Common.Paths.IDataPathResolver>(dataPathResolver);
+builder.Configuration["DependenciesRoot"] = dataPathResolver.GetDependenciesDir();
 
 // Blazor Server
 builder.Services.AddRazorComponents()
@@ -31,16 +43,18 @@ builder.Services.AddRazorComponents()
         options.MaximumReceiveMessageSize = 32 * 1024 * 1024; // 32 MB
     });
 
-// Database — factory pattern required for Blazor Server (avoids stale change-tracker state)
+// Database — factory pattern required for Blazor Server (avoids stale change-tracker state).
+// Connection string is built from the resolver, not from appsettings.json. This puts
+// the SQLite file at <dataRoot>/config/controlmenu.db in production and at
+// AppContext.BaseDirectory/controlmenu.db in dev.
 builder.Services.AddDbContextFactory<AppDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseSqlite($"Data Source={dataPathResolver.GetDbPath()}"));
 
-// Data Protection (used by SecretStore for encrypting settings)
-var keysPath = Path.Combine(
-    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-    "ControlMenu", "keys");
+// Data Protection (used by SecretStore for encrypting settings).
+// Keys directory is created above as part of resolver bootstrap, so the
+// PersistKeysToFileSystem call here just needs to point at it.
 builder.Services.AddDataProtection()
-    .PersistKeysToFileSystem(new DirectoryInfo(keysPath))
+    .PersistKeysToFileSystem(new DirectoryInfo(dataPathResolver.GetKeysDir()))
     .SetApplicationName("ControlMenu");
 
 // Core services

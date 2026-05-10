@@ -138,6 +138,7 @@ else
     [Inject] private IBackgroundJobService JobService { get; set; } = default!;
     [Inject] private IServiceScopeFactory ScopeFactory { get; set; } = default!;
     [Inject] private ILogger<CastCrewUpdate> Logger { get; set; } = default!;
+    [Inject] private ControlMenu.Common.Paths.IDataPathResolver Paths { get; set; } = default!;
 
     private Job? _activeJob;
     private List<Job> _recentJobs = [];
@@ -179,7 +180,7 @@ else
             .Take(10)
             .ToList();
 
-        _recentLogs = OperationLogger.GetRecentLogs(10)
+        _recentLogs = OperationLogger.GetRecentLogs(10, Paths)
             .Where(l => l.Operation == "cast-crew-update")
             .ToList();
     }
@@ -201,9 +202,10 @@ else
                 Logger.LogInformation("Cast & Crew worker starting for job {JobId}", jobId);
                 using var scope = ScopeFactory.CreateScope();
                 var config = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
+                var scopePaths = scope.ServiceProvider.GetRequiredService<ControlMenu.Common.Paths.IDataPathResolver>();
                 var tzSetting = await config.GetSettingAsync("app-timezone");
                 var utcOffset = OperationLogger.ParseTimezoneOffset(tzSetting);
-                using var opLog = OperationLogger.Create("cast-crew-update", utcOffset);
+                using var opLog = OperationLogger.Create("cast-crew-update", utcOffset, scopePaths);
                 var jellyfinService = scope.ServiceProvider.GetRequiredService<IJellyfinService>();
                 var jobService = scope.ServiceProvider.GetRequiredService<IBackgroundJobService>();
                 var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();

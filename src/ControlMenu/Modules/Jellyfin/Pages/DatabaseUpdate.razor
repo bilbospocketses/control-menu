@@ -106,6 +106,7 @@ else
 @code {
     [Inject] private IJellyfinService JellyfinService { get; set; } = default!;
     [Inject] private IConfigurationService Config { get; set; } = default!;
+    [Inject] private ControlMenu.Common.Paths.IDataPathResolver Paths { get; set; } = default!;
 
     private List<ProgressStep> _steps = [];
     private bool _running;
@@ -115,7 +116,7 @@ else
 
     protected override void OnInitialized()
     {
-        _recentLogs = OperationLogger.GetRecentLogs(10)
+        _recentLogs = OperationLogger.GetRecentLogs(10, Paths)
             .Where(l => l.Operation == "db-date-update")
             .ToList();
     }
@@ -136,7 +137,7 @@ else
 
         var tzSetting = await Config.GetSettingAsync("app-timezone");
         var utcOffset = OperationLogger.ParseTimezoneOffset(tzSetting);
-        using var logger = OperationLogger.Create("db-date-update", utcOffset);
+        using var logger = OperationLogger.Create("db-date-update", utcOffset, Paths);
         string? containerId = null;
 
         try
@@ -261,7 +262,7 @@ else
         finally
         {
             _running = false;
-            _recentLogs = OperationLogger.GetRecentLogs(10)
+            _recentLogs = OperationLogger.GetRecentLogs(10, Paths)
                 .Where(l => l.Operation == "db-date-update")
                 .ToList();
             StateHasChanged();

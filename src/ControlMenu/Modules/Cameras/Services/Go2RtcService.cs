@@ -42,7 +42,7 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         _scopeFactory = scopeFactory;
         _logger = logger;
         _contentRoot = configuration.GetValue<string>(WebHostDefaults.ContentRootKey)
-            ?? AppContext.BaseDirectory;
+            ?? throw new InvalidOperationException("ContentRootKey not configured");
         _cameraNotifier = cameraNotifier;
         _cameraNotifier.CamerasChanged += OnCamerasChanged;
 

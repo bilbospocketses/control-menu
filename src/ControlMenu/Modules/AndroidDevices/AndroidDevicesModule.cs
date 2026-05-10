@@ -10,25 +10,7 @@ public class AndroidDevicesModule : IToolModule
     public string Icon => "bi-phone";
     public int SortOrder => 1;
 
-    private static readonly string DepsRoot = FindDepsRoot();
-
-    private static string FindDepsRoot()
-    {
-        // Check content root first (dev: project dir), then base dir (published)
-        var dir = AppContext.BaseDirectory;
-        for (var i = 0; i < 5; i++)
-        {
-            var candidate = Path.Combine(dir, "dependencies");
-            if (Directory.Exists(candidate)) return candidate;
-            var parent = Directory.GetParent(dir)?.FullName;
-            if (parent is null) break;
-            dir = parent;
-        }
-        // Fallback: create at base directory
-        var fallback = Path.Combine(AppContext.BaseDirectory, "dependencies");
-        Directory.CreateDirectory(fallback);
-        return fallback;
-    }
+    private static readonly string DepsRoot = ControlMenu.Services.DepsRootHolder.Path;
 
     public IEnumerable<ModuleDependency> Dependencies =>
     [

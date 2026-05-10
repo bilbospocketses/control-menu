@@ -1,3 +1,4 @@
+using ControlMenu.Common.Paths;
 using ControlMenu.Services;
 
 namespace ControlMenu.Modules.Jellyfin.Services;
@@ -8,17 +9,19 @@ public sealed class JellyfinDirectoryResolver : IJellyfinDirectoryResolver
     private const string LogDirectoryKey = "jellyfin-log-directory";
 
     private readonly IConfigurationService _config;
+    private readonly IDataPathResolver _paths;
 
-    public JellyfinDirectoryResolver(IConfigurationService config)
+    public JellyfinDirectoryResolver(IConfigurationService config, IDataPathResolver paths)
     {
         _config = config;
+        _paths = paths;
     }
 
     public async Task<string> GetBackupDirectoryAsync()
     {
         var overridePath = await _config.GetSettingAsync(BackupDirectoryKey);
         return string.IsNullOrWhiteSpace(overridePath)
-            ? OperationLogger.GetDefaultBackupDirectory()
+            ? OperationLogger.GetDefaultBackupDirectory(_paths)
             : overridePath;
     }
 
@@ -26,7 +29,7 @@ public sealed class JellyfinDirectoryResolver : IJellyfinDirectoryResolver
     {
         var overridePath = await _config.GetSettingAsync(LogDirectoryKey);
         return string.IsNullOrWhiteSpace(overridePath)
-            ? OperationLogger.GetDefaultLogDirectory()
+            ? OperationLogger.GetDefaultLogDirectory(_paths)
             : overridePath;
     }
 

@@ -15,10 +15,12 @@ public class OperationLogger : IDisposable
         _utcOffset = utcOffset;
     }
 
-    public static OperationLogger Create(string operation, TimeSpan? utcOffset = null)
+    public static OperationLogger Create(string operation, TimeSpan? utcOffset = null, ControlMenu.Common.Paths.IDataPathResolver? paths = null)
     {
         var offset = utcOffset ?? TimeSpan.Zero;
-        var logDir = Path.Combine(AppContext.BaseDirectory, "jellyfin-data", "logging");
+        var logDir = paths is not null
+            ? Path.Combine(paths.GetLogsDir(), "jellyfin")
+            : Path.Combine(AppContext.BaseDirectory, "jellyfin-data", "logging");
         Directory.CreateDirectory(logDir);
 
         var now = DateTimeOffset.UtcNow.ToOffset(offset);
@@ -53,19 +55,19 @@ public class OperationLogger : IDisposable
     public void Fail(string message) => Log("FAIL", message);
     public void Done(string message) => Log("DONE", message);
 
-    public static string GetDefaultLogDirectory() =>
-        Path.Combine(AppContext.BaseDirectory, "jellyfin-data", "logging");
+    public static string GetDefaultLogDirectory(ControlMenu.Common.Paths.IDataPathResolver paths) =>
+        Path.Combine(paths.GetLogsDir(), "jellyfin");
 
-    public static string GetDefaultBackupDirectory()
+    public static string GetDefaultBackupDirectory(ControlMenu.Common.Paths.IDataPathResolver paths)
     {
-        var dir = Path.Combine(AppContext.BaseDirectory, "jellyfin-data", "backups");
+        var dir = paths.GetJellyfinBackupsDir();
         Directory.CreateDirectory(dir);
         return dir;
     }
 
-    public static IReadOnlyList<OperationLogEntry> GetRecentLogs(int count = 10)
+    public static IReadOnlyList<OperationLogEntry> GetRecentLogs(int count, ControlMenu.Common.Paths.IDataPathResolver paths)
     {
-        var logDir = GetDefaultLogDirectory();
+        var logDir = GetDefaultLogDirectory(paths);
         if (!Directory.Exists(logDir)) return [];
 
         var entries = new List<OperationLogEntry>();
