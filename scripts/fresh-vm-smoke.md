@@ -7,10 +7,22 @@ ControlMenu boots, persists user data outside `current\`, and the manual
 update flow completes (alpha.1 -> alpha.2). No tray, no Servy, no signing
 yet -- those are Phase 2-4.
 
+**One-time dev-machine prerequisite:**
+
+The `local-pack.ps1` script auto-vendors .NET 10 SDK to `scripts/dependencies/dotnet/<version>/` on first run. The bootstrap requires:
+- Internet access (downloads from `dot.net/v1/...`)
+- ~700MB free disk for the vendored SDK
+
+`vpk` is installed globally via `dotnet tool install -g vpk --version 0.0.1589-ga2c5a97` (matching ws-scrcpy-web's pattern; not vendored). The script auto-installs the right version if absent.
+
+After first successful pack, subsequent runs are offline-capable.
+
+---
+
 **Pre-flight:**
 - Roll VM back to baseline snapshot (clean Win11, no .NET runtime, no VC redists).
 - Confirm test user is non-admin (so the ACL grant smoke fires UAC).
-- Have two Setup.exe versions ready: `1.1.0-alpha.1` and `1.1.0-alpha.2` (a
+- Have two Setup.msi versions ready: `1.1.0-alpha.1` and `1.1.0-alpha.2` (a
   trivial change between them, e.g., a CHANGELOG bump).
 
 ---
@@ -23,17 +35,17 @@ yet -- those are Phase 2-4.
 pwsh scripts/local-pack.ps1 -Version 1.1.0-alpha.1
 ```
 
-Output: `Releases/ControlMenu-Setup.exe` (or similar Velopack naming).
+Output: `Releases/ControlMenu-<version>-Setup.msi` (plus delta/full nupkgs and RELEASES.win.json feed).
 
-Prerequisite check: `vpk` must be on PATH (`dotnet tool install -g Velopack.Vpk`
-if not present). Verify with `vpk --version`.
+Prerequisite check: `local-pack.ps1` auto-installs the pinned vpk version
+(`0.0.1589-ga2c5a97`) globally if absent. Verify post-run with `vpk --version`.
 
-### 2. Copy alpha.1 Setup.exe to VM
+### 2. Copy alpha.1 Setup.msi to VM
 
 Transfer via Hyper-V shared folder, a network share, or a mounted ISO.
 Place on the VM desktop for easy access.
 
-### 3. Run Setup.exe on VM as non-admin user
+### 3. Run Setup.msi on VM as non-admin user
 
 - SmartScreen warning expected (unsigned local pack) -- "More info" -> "Run anyway".
 - UAC prompt -> Accept (elevation for PerMachine install to `C:\Program Files\`).

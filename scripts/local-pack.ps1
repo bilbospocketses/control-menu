@@ -1,26 +1,26 @@
 #!/usr/bin/env pwsh
-# Local Velopack pack script. Builds Setup.exe locally without burning
+# Local Velopack pack script. Builds Setup.msi locally without burning
 # Trusted Signing quota. Used for fresh-VM smoke iteration.
 #
 # Usage: pwsh scripts/local-pack.ps1 -Version 1.1.0-alpha.1
 #
 # Prerequisites:
-#   - .NET 10 SDK installed (verify: dotnet --list-sdks)
-#   - vpk CLI installed: dotnet tool install -g Velopack.Vpk
+#   - Internet access on first run (bootstraps vendored .NET 10 SDK +
+#     installs vpk globally if absent)
+#   - ~700MB free disk for the vendored .NET 10 SDK
 #
-# Note: --instLocation (PerMachine) is NOT a vpk pack CLI flag.
-# PerMachine install is configured via VelopackApp.Build() in the C# launcher
-# (src/ControlMenuLauncher/Program.cs). No pack-time flag needed.
+# .NET 10 SDK: auto-vendored to scripts/dependencies/dotnet/10.0.203/
+#   on first run via dot.net/v1/dotnet-install.ps1. Subsequent runs are
+#   offline-capable once the SDK is present.
 #
-# Note: --url (GitHub source feed) is NOT a vpk pack CLI flag.
-# The GitHub release URL is configured via UpdateManager(new GitHubSource(...))
-# in the C# update service (src/ControlMenu/Services/VelopackUpdateService.cs).
+# vpk CLI: installed globally via dotnet tool install -g, matching
+#   ws-scrcpy-web's release.yml pattern (NOT vendored under
+#   scripts/dependencies/). Version pinned to match the NuGet package pin
+#   in the csprojs.
 #
-# Note: vpk does not support a vpk.config file; all args are CLI-only.
-#
-# Note: --icon expects a .ico file on Windows for best results. This script
-# passes favicon.png as a fallback; create assets/app.ico (Phase 2) for a
-# proper installer icon.
+# Output: Releases/ControlMenu-<version>-Setup.msi + delta/full nupkgs +
+#   RELEASES.win.json feed. The MSI installs PerMachine to
+#   C:\Program Files\ControlMenu\ with a UAC elevation prompt.
 
 param(
     [Parameter(Mandatory)] [string]$Version
@@ -34,17 +34,58 @@ $releasesDir = Join-Path $repo 'Releases'
 Write-Host "Velopack Phase 1 local pack -- version $Version"
 Write-Host ""
 
-# Pre-flight: verify vpk is on PATH
-if (-not (Get-Command vpk -ErrorAction SilentlyContinue)) {
-    throw "vpk CLI not found on PATH. Install with: dotnet tool install -g Velopack.Vpk"
+# ---------------------------------------------------------------------------
+# Resolve vendored .NET 10 SDK
+# ---------------------------------------------------------------------------
+function Resolve-VendoredDotnet {
+    $dotnetVersion = '10.0.203'
+    $dotnetDir = Join-Path $repo "scripts/dependencies/dotnet/$dotnetVersion"
+    $dotnetExe = Join-Path $dotnetDir 'dotnet.exe'
+    if (-not (Test-Path $dotnetExe)) {
+        Write-Host "Bootstrapping vendored dotnet $dotnetVersion to $dotnetDir..."
+        $installScript = Join-Path $env:TEMP 'dotnet-install-bootstrap.ps1'
+        Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installScript
+        & $installScript -InstallDir $dotnetDir -Version $dotnetVersion
+        Remove-Item $installScript
+        if (-not (Test-Path $dotnetExe)) {
+            throw "dotnet bootstrap failed: $dotnetExe still absent after install"
+        }
+        Write-Host "Vendored dotnet $dotnetVersion ready."
+    }
+    return $dotnetExe
 }
 
+# ---------------------------------------------------------------------------
+# Resolve vpk (global tool, mirrors ws-scrcpy-web release.yml)
+# ---------------------------------------------------------------------------
+function Resolve-Vpk {
+    $vpkVersion = '0.0.1589-ga2c5a97'
+    $listed = dotnet tool list -g | Select-String -Pattern "^vpk\s+$([regex]::Escape($vpkVersion))\s"
+    if (-not $listed) {
+        Write-Host "Installing vpk $vpkVersion globally (matches ws-scrcpy-web)..."
+        # Uninstall any older vpk first to avoid version conflict
+        dotnet tool uninstall -g vpk 2>$null | Out-Null
+        dotnet tool install -g vpk --version $vpkVersion
+        if ($LASTEXITCODE -ne 0) { throw "vpk install failed (exit $LASTEXITCODE)" }
+        Write-Host "vpk $vpkVersion installed."
+    }
+    return 'vpk'
+}
+
+# ---------------------------------------------------------------------------
+# Clean output dirs
+# ---------------------------------------------------------------------------
 Write-Host "Cleaning publish + Releases dirs..."
 if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
 if (Test-Path $releasesDir) { Remove-Item -Recurse -Force $releasesDir }
 
+# ---------------------------------------------------------------------------
+# Publish all three projects via vendored dotnet
+# ---------------------------------------------------------------------------
+$dotnetExe = Resolve-VendoredDotnet
+
 Write-Host "Publishing ControlMenu.exe (Blazor Server host)..."
-dotnet publish "$repo/src/ControlMenu/ControlMenu.csproj" `
+& $dotnetExe publish "$repo/src/ControlMenu/ControlMenu.csproj" `
     -c Release `
     -r win-x64 `
     --self-contained true `
@@ -53,7 +94,7 @@ dotnet publish "$repo/src/ControlMenu/ControlMenu.csproj" `
 if ($LASTEXITCODE -ne 0) { throw "ControlMenu publish failed (exit $LASTEXITCODE)" }
 
 Write-Host "Publishing ControlMenuLauncher.exe (Velopack supervisor)..."
-dotnet publish "$repo/src/ControlMenuLauncher/ControlMenuLauncher.csproj" `
+& $dotnetExe publish "$repo/src/ControlMenuLauncher/ControlMenuLauncher.csproj" `
     -c Release `
     -r win-x64 `
     --self-contained true `
@@ -62,7 +103,7 @@ dotnet publish "$repo/src/ControlMenuLauncher/ControlMenuLauncher.csproj" `
 if ($LASTEXITCODE -ne 0) { throw "ControlMenuLauncher publish failed (exit $LASTEXITCODE)" }
 
 Write-Host "Publishing ControlMenuTray.exe (Phase 1 stub)..."
-dotnet publish "$repo/src/ControlMenuTray/ControlMenuTray.csproj" `
+& $dotnetExe publish "$repo/src/ControlMenuTray/ControlMenuTray.csproj" `
     -c Release `
     -r win-x64 `
     --self-contained true `
@@ -70,9 +111,12 @@ dotnet publish "$repo/src/ControlMenuTray/ControlMenuTray.csproj" `
     -p:PublishSingleFile=false
 if ($LASTEXITCODE -ne 0) { throw "ControlMenuTray publish failed (exit $LASTEXITCODE)" }
 
+# ---------------------------------------------------------------------------
+# vpk pack -- PerMachine MSI, matching ws-scrcpy-web release.yml:99-110
+# ---------------------------------------------------------------------------
+Resolve-Vpk | Out-Null
+
 Write-Host "Running vpk pack..."
-# All args via CLI flags (vpk does not support a config file).
-# Short aliases: -u=packId, -v=packVersion, -p=packDir, -e=mainExe, -i=icon, -o=outputDir
 vpk pack `
     --packId ControlMenu `
     --packVersion $Version `
@@ -80,8 +124,11 @@ vpk pack `
     --mainExe ControlMenuLauncher.exe `
     --packTitle "Control Menu" `
     --packAuthors "bilbospocketses" `
+    --channel stable `
     --icon "$repo/src/ControlMenu/wwwroot/favicon.png" `
-    --outputDir $releasesDir
+    --msi `
+    --instLocation PerMachine `
+    -o $releasesDir
 if ($LASTEXITCODE -ne 0) { throw "vpk pack failed (exit $LASTEXITCODE)" }
 
 Write-Host ""

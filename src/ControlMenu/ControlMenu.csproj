@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Velopack" Version="0.0.1298" />
+    <PackageReference Include="Velopack" Version="0.0.1589-ga2c5a97" />
   </ItemGroup>
 
   <ItemGroup>

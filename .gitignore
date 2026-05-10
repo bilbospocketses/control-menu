@@ -52,6 +52,9 @@ src/ControlMenu/wwwroot/temp/
 Releases/
 *.nupkg
 
+# Vendored dev tooling (downloaded by scripts/local-pack.ps1 on first run)
+scripts/dependencies/dotnet/
+
 # Keep these directories
 !src/
 !tests/
