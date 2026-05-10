@@ -21,7 +21,6 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
     private readonly ICameraChangeNotifier _cameraNotifier;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<Go2RtcService> _logger;
-    private readonly string _contentRoot;
     private readonly string _configDir;
     private readonly object _lock = new();
     private readonly SemaphoreSlim _regenGate = new(1, 1);
@@ -37,15 +36,12 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
     public Go2RtcService(
         IServiceScopeFactory scopeFactory,
         ILogger<Go2RtcService> logger,
-        IConfiguration configuration,
         ICameraChangeNotifier cameraNotifier,
         IHostApplicationLifetime appLifetime,
         IDataPathResolver dataPathResolver)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
-        _contentRoot = configuration.GetValue<string>(WebHostDefaults.ContentRootKey)
-            ?? throw new InvalidOperationException("ContentRootKey not configured");
         // go2rtc.yaml is written to the data-root config dir (outside current\) so that
         // go2rtc's spawned process does not hold a working-directory handle inside current\
         // during a Velopack swap (Gotcha 9). The binary is invoked with -config <absolutePath>
