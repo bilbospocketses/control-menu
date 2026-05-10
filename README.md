@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/.NET-9.0-512BD4?logo=dotnet" alt=".NET 9" />
+  <img src="https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet" alt=".NET 10" />
   <img src="https://img.shields.io/badge/Blazor-Server-512BD4?logo=blazor" alt="Blazor Server" />
   <img src="https://img.shields.io/badge/SQLite-EF_Core-003B57?logo=sqlite" alt="SQLite" />
 </p>
@@ -43,8 +43,7 @@ Control Menu replaces a collection of PowerShell scripts with a cross-platform w
 
 ### Prerequisites
 
-- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
-- [Node.js](https://nodejs.org/) (for ws-scrcpy-web screen mirroring, optional &mdash; auto-installable)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [ADB / Platform Tools](https://developer.android.com/tools/releases/platform-tools) (optional &mdash; auto-installable)
 - [Docker](https://docs.docker.com/get-docker/) (for Jellyfin management)
 
@@ -107,7 +106,6 @@ Control Menu manages two types of dependencies:
 |------|--------|---------|
 | ADB | Google (DirectUrl) | Android device management |
 | scrcpy | GitHub (Genymobile/scrcpy) | Screen mirroring server binary |
-| Node.js | nodejs.org (DirectUrl) | ws-scrcpy-web runtime |
 | sqlite3 | sqlite.org (DirectUrl) | Jellyfin database operations |
 | go2rtc | GitHub (AlexxIT/go2rtc) | RTSP-to-browser camera streaming |
 

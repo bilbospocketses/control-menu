@@ -25,7 +25,7 @@ This document is a comprehensive technical reference for developers working on t
 
 ## 1. Architecture Overview
 
-Control Menu is a .NET 9 Blazor Server web application that manages Android devices (Google TV Streamers, phones) via ADB, a Jellyfin media server via Docker, and assorted system utilities. It replaces a collection of PowerShell scripts with a cross-platform web UI.
+Control Menu is a .NET 10 Blazor Server web application that manages Android devices (Google TV Streamers, phones) via ADB, a Jellyfin media server via Docker, and assorted system utilities. It replaces a collection of PowerShell scripts with a cross-platform web UI.
 
 ### Four-Layer Architecture
 
