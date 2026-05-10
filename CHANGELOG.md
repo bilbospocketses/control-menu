@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+## [1.0.1] - 2026-05-09
+
+### Changed
+
+- **Target framework upgrade.** Bumped from .NET 9 to .NET 10 across `ControlMenu.csproj` and `ControlMenu.Tests.csproj`. Bumped `Microsoft.EntityFrameworkCore.Design` and `Microsoft.EntityFrameworkCore.Sqlite` PackageReferences from Version="9.*" to Version="10.*". No behavioral changes; runtime + EF Core + Razor compiler version-bumped only. 383/383 existing tests passing under net10.0; manual smoke clean across all module pages.
+- **README prerequisites + dependency list refresh.** Required SDK now listed as .NET 10 SDK (was .NET 9 SDK). The "Auto-installable" deps table dropped the stale Node.js row (Node was decoupled from CM in the v1.0.0 polish batch but the README still listed it as auto-installable). The .NET shield badge updated to 10.0. `docs/TECHNICAL_GUIDE.md` line 28 updated from "Control Menu is a .NET 9 Blazor Server web application" to ".NET 10".
+
 ## [1.0.0] - 2026-05-07
 
 First official release.
