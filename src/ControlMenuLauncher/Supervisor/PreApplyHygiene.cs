@@ -79,14 +79,15 @@ public static class PreApplyHygiene
     {
         try
         {
+            // NB: do NOT redirect stdout/stderr unless we actually read them — unread
+            // redirected streams can deadlock the child if they fill the pipe buffer.
+            // Hygiene swallows output anyway; CreateNoWindow handles window suppression.
             var psi = new ProcessStartInfo
             {
                 FileName = exe,
                 Arguments = args,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
             };
 
             using var p = Process.Start(psi);
@@ -105,7 +106,7 @@ public static class PreApplyHygiene
         }
         catch (Exception ex)
         {
-            LauncherLogger.Info($"pre-apply hygiene: {exe} {args} threw {ex.GetType().Name}: {ex.Message} (continuing)");
+            LauncherLogger.Error($"pre-apply hygiene: {exe} {args} threw {ex.GetType().Name}: {ex.Message} (continuing)");
         }
     }
 }
