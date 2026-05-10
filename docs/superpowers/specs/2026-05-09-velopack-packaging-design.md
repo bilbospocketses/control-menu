@@ -245,6 +245,89 @@ P/Invoke-heavy. Reused if any future flow needs to spawn in user session from el
 
 `v1.1.0-α.1`, `α.2`, … through validation. Once smoke #4 passes cleanly, tag `v1.1.0` (no `-α`). Per Gotcha 5 + workflow defaults, `prerelease=false` even for beta tags so Velopack's `/releases/latest` discovery doesn't break.
 
+## Migration discipline — "Sources to port from" requirement
+
+Per `feedback_legacy_port_section.md` SOP — established after the tiny11options Path C debacle (handlers named in the plan, parallel agents never told to read `tiny11maker.ps1:186-end`, 3+ polish-bundle fixes reintroduced as bugs, ~half a day of bug hunting on smoke). Phases 1, 2, and 3 of this spec port working Rust code from `ws-scrcpy-web` to .NET. Each port is a real bug-introduction risk if the implementing agent doesn't have the legacy code in front of them with explicit "diff against this and reconcile every difference" instructions.
+
+**Hard requirement for Phase 1, 2, 3 implementation plans:**
+
+1. Each plan MUST include a top-level **"Sources to port from"** section listing legacy file:line ranges as canonical behavior. Tables below in this spec are the seed; plan-writers MUST verify the line numbers against current ws-scrcpy-web HEAD at plan-writing time and lock them in the plan doc.
+2. Each migration task MUST cite its legacy counterpart and include a verification step worded:
+
+   > "Diff your scaffold against `<legacy-path>:<line-range>`. For every difference, write a one-line rationale. If you can't justify a difference, change your scaffold to match legacy behavior."
+
+3. When dispatching subagents during Phase 1-3 execution, each agent prompt MUST literally embed the legacy `<path>:<line>` reference. Agents in isolation cannot fall back on context the lead has but failed to give them.
+
+4. **Plan-review handle:** at any point during Phase 1-3 plan writing or task execution, asking "where's your legacy-port section?" must produce a pointer to the section. If it can't, the plan is broken — halt and revise before any code lands.
+
+### Phase 1 sources (Velopack core + path migration)
+
+CM source paths are illustrative; the actual landing locations are decided in the Phase 1 plan. Line ranges below are best-known as of 2026-05-09; the Phase 1 plan-writer MUST re-verify against current HEAD before locking them in.
+
+| ws-scrcpy-web source | Lines | Purpose | CM landing location (Phase 1) |
+|----------------------|-------|---------|-------------------------------|
+| `launcher/src/main.rs` | 18-156 | Launcher entry point + Velopack hook dispatch + auto-apply disable + single-instance + ACL grant ordering | `src/ControlMenuLauncher/Program.cs` |
+| `launcher/src/main.rs` | 156 | `VelopackApp.Build().SetAutoApplyOnStartup(false).Run()` ordering — MUST be first executable code on normal-launch branch (Gotcha 1 + SP3 P2 Contract 5) | same |
+| `launcher/src/hooks.rs` | full file (607 lines) | Velopack hook handlers — `--veloapp-install`, `--veloapp-updated`, `--veloapp-uninstall`, `--veloapp-obsolete`, plus catch-all (Gotcha 4) | `src/ControlMenuLauncher/Hooks/VelopackHookDispatcher.cs` |
+| `launcher/src/install_acl.rs` | full file (170 lines) | Install-root ACL grant via runas-elevated icacls (Gotchas 2 + 3) | `src/ControlMenuLauncher/InstallAcl.cs` |
+| `launcher/src/single_instance.rs` | full file (220 lines) | Named-mutex single-instance guard | `src/ControlMenuLauncher/SingleInstance.cs` |
+| `launcher/src/paths.rs` | full file (172 lines) | Path resolution helpers (install_root from current_exe, current/ derivation) | `src/ControlMenu.Common/Paths/PathResolver.cs` |
+| `common/src/config.rs` | full file (274 lines) | `AppConfig` loader/writer — `data_root_from_env`, file-based config persistence, `installMode` field, `is_service_mode()` helper | `src/ControlMenu.Common/Config/AppConfig.cs` |
+| `launcher/src/log.rs` | full file (134 lines) | Launcher logging — tagged logger pattern, file rotation on startup | `src/ControlMenu.Common/Logging/LauncherLogger.cs` |
+
+### Phase 2 sources (tray icon + auto-launch + console hide)
+
+CM is using built-in `System.Windows.Forms.NotifyIcon` instead of porting the Rust `Shell_NotifyIconW` direct calls — but the **patterns** in `common/src/tray.rs` (menu structure, URL-provider closure, click-handler dispatch, balloon notification calls) MUST be mirrored.
+
+| ws-scrcpy-web source | Lines | Purpose | CM landing location (Phase 2) |
+|----------------------|-------|---------|-------------------------------|
+| `launcher/src/tray.rs` | full file (83 lines) | Thin launcher-side wrapper: spawn tray on dedicated thread, URL provider closure that re-reads config on every left-click (port-rebind safety), service-mode skip, exit handling | `src/ControlMenuLauncher/TrayHost.cs` |
+| `common/src/tray.rs` | full file (734 lines) | Tray icon implementation — Shell_NotifyIconW direct usage, menu construction, click event dispatch, balloon notification API. **Pattern reference for built-in NotifyIcon equivalent** — menu items, click semantics, balloon use. NOT a literal port. | `src/ControlMenu.Common/Tray/TrayIcon.cs` |
+| `launcher/src/main.rs` | 158-196 | Tray spawn ordering — AFTER Velopack init, BEFORE supervisor blocking loop. Critical: tray must be alive while supervisor blocks; reversing this order breaks tray responsiveness | `src/ControlMenuLauncher/Program.cs` (mirrored ordering) |
+
+Named-pipe IPC for shutdown signaling (`\\.\pipe\ControlMenu.Shutdown`) is net-new — no direct legacy. Pattern reference: standard .NET `NamedPipeServerStream` async pattern.
+
+### Phase 3 sources (Servy bundling + service mode + tray helper + apply orchestration)
+
+This is the largest port. Each Rust file maps to one or more .NET equivalents.
+
+| ws-scrcpy-web source | Lines | Purpose | CM landing location (Phase 3) |
+|----------------------|-------|---------|-------------------------------|
+| `launcher/src/supervisor.rs` | full file (198 lines) | Child process supervision loop — spawn ControlMenu.exe child, wait for exit, exit-code-75 dispatch, service-mode + non-service-mode behavior split | `src/ControlMenuLauncher/Supervisor.cs` |
+| `launcher/src/spawn.rs` | full file (263 lines) | Child process spawn helper — env var plumbing, working directory, stdio inheritance | `src/ControlMenuLauncher/ChildProcessSpawn.cs` |
+| `launcher/src/elevated_runner.rs` | full file (623 lines) | Runas-elevated dispatch — `--elevate-and-run` mode for the install-as-service flow, restoration of state after elevated-child returns | `src/ControlMenuLauncher/ElevatedRunner.cs` (or `src/ControlMenu.Common/Win32/ElevatedRunner.cs` if shared with ControlMenu.exe) |
+| `launcher/src/user_session_spawn.rs` | full file (446 lines) | **CRITICAL** — cross-session spawn for install-as-service handoff. Three-beta-cycle hardening: beta.1 needed `SE_TCB_NAME` enable, beta.2 needed two additional privileges (`SE_ASSIGNPRIMARYTOKEN_NAME` + `SE_INCREASE_QUOTA_NAME`), beta.3 needed `winsta0\\default` desktop targeting, beta.something added `CreateEnvironmentBlock` for proper user env vars (was inheriting LocalSystem env). EVERY ONE of these lessons MUST be embedded as line refs in the Phase 3 plan or we re-discover them. | `src/ControlMenu.Common/Win32/UserSessionSpawn.cs` |
+| `launcher/src/job_object.rs` | full file (180 lines) | Job Object kill-on-close release on graceful exit (Gotcha 8). **NOT literally needed** for CM (no Job Object pattern, no Node child) BUT the file documents the Velopack/Update.exe parent-child relationship that CM still needs to understand. **Pattern reference, not port target.** | none — pattern reference only. Cite in Phase 3 plan as "do NOT introduce a Job Object on the ControlMenu.exe child unless you've read this file and understand why ws-scrcpy-web ended up with the kill-on-close-release pattern. Default for CM: don't wrap children in Job Objects." |
+| `tray/src/main.rs` | full file (233 lines) | Standalone tray helper entry point — service-mode tray. Reads AppConfig, instantiates the common tray, runs message pump, communicates with web host via HTTP healthcheck | `src/ControlMenuTray/Program.cs` |
+| `tray/src/single_instance.rs` | full file (134 lines) | Tray helper single-instance guard | `src/ControlMenuTray/SingleInstance.cs` (or shared with launcher's via `src/ControlMenu.Common/Process/SingleInstance.cs`) |
+| `common/src/control_marker.rs` | full file (392 lines) | Cross-binary signaling — file-based control marker between service and tray helper for actions like uninstall handoff. Less critical for CM v1.1.0 (we may use HTTP API instead), but study for the design pattern | `src/ControlMenu.Common/Marker/ControlMarker.cs` (only if we adopt the marker pattern; HTTP-only is simpler) |
+
+### Phase 4 sources (CI + Azure Trusted Signing)
+
+| ws-scrcpy-web source | Purpose | CM landing location (Phase 4) |
+|----------------------|---------|-------------------------------|
+| `ws-scrcpy-web/.github/workflows/release.yml` | Architectural template only — multi-stage build → sign individual binaries → vpk pack → sign Setup.exe + Update.exe → release. CM's release.yml has different binary names + different runner needs but same overall stage structure | `.github/workflows/release.yml` |
+
+CI workflow is net-new for CM (no current `.github/workflows/`). Cite ws-scrcpy-web's release.yml as **architectural reference**, not literal port — the binary lists, Trusted Signing config, and release-asset upload patterns differ.
+
+### Mandatory plan-writing checklist
+
+When invoking `superpowers:writing-plans` for Phase 1, 2, or 3 (NOT Phase 0 — that's a framework upgrade with no code migration), the resulting plan MUST satisfy:
+
+- [ ] Plan has a top-level "Sources to port from" section
+- [ ] The section lists `<legacy-path>:<line-range>` for every legacy file the phase ports
+- [ ] Each task that creates a new CM file references its legacy counterpart by `<path>:<line>` in the task header
+- [ ] Each scaffolding task includes the verification step: "Diff your scaffold against `<legacy-path>:<line-range>`. For every difference, write a one-line rationale. If you can't justify a difference, change your scaffold to match legacy behavior."
+- [ ] If the plan dispatches subagents, each agent prompt is shown verbatim in the plan AND each prompt embeds the legacy `<path>:<line>` reference
+
+A Phase 1-3 plan that fails any checkbox above is incomplete. Halt + revise before any task execution.
+
+### Why this discipline is non-optional
+
+Rewriting working code without a "diff against legacy" gate is how regressions land. tiny11options shipped its Path C launcher with 3+ regressions because the polished v0.1.0 handler table at `tiny11maker.ps1:186-end` was never explicitly handed to the porting agents — they wrote what they thought was equivalent, missed details, and the bugs surfaced at smoke. Half a day to debug, three rounds of patches.
+
+ws-scrcpy-web's launcher already paid for the lessons we want to inherit (24 betas through v0.1.23). Porting without explicit line-anchored diffing throws those lessons away, and we re-pay the same debugging cost in CM. The whole point of mirroring ws-scrcpy-web's architecture is to avoid that — and the "Sources to port from" SOP is what enforces it.
+
 ## Testing strategy
 
 ### Test layers
