@@ -34,7 +34,7 @@ public class VelopackHookDispatcherTests
     }
 
     [Fact]
-    public void ParseHookFlag_KnownFlagPrecedesUnknown_ReturnsKnown()
+    public void ParseHookFlag_KnownFlagWins_EvenWhenUnknownIsFirst()
     {
         // Mirrors upstream invariant: "Recognized flags take precedence over Unknown"
         // even when known appears AFTER unknown in argv.
