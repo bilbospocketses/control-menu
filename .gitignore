@@ -48,6 +48,10 @@ src/ControlMenu/wwwroot/temp/
 # Claude Code session artifacts (user-local)
 .claude/
 
+# Velopack pack output
+Releases/
+*.nupkg
+
 # Keep these directories
 !src/
 !tests/
