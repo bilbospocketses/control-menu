@@ -26,8 +26,11 @@ namespace ControlMenu.Launcher;
 ///   if elevation detection ever surprises.
 /// - Result&lt;Option&lt;Guard&gt;&gt; → null-on-collision return shape (Acquire returns
 ///   null when the mutex already exists, otherwise a disposable handle).
-/// - AbandonedMutexException treated as "we win" (matches upstream's Windows
-///   crashed-owner behavior).
+/// - Cross-process abandoned-mutex detection is intentionally omitted. The
+///   launcher is the sole owner of the named mutex per machine; a crash closes
+///   its kernel handle, Windows GCs the mutex, and the next launch sees
+///   createdNew=true. No other process can put the mutex into an abandoned
+///   state in our architecture, so AbandonedMutexException cannot arise.
 /// </summary>
 public sealed class SingleInstance : IDisposable
 {
@@ -67,38 +70,37 @@ public sealed class SingleInstance : IDisposable
     /// System.Threading.Mutex is re-entrant on Windows: a thread that already
     /// owns the mutex can WaitOne again without blocking, which would cause
     /// the same-process "second call returns null" test to see a false success.
-    /// We still call WaitOne(zero) to take ownership when createdNew is true,
-    /// and handle AbandonedMutexException for the crashed-prior-owner case.
+    /// We still call WaitOne(zero) to take ownership when createdNew is true.
+    /// AbandonedMutexException cannot occur here: createdNew=true means the
+    /// mutex was just created, so there is no prior owner to have crashed.
     /// </summary>
     public static SingleInstance? Acquire(string name)
     {
         var mutex = new Mutex(initiallyOwned: false, name: name, createdNew: out var createdNew);
 
-        // createdNew == false means CreateMutexW found ERROR_ALREADY_EXISTS:
-        // another instance already owns this mutex name. Return null so the
-        // caller exits cleanly with code 0 — matches upstream Ok(None).
         if (!createdNew)
         {
+            // Another instance has this named mutex. Close our handle so the
+            // first instance's reference-count isn't bumped, and signal to the
+            // caller (via null) that they should exit cleanly with code 0.
+            //
+            // Note: this branch also catches the rare case where a prior
+            // launcher crashed AND another process is keeping the named mutex
+            // alive (so Windows hasn't GC'd it). In our single-launcher-per-
+            // machine architecture that doesn't happen — the launcher is the
+            // only owner; a crash closes its handle and Windows GCs the
+            // mutex. So in practice createdNew=false here ALWAYS means a
+            // live peer launcher.
             mutex.Dispose();
             return null;
         }
 
-        // We created the mutex (createdNew == true) but don't own it yet
-        // (initiallyOwned: false). Acquire ownership now.
-        bool ownsLock;
-        try
-        {
-            ownsLock = mutex.WaitOne(TimeSpan.Zero, exitContext: false);
-        }
-        catch (AbandonedMutexException)
-        {
-            // Previous owner crashed without releasing. We "win" the mutex —
-            // matches upstream's Windows crashed-owner behavior.
-            ownsLock = true;
-        }
-
+        // Fresh mutex — take ownership. WaitOne(0) on a just-created mutex
+        // with no contention always returns true.
+        var ownsLock = mutex.WaitOne(TimeSpan.Zero, exitContext: false);
         if (!ownsLock)
         {
+            // Defensive: should never happen on a freshly-created mutex.
             mutex.Dispose();
             return null;
         }

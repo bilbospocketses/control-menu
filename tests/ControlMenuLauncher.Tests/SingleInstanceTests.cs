@@ -44,4 +44,16 @@ public class SingleInstanceTests
         using var second = SingleInstance.Acquire(name);
         Assert.NotNull(second);
     }
+
+    [Fact]
+    public void Dispose_CalledTwice_DoesNotThrow()
+    {
+        var name = $@"Local\ControlMenu-SingleInstanceTest-{Guid.NewGuid():N}";
+        var instance = SingleInstance.Acquire(name);
+        Assert.NotNull(instance);
+
+        instance!.Dispose();
+        var ex = Record.Exception(() => instance.Dispose());
+        Assert.Null(ex);
+    }
 }
