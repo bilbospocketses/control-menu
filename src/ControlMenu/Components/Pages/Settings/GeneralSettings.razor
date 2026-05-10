@@ -1,8 +1,10 @@
 @using ControlMenu.Services
+@using ControlMenu.Services.Update
 @inject IConfigurationService Config
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject IEmailService EmailService
+@inject IVelopackUpdateService UpdateService
 
 <SettingsSection Title="General">
     <SettingsGrid>
@@ -167,6 +169,38 @@
     </SettingsGrid>
 </SettingsSection>
 
+<SettingsSection Title="Updates">
+    <SettingsGrid>
+        <SettingsGridCell FullRow="true">
+            <Label>Application updates</Label>
+            <ChildContent>
+                <button class="btn btn-secondary" @onclick="HandleCheckForUpdates" disabled="@_checking">
+                    <i class="bi bi-arrow-repeat"></i> @(_checking ? "Checking…" : "Check for updates")
+                </button>
+                @if (_lastResult is { } r)
+                {
+                    @if (r.HasUpdate)
+                    {
+                        <div class="mt-2">Update available: <strong>@r.AvailableVersion</strong> (current: @r.CurrentVersion)</div>
+                        <button class="btn btn-primary mt-2" @onclick="HandleDownloadAndApply" disabled="@_applying">
+                            @(_applying ? "Applying…" : "Download and apply (app will restart)")
+                        </button>
+                    }
+                    else
+                    {
+                        <div class="mt-2 text-muted">No updates available. Current: @r.CurrentVersion</div>
+                    }
+                }
+                @if (_updateError is not null)
+                {
+                    <div class="mt-2 text-danger">@_updateError</div>
+                }
+            </ChildContent>
+            <Hint>Checks GitHub releases for a newer Control Menu. Apply will restart the app.</Hint>
+        </SettingsGridCell>
+    </SettingsGrid>
+</SettingsSection>
+
 @if (!string.IsNullOrEmpty(_message))
 {
     <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
@@ -188,6 +222,12 @@
     private bool _messageIsError;
     private string _wsscrcpyUrl = "http://localhost:8000";
     private string _dockerPath = "";
+
+    // Update section state
+    private bool _checking;
+    private bool _applying;
+    private UpdateAvailability? _lastResult;
+    private string? _updateError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -322,6 +362,47 @@
         {
             await Config.SetSettingAsync("dep-path-docker", path);
             ShowMessage("Docker path saved.", false);
+        }
+    }
+
+    private async Task HandleCheckForUpdates()
+    {
+        _checking = true;
+        _updateError = null;
+        _lastResult = null;
+        StateHasChanged();
+        try
+        {
+            _lastResult = await UpdateService.CheckForUpdatesAsync();
+        }
+        catch (Exception ex)
+        {
+            _updateError = ex.Message;
+        }
+        finally
+        {
+            _checking = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleDownloadAndApply()
+    {
+        _applying = true;
+        _updateError = null;
+        StateHasChanged();
+        try
+        {
+            await UpdateService.DownloadUpdateAsync();
+            // RequestApplyUpdate calls _lifetime.StopApplication; the SignalR
+            // circuit will tear down. No further StateHasChanged matters past this point.
+            UpdateService.RequestApplyUpdate();
+        }
+        catch (Exception ex)
+        {
+            _updateError = ex.Message;
+            _applying = false;
+            StateHasChanged();
         }
     }
 }

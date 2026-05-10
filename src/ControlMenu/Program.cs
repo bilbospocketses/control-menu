@@ -72,6 +72,7 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
 
 builder.Services.AddSingleton<IScrcpyProbeService, ScrcpyProbeService>();
+builder.Services.AddSingleton<ControlMenu.Services.Update.IVelopackUpdateService, ControlMenu.Services.Update.VelopackUpdateService>();
 
 // Android Devices module services
 builder.Services.AddScoped<IAdbService, AdbService>();
