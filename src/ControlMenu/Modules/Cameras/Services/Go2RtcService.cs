@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
+using ControlMenu.Common.Paths;
 using ControlMenu.Services;
 
 namespace ControlMenu.Modules.Cameras.Services;
@@ -21,6 +22,7 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<Go2RtcService> _logger;
     private readonly string _contentRoot;
+    private readonly string _configDir;
     private readonly object _lock = new();
     private readonly SemaphoreSlim _regenGate = new(1, 1);
     private Process? _process;
@@ -37,12 +39,18 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         ILogger<Go2RtcService> logger,
         IConfiguration configuration,
         ICameraChangeNotifier cameraNotifier,
-        IHostApplicationLifetime appLifetime)
+        IHostApplicationLifetime appLifetime,
+        IDataPathResolver dataPathResolver)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
         _contentRoot = configuration.GetValue<string>(WebHostDefaults.ContentRootKey)
             ?? throw new InvalidOperationException("ContentRootKey not configured");
+        // go2rtc.yaml is written to the data-root config dir (outside current\) so that
+        // go2rtc's spawned process does not hold a working-directory handle inside current\
+        // during a Velopack swap (Gotcha 9). The binary is invoked with -config <absolutePath>
+        // so it does not need to discover the config file from its working directory.
+        _configDir = dataPathResolver.GetConfigDir();
         _cameraNotifier = cameraNotifier;
         _cameraNotifier.CamerasChanged += OnCamerasChanged;
 
@@ -205,7 +213,8 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         sb.AppendLine("  listen: \":1984\"");
 
         var newContent = sb.ToString();
-        var configPath = Path.Combine(_contentRoot, "go2rtc.yaml");
+        // Config is written to _configDir (outside current\) — see SpawnProcess comment.
+        var configPath = Path.Combine(_configDir, "go2rtc.yaml");
 
         // Skip the file write AND the downstream kill+spawn if the config is
         // unchanged. Liveness probes fire ICameraChangeNotifier.CamerasChanged
@@ -248,12 +257,22 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
     private void SpawnProcess(string exePath)
     {
         // Must be called under _lock
+        //
+        // WorkingDirectory is anchored at the binary's own directory (Gotcha 9): go2rtc.exe
+        // lives under <dataRoot>/dependencies/cameras/go2rtc/, which is outside current\.
+        // The config file path is passed explicitly via -config so go2rtc does not need to
+        // discover it from its working directory.
+        var configPath = Path.Combine(_configDir, "go2rtc.yaml");
+        var binaryDir = Path.GetDirectoryName(exePath)
+            ?? throw new InvalidOperationException($"Cannot determine directory for go2rtc at: {exePath}");
+
         _process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
                 FileName = exePath,
-                WorkingDirectory = _contentRoot,
+                Arguments = $"-config \"{configPath}\"",
+                WorkingDirectory = binaryDir,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
@@ -467,6 +486,9 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
 
         try
         {
+            // netstat / lsof are OS-builtin utilities (CLAUDE.md PATH exception). They
+            // operate on system tables and do not depend on working directory; no
+            // WorkingDirectory override is needed here (Gotcha 9 does not apply to them).
             var psi = new ProcessStartInfo
             {
                 FileName = fileName,

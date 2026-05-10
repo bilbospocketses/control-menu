@@ -119,6 +119,9 @@ public static class InstallAcl
         // /Q = suppress success chatter
         var args = $"\"{installRoot}\" /grant {AclSidAuthUsers}:(OI)(CI)M /T /C /Q";
 
+        // icacls.exe is a Windows OS-builtin (CLAUDE.md PATH exception). It operates on
+        // the absolute path in `args` and does not depend on working directory, so no
+        // WorkingDirectory override is needed here (Gotcha 9 does not apply).
         var psi = new ProcessStartInfo
         {
             FileName = "icacls.exe",

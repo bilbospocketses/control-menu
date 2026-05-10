@@ -25,11 +25,28 @@ public class CommandExecutor : ICommandExecutor
         cancellationToken.ThrowIfCancellationRequested();
 
         using var process = new Process();
+
+        // Anchor working directory at the binary's own location by default (Gotcha 9).
+        // Velopack's swap step renames current\ mid-flight; any child process holding a
+        // working directory under current\ races the rename and can cause the swap to fail.
+        //
+        // When the caller passes an explicit workingDirectory, honour it.
+        // When workingDirectory is null and FileName is an absolute path (all bundled
+        // binaries routed through IDependencyPathResolver), default to the binary's own
+        // directory — which under CM's deps layout is always outside current\.
+        // When FileName is a bare name (PATH-resolved OS builtins: cmd, powershell, arp,
+        // ping, docker), Path.GetDirectoryName returns null and we fall back to
+        // Environment.CurrentDirectory. That is the only remaining cwd-inheritance path,
+        // and it is intentionally limited to OS tools that do not depend on cwd.
+        var resolvedWorkingDirectory = workingDirectory
+            ?? Path.GetDirectoryName(command)
+            ?? string.Empty;
+
         process.StartInfo = new ProcessStartInfo
         {
             FileName = command,
             Arguments = arguments ?? string.Empty,
-            WorkingDirectory = workingDirectory ?? string.Empty,
+            WorkingDirectory = resolvedWorkingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
