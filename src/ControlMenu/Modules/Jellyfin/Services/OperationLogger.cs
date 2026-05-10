@@ -15,12 +15,10 @@ public class OperationLogger : IDisposable
         _utcOffset = utcOffset;
     }
 
-    public static OperationLogger Create(string operation, TimeSpan? utcOffset = null, ControlMenu.Common.Paths.IDataPathResolver? paths = null)
+    public static OperationLogger Create(string operation, TimeSpan? utcOffset, ControlMenu.Common.Paths.IDataPathResolver paths)
     {
         var offset = utcOffset ?? TimeSpan.Zero;
-        var logDir = paths is not null
-            ? Path.Combine(paths.GetLogsDir(), "jellyfin")
-            : Path.Combine(AppContext.BaseDirectory, "jellyfin-data", "logging");
+        var logDir = Path.Combine(paths.GetLogsDir(), "jellyfin");
         Directory.CreateDirectory(logDir);
 
         var now = DateTimeOffset.UtcNow.ToOffset(offset);
