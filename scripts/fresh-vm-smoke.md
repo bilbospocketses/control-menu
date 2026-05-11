@@ -2,34 +2,30 @@
 
 **VM:** WIN11-CONTROL-MENU (Hyper-V, baseline snapshot per `user_test_devices.md`).
 
-This runbook verifies the Phase 1 deliverable end-to-end: Velopack-installed
-ControlMenu boots, persists user data outside `current\`, and the manual
-update flow completes (alpha.1 -> alpha.2). No tray, no Servy, no signing
-yet -- those are Phase 2-4.
+This runbook verifies the Phase 1 deliverable end-to-end via the CI-built MSI:
+Velopack-installed ControlMenu boots, persists user data outside `current\`,
+and the manual update flow completes (alpha.1 -> alpha.2). No tray, no Servy,
+no signing yet -- those are Phase 2-4.
 
-**One-time dev-machine prerequisite:**
-
-The `local-pack.ps1` script auto-vendors .NET 10 SDK to `scripts/dependencies/dotnet/<version>/` on first run. The bootstrap requires:
-- Internet access (downloads from `dot.net/v1/...`)
-- ~700MB free disk for the vendored SDK
-
-`vpk` is installed globally via `dotnet tool install -g vpk --version 0.0.1589-ga2c5a97` (matching ws-scrcpy-web's pattern; not vendored). The script auto-installs the right version if absent.
-
-After first successful pack, subsequent runs are offline-capable.
-
----
+The primary flow uses GitHub Actions to build the MSI and publish a GitHub
+Release; the VM downloads the MSI directly. The local-pack flow remains
+documented at the bottom as a dev-iteration alternate.
 
 **Machine ownership at a glance:**
 
 | Step | Machine | Action |
 |---|---|---|
-| 1 | [DEV BOX] | Build alpha.1 |
-| 2 | [DEV BOX → VM] | Transfer alpha.1 to VM |
-| 3-6 | [VM] | Install, launch, persist user data |
-| 7 | [DEV BOX] | Build alpha.2 |
-| 8 | [DEV BOX] | Stage alpha.2 (GitHub Release or local HTTP) |
-| 9-10 | [VM] | Trigger update, verify post-update |
-| Post-smoke | [DEV BOX] | Take Hyper-V snapshot |
+| 0 | [DEV BOX] | Verify CI is set up; one-time |
+| 1 | [DEV BOX] | Tag alpha.1; push; wait for Actions to publish GitHub Release |
+| 2 | [VM] | Download alpha.1 MSI from GitHub Release |
+| 3 | [VM] | Run MSI; UAC; PerMachine install |
+| 4 | [VM] | Verify on-disk layout |
+| 5 | [VM] | Launch; click through pages; verify data root created |
+| 6 | [VM] | Persist user data (camera + Jellyfin) |
+| 7 | [DEV BOX] | Tag alpha.2; push; wait for Actions |
+| 8 | [VM] | Trigger update check in running app |
+| 9 | [VM] | Verify post-update state |
+| Post-smoke | [DEV BOX] | Hyper-V checkpoint |
 
 ---
 
@@ -43,13 +39,13 @@ After first successful pack, subsequent runs are offline-capable.
    ```
 2. Sign into the VM. If the baseline doesn't already have a non-admin test
    user, create one:
-   - Settings → Accounts → Other users → Add account → "I don't have this
-     person's sign-in information" → "Add a user without a Microsoft account".
+   - Settings -> Accounts -> Other users -> Add account -> "I don't have this
+     person's sign-in information" -> "Add a user without a Microsoft account".
    - Username: `cm-test`, password: anything memorable.
-   - DEFAULT account type is Standard (non-admin) — that's what we want.
+   - DEFAULT account type is Standard (non-admin) -- that's what we want.
      Do NOT promote to admin.
 3. Sign out of the admin account, sign into `cm-test`.
-4. Confirm `cm-test` is non-admin: open Settings → Accounts → Your info —
+4. Confirm `cm-test` is non-admin: open Settings -> Accounts -> Your info --
    should NOT say "Administrator" below the username.
 5. Have two version strings memorized: `1.1.0-alpha.1` and `1.1.0-alpha.2`.
 
@@ -60,58 +56,71 @@ steps 2-4.
 
 ## Steps
 
-### 1. [DEV BOX] Build local alpha.1 Setup.msi
+### 0. [DEV BOX] (One-time) Verify GitHub Actions release pipeline
+
+Before the first tag push, sanity-check:
+
+1. **Workflow file present:** confirm `.github/workflows/release.yml` exists on
+   the branch you're about to tag.
+2. **Repo permissions:** GitHub repo Settings -> Actions -> General ->
+   Workflow permissions = "Read and write permissions" (needed for the `publish`
+   job to create a Release). Default for personal repos.
+3. **No SIGNING_API_TOKEN secret yet:** Phase 1 is unsigned. The signing_mode
+   output will be `unsigned`; signing steps no-op. Phase 4 will set up Azure
+   Trusted Signing.
+
+### 1. [DEV BOX] Tag alpha.1 and wait for the Release
 
 ```powershell
-pwsh scripts/local-pack.ps1 -Version 1.1.0-alpha.1
+cd C:/Users/jscha/source/repos/control-menu
+
+# Ensure feature/velopack-phase-1 has been merged to master FIRST.
+# (Or tag the feature branch directly -- Actions runs on any tag push.)
+git tag v1.1.0-alpha.1
+git push origin v1.1.0-alpha.1
 ```
 
-Output: `Releases/ControlMenu-<version>-Setup.msi` (plus delta/full nupkgs and RELEASES.win.json feed).
+**Watch the Actions run:**
+- Open `https://github.com/bilbospocketses/control-menu/actions` in a browser.
+- The `Release` workflow should appear, triggered by the tag push.
+- Wait for completion (~5-10 minutes for the build-windows + publish jobs).
 
-Prerequisite check: `local-pack.ps1` auto-installs the pinned vpk version
-(`0.0.1589-ga2c5a97`) globally if absent. Verify post-run with `vpk --version`.
+**Verify the GitHub Release was created:**
+- Navigate to `https://github.com/bilbospocketses/control-menu/releases`.
+- The `v1.1.0-alpha.1` Release should be present with these assets:
+  - `ControlMenu-1.1.0-alpha.1-win-Setup.msi`
+  - `ControlMenu-1.1.0-alpha.1-win.nupkg` (full)
+  - `ControlMenu-1.1.0-alpha.1-win-delta.nupkg` (delta, may be absent for the first release)
+  - `releases.beta.json`
+  - `SHA256SUMS`
 
-### 2. [DEV BOX → VM] Copy alpha.1 Setup.msi to VM
+**If the Actions run fails:** view the workflow logs in the Actions tab. Common
+Phase 1 failures: vpk install version conflict (rare; rerun usually resolves),
+MSI signing step (should be skipped in unsigned mode -- if it fires, the
+conditional is broken). Surface to user.
 
-This is the only physical-transfer step. After this, alpha.1 lives on the
-VM and dev-box involvement pauses until step 7.
+### 2. [VM] Download alpha.1 MSI from the GitHub Release
 
-**Option A (Recommended) — Hyper-V Enhanced Session drive redirection:**
+Restore the VM to baseline and sign in as `cm-test`:
 
-1. From Hyper-V Manager, connect to the VM.
-2. In the "Connect to <VM>" dialog, before clicking Connect, click
-   "Show Options" → "Local Resources" → "More..." → check the drive
-   containing your `Releases/` folder (typically `C:`).
-3. Click Connect with Enhanced Session enabled. Your local drive appears in
-   the VM's File Explorer under `\\tsclient\<drive>\` (RDP-style redirection).
-4. Inside the VM, navigate to:
-   ```
-   \\tsclient\C\Users\jscha\source\repos\control-menu\Releases\
-   ```
-   (adjust path to wherever your repo lives), then copy the MSI to
-   `C:\Users\cm-test\Desktop\` on the VM.
+```powershell
+# Run on dev machine to restore + start VM:
+Restore-VMSnapshot -VMName 'WIN11-CONTROL-MENU' -Name 'baseline' -Confirm:$false
+Start-VM -VMName 'WIN11-CONTROL-MENU'
+```
 
-**Option B (Fallback) — SMB share on dev machine:**
+Inside the VM, sign in as `cm-test` (non-admin). Open Edge and navigate to:
+`https://github.com/bilbospocketses/control-menu/releases/latest`
 
-1. On dev machine (run as admin, one-time; share persists across reboots):
-   ```powershell
-   New-SmbShare -Name "ControlMenuReleases" `
-     -Path "C:\Users\jscha\source\repos\control-menu\Releases" `
-     -ReadAccess "Everyone"
-   ```
-2. Find the dev machine's IP on the Hyper-V switch:
-   ```powershell
-   Get-NetIPAddress -InterfaceAlias 'vEthernet (Default Switch)' `
-     -AddressFamily IPv4 | Select-Object IPAddress
-   ```
-   For Default Switch (NAT), the host typically appears to the VM as `172.x.x.1`.
-3. On VM: open File Explorer, type `\\<DEV-MACHINE-IP>\ControlMenuReleases`
-   in the address bar. Enter dev-machine credentials when prompted.
-4. Copy the MSI from the share to `C:\Users\cm-test\Desktop\` on the VM.
+Click the `.msi` asset to download. Save to `Downloads\`.
+
+(VM network requirement: the baseline snapshot must have internet access to
+reach github.com. Hyper-V Default Switch with NAT routing provides this by
+default.)
 
 ### 3. [VM] Run Setup.msi on VM as non-admin user
 
-- SmartScreen warning expected (unsigned local pack) -- "More info" -> "Run anyway".
+- SmartScreen warning expected (unsigned CI build) -- "More info" -> "Run anyway".
 - UAC prompt -> Accept (elevation for PerMachine install to `C:\Program Files\`).
 - Velopack installs to `C:\Program Files\ControlMenu\`.
 - Installer exits when complete; no manual "Finish" click required.
@@ -172,83 +181,37 @@ In the running app:
 - Settings -> Cameras: add a fake camera (any label, IP like `192.168.1.99`).
 - Settings -> Jellyfin: set a Compose path (e.g., `C:\docker\jellyfin`), save.
 
-Note the exact values -- you will verify them again after the update in step 10.
+Note the exact values -- you will verify them again after the update in step 9.
 
-### 7. [DEV BOX] Build alpha.2 with a trivial change
+### 7. [DEV BOX] Tag alpha.2 with a trivial change
 
 1. Bump CHANGELOG.md: add a `[1.1.0-alpha.2]` section with "Smoke test bump".
-2. Commit: `git commit -m 'chore: bump to 1.1.0-alpha.2 for smoke'`
-3. Build:
+2. Commit:
    ```powershell
-   pwsh scripts/local-pack.ps1 -Version 1.1.0-alpha.2
+   git commit -m "chore: bump to 1.1.0-alpha.2 for smoke"
    ```
-
-Output: `Releases/` now contains both alpha.1 and alpha.2 release assets plus
-an updated `RELEASES.win.json` feed file.
-
-### 8. [DEV BOX] Stage alpha.2 for the VM to consume
-
-**Option A (Recommended) — GitHub Release on the CM repo:**
-
-The `VelopackUpdateService` points at the CM GitHub repo via GithubSource.
-To let the VM's running app see the alpha.2 update:
-
-1. Push the alpha.2 tag to origin:
+3. Tag + push:
    ```powershell
    git tag v1.1.0-alpha.2
    git push origin v1.1.0-alpha.2
    ```
-2. Create the GitHub Release with the full `Releases/` artifacts attached.
-   **CRITICAL: do NOT set `--prerelease`** — Velopack's GithubSource queries
-   `/releases/latest` which excludes prereleases (Gotcha 5 in
-   `feedback_velopack_permachine_lessons.md`). Channel separation is handled
-   by the per-channel `releases.<channel>.json` feed file already in
-   `Releases/`; the prerelease flag is redundant gating that ALSO breaks
-   discovery.
-   ```powershell
-   gh release create v1.1.0-alpha.2 Releases/* --title "1.1.0-alpha.2 smoke"
-   ```
-   (No `--prerelease`.)
+4. Wait for the Actions run to complete and the GitHub Release to publish.
 
-   **VM network requirement:** The VM must have internet access to reach
-   `github.com` and download the release assets. Hyper-V Default Switch
-   (NAT) provides this by default.
+The `VelopackUpdateService` points at the CM GitHub repo via GithubSource.
+Once the GitHub Release for v1.1.0-alpha.2 exists, the running alpha.1 app
+can discover it.
 
-**Option B (Fallback) — Local HTTP feed, requires alpha.1 pre-modification:**
+**CRITICAL: do NOT set `--prerelease`** (the CI workflow already omits it).
+Velopack's GithubSource queries `/releases/latest` which excludes prereleases
+(Gotcha 5 in `feedback_velopack_permachine_lessons.md`). Channel separation is
+handled by the per-channel `releases.<channel>.json` feed file; the prerelease
+flag would break discovery without adding value.
 
-Local HTTP is faster to iterate but has a chicken-and-egg: the running
-alpha.1 must already be pointing at the local HTTP feed (not GitHub) for
-the check-for-updates flow to discover alpha.2 there. This means you'd
-need to:
+**VM network requirement:** The VM must have internet access to reach
+`github.com` and download the release assets. Hyper-V Default Switch (NAT)
+provides this by default.
 
-1. BEFORE Step 1, temporarily change `VelopackUpdateService.cs:GitHubRepo`
-   to a local HTTP URL like `http://<dev-machine-IP>:8765`.
-2. Rebuild alpha.1 with that change applied:
-   ```powershell
-   pwsh scripts/local-pack.ps1 -Version 1.1.0-alpha.1
-   ```
-3. Then proceed with Step 2 onward — but skip the GitHub publish step here.
-4. On dev machine, serve the Releases folder:
-   ```powershell
-   python -m http.server 8765 --directory Releases/
-   ```
-5. Ensure the VM can reach the dev-machine IP on port 8765. Test from VM:
-   ```powershell
-   Test-NetConnection -ComputerName <dev-machine-IP> -Port 8765
-   ```
-   Hyper-V Default Switch (NAT) routes VM→host traffic via the host's
-   vEthernet adapter at `172.x.x.1` typically. Find the exact IP:
-   ```powershell
-   # On dev machine:
-   Get-NetIPAddress -InterfaceAlias 'vEthernet (Default Switch)' `
-     -AddressFamily IPv4 | Select-Object IPAddress
-   ```
-
-**Recommended choice for Phase 1 smoke:** Option A. The GitHub Release path
-matches production behavior end-to-end; Option B introduces an unnecessary
-deviation from production for a Phase 1 ship gate.
-
-### 9. [VM] Trigger update check in the running app
+### 8. [VM] Trigger update check in the running app
 
 In the browser at `http://localhost:5159`:
 1. Navigate to Settings -> General -> Updates.
@@ -268,7 +231,7 @@ In the browser at `http://localhost:5159`:
 **Phase 1 manual step:** The app does NOT auto-relaunch (that is Phase 2 via
 tray / Phase 3 via Servy). Relaunch manually via the Start Menu shortcut.
 
-### 10. [VM] Verify post-update state
+### 9. [VM] Verify post-update state
 
 After manual relaunch:
 
@@ -287,7 +250,7 @@ After manual relaunch:
 
 ## Pass criteria
 
-All 10 steps complete without crashes or ERROR log entries.
+All 9 steps complete without crashes or ERROR log entries.
 
 Specifically:
 - `launcher.log` and `controlmenu.log` contain only INFO-level entries for
@@ -336,3 +299,45 @@ This is the baseline for Phase 2 (tray, auto-relaunch, Servy integration) testin
 user. This pattern suggests an architectural issue (path resolver, hook
 ordering, install-root ACL timing) that requires spec amendment before
 continuing.
+
+---
+
+## Appendix -- local-pack alternate (dev iteration without tags)
+
+The CI-driven flow above is the primary smoke path. If you want to iterate
+locally without burning git tags (e.g., debugging a packaging issue), the
+`scripts/local-pack.ps1` script produces an equivalent MSI locally on your
+dev machine:
+
+```powershell
+pwsh scripts/local-pack.ps1 -Version 1.1.0-alpha.local
+```
+
+The output is in `Releases/`. Transfer to the VM via Hyper-V Enhanced Session
+drive redirection (Hyper-V Manager -> Connect -> Show Options -> Local
+Resources -> More... -> check your drive) or an SMB share on the dev machine:
+
+```powershell
+New-SmbShare -Name "ControlMenuReleases" `
+  -Path "C:\Users\jscha\source\repos\control-menu\Releases" `
+  -ReadAccess "Everyone"
+```
+
+On VM: open File Explorer, type `\\<DEV-MACHINE-IP>\ControlMenuReleases` in
+the address bar. Find the dev machine's Hyper-V switch IP:
+
+```powershell
+# On dev machine:
+Get-NetIPAddress -InterfaceAlias 'vEthernet (Default Switch)' `
+  -AddressFamily IPv4 | Select-Object IPAddress
+```
+
+For Default Switch (NAT), the host typically appears to the VM as `172.x.x.1`.
+
+The local-pack alternate uses the SAME `vpk pack` flags as CI -- output is
+functionally equivalent. The CI flow exists to give you a publish-and-go
+workflow without copy-paste overhead.
+
+The `local-pack.ps1` script auto-vendors .NET 10 SDK to
+`scripts/dependencies/dotnet/<version>/` on first run (requires internet
+access + ~700MB free disk). Subsequent runs are offline-capable.

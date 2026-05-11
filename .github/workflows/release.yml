@@ -1,0 +1,191 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.channel.outputs.channel }}
+      signing_mode: ${{ steps.signing.outputs.mode }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      - id: channel
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == *-beta* || "${GITHUB_REF_NAME}" == *-alpha* ]]; then
+            echo "channel=beta" >> "$GITHUB_OUTPUT"
+          else
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          fi
+      - id: signing
+        env:
+          # Generic signing-mode gate. Set this secret when a code-signing path
+          # is wired (Phase 4 — Azure Trusted Signing). Matches ws-scrcpy-web's
+          # SIGNING_API_TOKEN pattern (renamed from SIGNPATH_API_TOKEN there
+          # after SignPath Foundation declined the OSS application; here it's
+          # a fresh slot for whatever signer Phase 4 selects).
+          SIGNING_API_TOKEN: ${{ secrets.SIGNING_API_TOKEN }}
+        run: |
+          if [ -n "$SIGNING_API_TOKEN" ]; then
+            echo "mode=signed" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=unsigned" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-windows:
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.x
+
+      # Pin vpk to the prerelease that has --msi / --instLocation flags.
+      # Stable vpk 0.0.1298 (the default with no --version) does NOT have
+      # those flags — they were added in the 0.0.1500+ prerelease line.
+      # Match the NuGet `Velopack` package version pinned in
+      # ControlMenu.csproj + ControlMenuLauncher.csproj to keep client/server
+      # serialization in sync. Mirrors ws-scrcpy-web's release.yml pin.
+      - name: Install vpk CLI
+        run: dotnet tool install -g vpk --version 0.0.1589-ga2c5a97
+
+      # No .sln in this repo — restore + build per project directly.
+      # Mirrors the local-pack.ps1 approach (3x dotnet publish below).
+      - name: Restore
+        run: |
+          dotnet restore src/ControlMenu/ControlMenu.csproj
+          dotnet restore src/ControlMenuLauncher/ControlMenuLauncher.csproj
+          dotnet restore src/ControlMenuTray/ControlMenuTray.csproj
+
+      - name: Publish ControlMenu (Blazor Server host)
+        run: |
+          dotnet publish src/ControlMenu/ControlMenu.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -o publish -p:PublishSingleFile=false `
+            /p:Version=${{ needs.prepare.outputs.version }}
+
+      - name: Publish ControlMenuLauncher (Velopack supervisor)
+        run: |
+          dotnet publish src/ControlMenuLauncher/ControlMenuLauncher.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -o publish -p:PublishSingleFile=false `
+            /p:Version=${{ needs.prepare.outputs.version }}
+
+      - name: Publish ControlMenuTray (Phase 1 stub)
+        run: |
+          dotnet publish src/ControlMenuTray/ControlMenuTray.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -o publish -p:PublishSingleFile=false `
+            /p:Version=${{ needs.prepare.outputs.version }}
+
+      - name: Upload unsigned inner exes (for Phase 4 signer)
+        if: needs.prepare.outputs.signing_mode == 'signed'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-windows-exes
+          path: |
+            publish/ControlMenuLauncher.exe
+            publish/ControlMenuTray.exe
+            publish/ControlMenu.exe
+
+      # FUTURE SIGNER (Phase 4): wire inner-exes signing step here.
+      #   Input  — artifact `unsigned-windows-exes` (uploaded above when signing_mode == 'signed').
+      #   Output — signed exes placed back into `publish/` before the `vpk pack`
+      #            step below picks them up.
+      # Spec § "Phase 4 — v1.1.0 Phase 4 (CI + Azure Trusted Signing)" calls
+      # for Azure Trusted Signing via Azure/trusted-signing-action.
+
+      - name: vpk pack (PerMachine MSI)
+        shell: pwsh
+        run: |
+          # PerMachine MSI is the Windows install artifact. The MSI installs
+          # to C:\Program Files\ControlMenu\ and runs elevated; the launcher's
+          # InstallAcl.EnsureWritable grants the install-root ACL at first
+          # non-hook startup (Velopack PerMachine Gotchas 2 + 3). Setup.exe
+          # is still produced as a side effect of --msi; we publish both.
+          vpk pack `
+            --packId ControlMenu `
+            --packVersion ${{ needs.prepare.outputs.version }} `
+            --packDir publish `
+            --mainExe ControlMenuLauncher.exe `
+            --packTitle "Control Menu" `
+            --packAuthors "bilbospocketses" `
+            --channel ${{ needs.prepare.outputs.channel }} `
+            --icon src/ControlMenu/wwwroot/favicon.png `
+            --msi `
+            --instLocation PerMachine `
+            -o Releases
+
+      - name: Upload unsigned MSI (for Phase 4 signer)
+        if: needs.prepare.outputs.signing_mode == 'signed'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-windows-msi
+          path: Releases/*.msi
+
+      # FUTURE SIGNER (Phase 4): wire MSI signing step here.
+      #   Input  — artifact `unsigned-windows-msi` (uploaded above when signing_mode == 'signed').
+      #   Output — signed *.msi placed back into Releases/ for the publish job.
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-final
+          path: |
+            Releases/*.msi
+            Releases/*.nupkg
+            Releases/releases.${{ needs.prepare.outputs.channel }}.json
+
+  publish:
+    needs: [prepare, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd artifacts
+          find . -type f \( -name '*.msi' -o -name '*.nupkg' \) -exec sha256sum {} \; > ../SHA256SUMS
+          cd ..
+          cat SHA256SUMS
+
+      - name: Generate release notes
+        run: |
+          UNSIGNED_FLAG=""
+          if [ "${{ needs.prepare.outputs.signing_mode }}" = "unsigned" ]; then
+            UNSIGNED_FLAG=" (unsigned build — SmartScreen will warn; click 'More info' → 'Run anyway')"
+          fi
+          echo "## Control Menu ${{ needs.prepare.outputs.version }}${UNSIGNED_FLAG}" > release-notes.md
+          echo "" >> release-notes.md
+          echo "Channel: \`${{ needs.prepare.outputs.channel }}\`" >> release-notes.md
+          echo "" >> release-notes.md
+          echo "**Install:** Download \`ControlMenu-${{ needs.prepare.outputs.version }}-win-Setup.msi\` below and run on Windows 11. PerMachine install to \`C:\\Program Files\\ControlMenu\\\`." >> release-notes.md
+          echo "" >> release-notes.md
+          echo "See \`CHANGELOG.md\` for the full notes." >> release-notes.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # NO --prerelease flag, EVEN for alpha/beta tags. Velopack's
+          # GithubSource queries the GitHub /releases/latest endpoint to
+          # discover updates; that endpoint EXCLUDES prereleases. Channel
+          # separation is handled by the per-channel releases.<channel>.json
+          # feed file already in the artifacts. Setting --prerelease=true
+          # would break in-app update discovery for beta-channel users.
+          # See feedback_velopack_permachine_lessons.md Gotcha 5.
+          body_path: release-notes.md
+          files: |
+            artifacts/windows-final/*.msi
+            artifacts/windows-final/*.nupkg
+            artifacts/windows-final/releases.${{ needs.prepare.outputs.channel }}.json
+            SHA256SUMS
