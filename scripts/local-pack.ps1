@@ -125,7 +125,7 @@ vpk pack `
     --packTitle "Control Menu" `
     --packAuthors "bilbospocketses" `
     --channel stable `
-    --icon "$repo/src/ControlMenu/wwwroot/favicon.png" `
+    --icon "$repo/src/ControlMenu/wwwroot/favicon.ico" `
     --msi `
     --instLocation PerMachine `
     -o $releasesDir

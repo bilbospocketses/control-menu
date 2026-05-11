@@ -117,7 +117,7 @@ jobs:
             --packTitle "Control Menu" `
             --packAuthors "bilbospocketses" `
             --channel ${{ needs.prepare.outputs.channel }} `
-            --icon src/ControlMenu/wwwroot/favicon.png `
+            --icon src/ControlMenu/wwwroot/favicon.ico `
             --msi `
             --instLocation PerMachine `
             -o Releases
