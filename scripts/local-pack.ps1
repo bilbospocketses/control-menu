@@ -2,7 +2,7 @@
 # Local Velopack pack script. Builds Setup.msi locally without burning
 # Trusted Signing quota. Used for fresh-VM smoke iteration.
 #
-# Usage: pwsh scripts/local-pack.ps1 -Version 1.1.0-alpha.1
+# Usage: pwsh scripts/local-pack.ps1 -Version 1.1.0-beta.1
 #
 # Prerequisites:
 #   - Internet access on first run (bootstraps vendored .NET 10 SDK +

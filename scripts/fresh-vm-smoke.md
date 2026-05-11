@@ -4,7 +4,7 @@
 
 This runbook verifies the Phase 1 deliverable end-to-end via the CI-built MSI:
 Velopack-installed ControlMenu boots, persists user data outside `current\`,
-and the manual update flow completes (alpha.1 -> alpha.2). No tray, no Servy,
+and the manual update flow completes (beta.1 -> beta.2). No tray, no Servy,
 no signing yet -- those are Phase 2-4.
 
 The primary flow uses GitHub Actions to build the MSI and publish a GitHub
@@ -16,13 +16,13 @@ documented at the bottom as a dev-iteration alternate.
 | Step | Machine | Action |
 |---|---|---|
 | 0 | [DEV BOX] | Verify CI is set up; one-time |
-| 1 | [DEV BOX] | Tag alpha.1; push; wait for Actions to publish GitHub Release |
-| 2 | [VM] | Download alpha.1 MSI from GitHub Release |
+| 1 | [DEV BOX] | Tag beta.1; push; wait for Actions to publish GitHub Release |
+| 2 | [VM] | Download beta.1 MSI from GitHub Release |
 | 3 | [VM] | Run MSI; UAC; PerMachine install |
 | 4 | [VM] | Verify on-disk layout |
 | 5 | [VM] | Launch; click through pages; verify data root created |
 | 6 | [VM] | Persist user data (camera + Jellyfin) |
-| 7 | [DEV BOX] | Tag alpha.2; push; wait for Actions |
+| 7 | [DEV BOX] | Tag beta.2; push; wait for Actions |
 | 8 | [VM] | Trigger update check in running app |
 | 9 | [VM] | Verify post-update state |
 | Post-smoke | [DEV BOX] | Hyper-V checkpoint |
@@ -47,7 +47,7 @@ documented at the bottom as a dev-iteration alternate.
 3. Sign out of the admin account, sign into `cm-test`.
 4. Confirm `cm-test` is non-admin: open Settings -> Accounts -> Your info --
    should NOT say "Administrator" below the username.
-5. Have two version strings memorized: `1.1.0-alpha.1` and `1.1.0-alpha.2`.
+5. Have two version strings memorized: `1.1.0-beta.1` and `1.1.0-beta.2`.
 
 If the baseline already has a non-admin `cm-test` (or similar) user, skip
 steps 2-4.
@@ -69,15 +69,15 @@ Before the first tag push, sanity-check:
    output will be `unsigned`; signing steps no-op. Phase 4 will set up Azure
    Trusted Signing.
 
-### 1. [DEV BOX] Tag alpha.1 and wait for the Release
+### 1. [DEV BOX] Tag beta.1 and wait for the Release
 
 ```powershell
 cd C:/Users/jscha/source/repos/control-menu
 
 # Ensure feature/velopack-phase-1 has been merged to master FIRST.
 # (Or tag the feature branch directly -- Actions runs on any tag push.)
-git tag v1.1.0-alpha.1
-git push origin v1.1.0-alpha.1
+git tag v1.1.0-beta.1
+git push origin v1.1.0-beta.1
 ```
 
 **Watch the Actions run:**
@@ -87,10 +87,10 @@ git push origin v1.1.0-alpha.1
 
 **Verify the GitHub Release was created:**
 - Navigate to `https://github.com/bilbospocketses/control-menu/releases`.
-- The `v1.1.0-alpha.1` Release should be present with these assets:
-  - `ControlMenu-1.1.0-alpha.1-win-Setup.msi`
-  - `ControlMenu-1.1.0-alpha.1-win.nupkg` (full)
-  - `ControlMenu-1.1.0-alpha.1-win-delta.nupkg` (delta, may be absent for the first release)
+- The `v1.1.0-beta.1` Release should be present with these assets:
+  - `ControlMenu-1.1.0-beta.1-win-Setup.msi`
+  - `ControlMenu-1.1.0-beta.1-win.nupkg` (full)
+  - `ControlMenu-1.1.0-beta.1-win-delta.nupkg` (delta, may be absent for the first release)
   - `releases.beta.json`
   - `SHA256SUMS`
 
@@ -99,7 +99,7 @@ Phase 1 failures: vpk install version conflict (rare; rerun usually resolves),
 MSI signing step (should be skipped in unsigned mode -- if it fires, the
 conditional is broken). Surface to user.
 
-### 2. [VM] Download alpha.1 MSI from the GitHub Release
+### 2. [VM] Download beta.1 MSI from the GitHub Release
 
 Restore the VM to baseline and sign in as `cm-test`:
 
@@ -183,22 +183,22 @@ In the running app:
 
 Note the exact values -- you will verify them again after the update in step 9.
 
-### 7. [DEV BOX] Tag alpha.2 with a trivial change
+### 7. [DEV BOX] Tag beta.2 with a trivial change
 
-1. Bump CHANGELOG.md: add a `[1.1.0-alpha.2]` section with "Smoke test bump".
+1. Bump CHANGELOG.md: add a `[1.1.0-beta.2]` section with "Smoke test bump".
 2. Commit:
    ```powershell
-   git commit -m "chore: bump to 1.1.0-alpha.2 for smoke"
+   git commit -m "chore: bump to 1.1.0-beta.2 for smoke"
    ```
 3. Tag + push:
    ```powershell
-   git tag v1.1.0-alpha.2
-   git push origin v1.1.0-alpha.2
+   git tag v1.1.0-beta.2
+   git push origin v1.1.0-beta.2
    ```
 4. Wait for the Actions run to complete and the GitHub Release to publish.
 
 The `VelopackUpdateService` points at the CM GitHub repo via GithubSource.
-Once the GitHub Release for v1.1.0-alpha.2 exists, the running alpha.1 app
+Once the GitHub Release for v1.1.0-beta.2 exists, the running beta.1 app
 can discover it.
 
 **CRITICAL: do NOT set `--prerelease`** (the CI workflow already omits it).
@@ -216,7 +216,7 @@ provides this by default.
 In the browser at `http://localhost:5159`:
 1. Navigate to Settings -> General -> Updates.
 2. Click "Check for updates".
-3. An update-available banner shows `1.1.0-alpha.2`.
+3. An update-available banner shows `1.1.0-beta.2`.
 4. Click "Download and apply (app will restart)".
 
 **Expected sequence (observable in `launcher.log`):**
@@ -236,15 +236,15 @@ tray / Phase 3 via Servy). Relaunch manually via the Start Menu shortcut.
 After manual relaunch:
 
 **Version check:**
-- Open Settings -> General. The displayed version should be `1.1.0-alpha.2`.
+- Open Settings -> General. The displayed version should be `1.1.0-beta.2`.
 - Or check file mtime: `C:\Program Files\ControlMenu\current\ControlMenuLauncher.exe`
-  mtime should be after the alpha.2 build time.
+  mtime should be after the beta.2 build time.
 
 **User data survived:**
 - Settings -> Cameras: the fake camera from step 6 is still there.
 - Settings -> Jellyfin: the Compose path from step 6 is still there.
 - `C:\ProgramData\ControlMenu\config\controlmenu.db` mtime predates the
-  alpha.2 install (the DB was NOT replaced by the update).
+  beta.2 install (the DB was NOT replaced by the update).
 
 ---
 
@@ -256,7 +256,7 @@ Specifically:
 - `launcher.log` and `controlmenu.log` contain only INFO-level entries for
   the full install + first-run + update-check + download + apply + relaunch
   sequence.
-- `1.1.0-alpha.2` binaries are present in `current\` after manual relaunch.
+- `1.1.0-beta.2` binaries are present in `current\` after manual relaunch.
 - Camera entry and Jellyfin Compose path from step 6 are unchanged.
 - `C:\ProgramData\ControlMenu\` was NOT touched by the Velopack update
   (user data lives outside `current\` by design -- the core Phase 1 invariant).
@@ -310,7 +310,7 @@ locally without burning git tags (e.g., debugging a packaging issue), the
 dev machine:
 
 ```powershell
-pwsh scripts/local-pack.ps1 -Version 1.1.0-alpha.local
+pwsh scripts/local-pack.ps1 -Version 1.1.0-beta.local
 ```
 
 The output is in `Releases/`. Transfer to the VM via Hyper-V Enhanced Session
