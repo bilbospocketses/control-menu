@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0-beta.2] - 2026-05-12
+
 ### Added
 
 - **Dependency pre-seeding pipeline (Velopack Phase 1b)** — runtime binaries (`adb`, `scrcpy`, `sqlite3`, `go2rtc`) now ship bundled inside the MSI. Mirrors ws-scrcpy-web's `seed/node/` + `scripts/fetch-*.mjs` + `scripts/stage-publish.mjs` pattern. **Why this matters:** v1.1.0-beta.1 launched the wizard into a fresh install with no `adb` → device scan hung forever (no error, no progress). Per-module `IToolModule.Dependencies` are pull-not-push by design — the user has to click "Install" in Settings → Dependencies before the resolver can find anything. That's fine for opt-in deps but lethal for the wizard's hard requirements. Pre-seeding closes the gap.
