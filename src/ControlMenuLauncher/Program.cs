@@ -1,5 +1,6 @@
 using ControlMenu.Common.Logging;
 using ControlMenu.Common.Paths;
+using ControlMenu.Common.Seeding;
 using ControlMenu.Launcher.Hooks;
 using ControlMenu.Launcher.Supervisor;
 
@@ -77,6 +78,23 @@ internal static class Program
         {
             LauncherLogger.Info("another ControlMenuLauncher instance is already running; exiting");
             return 0;
+        }
+
+        // Hydrate pre-seeded dependencies from current\seed\dependencies\ into
+        // <dataRoot>\dependencies\ (parity with ws-scrcpy-web's seed/node\
+        // bootstrap). Idempotent — already-present leaves are preserved so
+        // user-updated deps survive a Velopack swap of the seed bundle.
+        try
+        {
+            var hydrate = SeedHydrator.Hydrate(paths.GetCurrentDir(), paths.GetDependenciesDir());
+            if (hydrate.Copied > 0 || hydrate.Skipped > 0)
+            {
+                LauncherLogger.Info($"seed hydrate: copied={hydrate.Copied} skipped={hydrate.Skipped}");
+            }
+        }
+        catch (Exception ex)
+        {
+            LauncherLogger.Error($"seed hydrate failed (continuing — wizard may fail if deps missing): {ex.Message}");
         }
 
         // Phase 3 marker: --local-takeover override (post-uninstall handoff)

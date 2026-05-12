@@ -26,6 +26,20 @@ Directory.CreateDirectory(dataPathResolver.GetLogsDir());
 Directory.CreateDirectory(dataPathResolver.GetKeysDir());
 Directory.CreateDirectory(dataPathResolver.GetDependenciesDir());
 
+// Bind Kestrel to the port configured in app-config.json (default 5159).
+// Properties/launchSettings.json only applies to `dotnet run`; published
+// builds need an explicit Urls binding or ASP.NET falls back to :5000.
+var appConfig = ControlMenu.Common.Config.AppConfig.Load(dataPathResolver.GetAppConfigPath());
+builder.WebHost.UseUrls(ControlMenu.Common.Config.WebPortResolver.GetKestrelUrl(appConfig));
+
+// File logging — published builds lose stdout when the launcher detaches the
+// console, so controlmenu.log under <dataRoot>/logs/ is the only post-mortem
+// trail we have. Default ASP.NET console-only setup leaves no file behind.
+builder.Logging.ClearProviders();
+ControlMenu.Logging.FileLoggingConfigurator.AddFileSink(
+    builder.Logging,
+    Path.Combine(dataPathResolver.GetLogsDir(), "controlmenu.log"));
+
 // DepsRootHolder is read by static module-init for AndroidDevicesModule,
 // CamerasModule, JellyfinModule. Must be set before module discovery runs.
 ControlMenu.Services.DepsRootHolder.Path = dataPathResolver.GetDependenciesDir();
@@ -53,9 +67,16 @@ builder.Services.AddDbContextFactory<AppDbContext>(options =>
 // Data Protection (used by SecretStore for encrypting settings).
 // Keys directory is created above as part of resolver bootstrap, so the
 // PersistKeysToFileSystem call here just needs to point at it.
-builder.Services.AddDataProtection()
+// DPAPI on Windows encrypts the key file at rest with the machine key;
+// without it Serilog logs "No XML encryptor configured" and the key XML
+// sits in plaintext under <dataRoot>/keys/.
+var dataProtection = builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(dataPathResolver.GetKeysDir()))
     .SetApplicationName("ControlMenu");
+if (OperatingSystem.IsWindows())
+{
+    dataProtection.ProtectKeysWithDpapi();
+}
 
 // Core services
 builder.Services.AddSingleton<ICommandExecutor, CommandExecutor>();

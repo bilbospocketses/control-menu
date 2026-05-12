@@ -3,6 +3,10 @@ bin/
 obj/
 publish/
 
+# Pre-seeded-dependency download cache populated by scripts/dependencies/fetch-*.ps1.
+# Committing would bloat the repo with binaries the CI workflow re-fetches anyway.
+scripts/dependencies/cache/
+
 # IDE
 .vs/
 .vscode/

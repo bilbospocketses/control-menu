@@ -84,6 +84,18 @@ jobs:
             -o publish -p:PublishSingleFile=false `
             /p:Version=${{ needs.prepare.outputs.version }}
 
+      # Pre-seed runtime dependencies (adb, scrcpy, sqlite3, go2rtc) into
+      # publish/seed/dependencies/<leaf>/. Each fetch-*.ps1 script downloads
+      # its pinned version, verifies SHA-256, and stages the binary tree the
+      # launcher's SeedHydrator copies into <dataRoot>/dependencies/ on first
+      # boot. Mirrors ws-scrcpy-web's stage-seed-node-pty.mjs + fetch-*.mjs
+      # pattern. Without this step the wizard launches into a fresh install
+      # with no adb -> device scan hangs forever (root cause of the
+      # v1.1.0-beta.1 fresh-VM smoke failure).
+      - name: Stage runtime dependencies into publish/seed/
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/stage-seed.ps1
+
       - name: Upload unsigned inner exes (for Phase 4 signer)
         if: needs.prepare.outputs.signing_mode == 'signed'
         uses: actions/upload-artifact@v4

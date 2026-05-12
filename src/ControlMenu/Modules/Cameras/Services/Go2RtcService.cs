@@ -74,7 +74,7 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         var exePath = FindExecutable();
         if (exePath is null)
         {
-            _logger.LogWarning("go2rtc not found in PATH — camera streaming unavailable");
+            _logger.LogWarning("go2rtc not installed under local dependencies — camera streaming unavailable");
             return;
         }
 
@@ -113,7 +113,7 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         var exePath = FindExecutable();
         if (exePath is null)
         {
-            _logger.LogWarning("go2rtc not found — cannot restart");
+            _logger.LogWarning("go2rtc not installed under local dependencies — cannot restart");
             return;
         }
         lock (_lock)
