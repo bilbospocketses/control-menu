@@ -15,6 +15,18 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
+// VelopackApp.Build().Run() must be called in every process that consumes
+// Velopack APIs — VelopackLocator.Current is a per-process static and is
+// NOT inherited across the ControlMenuLauncher → ControlMenu.exe boundary.
+// Without this, UpdateManager's ctor throws "No VelopackLocator has been set"
+// when the DI container instantiates VelopackUpdateService (e.g. on
+// Settings → General page load), tearing down the Blazor circuit.
+// SetAutoApplyOnStartup(false): the launcher owns apply orchestration via
+// exit code 75; the Blazor host must never auto-apply on its own startup.
+Velopack.VelopackApp.Build()
+    .SetAutoApplyOnStartup(false)
+    .Run();
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Resolve all writable-state paths through IDataPathResolver. Velopack mode

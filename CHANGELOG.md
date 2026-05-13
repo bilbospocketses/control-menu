@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Settings → General crashed the Blazor circuit on every load (`No VelopackLocator has been set`).** `VelopackUpdateService`'s ctor (DI singleton) constructs a `Velopack.UpdateManager`, which reads the global static `VelopackLocator.Current`. That static is only populated by `VelopackApp.Build().Run()` — a **per-process** call. v1.1.0-beta.2 invoked it in `ControlMenuLauncher.exe` only, so the locator was set in the supervisor's process but never inherited by `ControlMenu.exe` (the Blazor host is a separate child process). Any DI resolution of `IVelopackUpdateService` threw `InvalidOperationException` before the existing `_manager.IsInstalled` dev-mode guard could run. Reproduces in **both dev mode (`dotnet run`) and installed MSI**. Added `Velopack.VelopackApp.Build().SetAutoApplyOnStartup(false).Run()` at the top of `ControlMenu/Program.cs` so the host initializes its own locator. `SetAutoApplyOnStartup(false)` because the launcher owns apply orchestration via exit-75 — the host must never auto-apply on its own startup. New `tests/ControlMenu.Tests/Services/Update/VelopackUpdateServiceTests.cs` covers the construction + dev-tree short-circuit paths.
+
 ## [1.1.0-beta.2] - 2026-05-12
 
 ### Added
