@@ -8,7 +8,7 @@ namespace ControlMenu.Launcher;
 
 internal static class Program
 {
-    private const string Version = "1.1.0-beta.2";
+    private const string Version = "1.1.0-beta.3";
 
     private static int Main(string[] args)
     {
