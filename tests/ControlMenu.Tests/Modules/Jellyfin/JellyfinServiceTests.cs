@@ -77,19 +77,35 @@ public class JellyfinServiceTests
     [Fact]
     public async Task BackupDatabaseAsync_CopiesFile()
     {
-        _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-db-path", null))
-            .ReturnsAsync("D:/DockerData/jellyfin/config/data/jellyfin.db");
+        // Create a real source DB file in a temp dir so JellyfinService.BackupDatabaseAsync's
+        // File.Exists(dbPath) check passes on any environment. Previous hardcoded
+        // D:/DockerData/jellyfin/config/data/jellyfin.db only existed on the dev box; CI
+        // (GitHub Actions windows-latest, no D: drive) returned null → assertion failed.
+        var tempDir = Path.Combine(Path.GetTempPath(), "cm-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        var sourceDbPath = Path.Combine(tempDir, "jellyfin.db");
+        await File.WriteAllBytesAsync(sourceDbPath, new byte[] { 0x53, 0x51, 0x4c, 0x69 }); // SQLi header bytes — fake but plausible
 
-        // The command differs by OS, but we test the Windows path here
-        _mockExecutor.Setup(e => e.ExecuteAsync(
-            It.IsAny<CommandDefinition>(), default))
-            .ReturnsAsync(new CommandResult(0, "", "", false));
+        try
+        {
+            _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-db-path", null))
+                .ReturnsAsync(sourceDbPath);
 
-        var service = CreateService();
-        var backupPath = await service.BackupDatabaseAsync();
+            _mockExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<CommandDefinition>(), default))
+                .ReturnsAsync(new CommandResult(0, "", "", false));
 
-        Assert.NotNull(backupPath);
-        Assert.Contains("jellyfin_", backupPath);
+            var service = CreateService();
+            var backupPath = await service.BackupDatabaseAsync();
+
+            Assert.NotNull(backupPath);
+            Assert.Contains("jellyfin_", backupPath);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
     }
 
     [Fact]
