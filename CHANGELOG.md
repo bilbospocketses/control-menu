@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Pinned GitHub Actions to commit SHAs in `.github/workflows/release.yml`.** `actions/checkout`, `actions/setup-dotnet`, `actions/upload-artifact`, `actions/download-artifact`, and `softprops/action-gh-release` now reference fixed commit SHAs with trailing `# v4` / `# v2` comments instead of floating major-version tags. Supply-chain hardening against compromise of upstream action repos. Future SHA bumps tracked manually until `.github/dependabot.yml` lands with `package-ecosystem: github-actions`.
+
 ## [1.1.0-beta.3] - 2026-05-12
 
 ### Fixed
