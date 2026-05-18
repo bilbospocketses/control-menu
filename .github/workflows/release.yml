@@ -40,6 +40,10 @@ jobs:
   build-windows:
     needs: prepare
     runs-on: windows-latest
+    permissions:
+      id-token: write       # Sigstore OIDC for attest-build-provenance
+      attestations: write   # Write attestation to repo via Attestations API
+      contents: read        # Explicit (per-job block replaces defaults)
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
@@ -144,6 +148,16 @@ jobs:
       # FUTURE SIGNER (Phase 4): wire MSI signing step here.
       #   Input  — artifact `unsigned-windows-msi` (uploaded above when signing_mode == 'signed').
       #   Output — signed *.msi placed back into Releases/ for the publish job.
+
+      # Generate a Sigstore-backed build-provenance attestation for the MSI.
+      # Links the artifact to its workflow + commit + actor. Verify with:
+      #   gh attestation verify ControlMenu-*.msi --repo bilbospocketses/control-menu
+      # Phase 4 (Trusted Signing) inserts above this step; attestation then
+      # covers the signed MSI rather than the unsigned one.
+      - name: Attest MSI build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: 'Releases/*.msi'
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
