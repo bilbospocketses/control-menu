@@ -11,7 +11,7 @@ using Moq;
 
 namespace ControlMenu.Tests.Components.HomeSections;
 
-public class HomeDiscoveredAndroidTests : TestContext
+public class HomeDiscoveredAndroidTests : BunitContext
 {
     private readonly Mock<IScanLifecycleHandler> _handler = new();
     private readonly Mock<IDeviceChangeNotifier> _notifier = new();
@@ -38,7 +38,7 @@ public class HomeDiscoveredAndroidTests : TestContext
     [Fact]
     public void EmptyCold_NoScanRun_RendersSectionWithPlaceholder()
     {
-        var cut = RenderComponent<HomeDiscoveredAndroid>(p => p
+        var cut = Render<HomeDiscoveredAndroid>(p => p
             .Add(c => c.HasScanned, false));
 
         // Section now ALWAYS renders; empty cold state shows the outlined placeholder card.
@@ -57,7 +57,7 @@ public class HomeDiscoveredAndroidTests : TestContext
         };
         _handler.Setup(h => h.Discovered).Returns(hits);
 
-        var cut = RenderComponent<HomeDiscoveredAndroid>(p => p
+        var cut = Render<HomeDiscoveredAndroid>(p => p
             .Add(c => c.HasScanned, true));
 
         Assert.Single(cut.FindAll(".home-disc-section"));
@@ -70,7 +70,7 @@ public class HomeDiscoveredAndroidTests : TestContext
     [Fact]
     public void EmptyPostScan_RendersHeaderAndPlaceholder()
     {
-        var cut = RenderComponent<HomeDiscoveredAndroid>(p => p
+        var cut = Render<HomeDiscoveredAndroid>(p => p
             .Add(c => c.HasScanned, true));
 
         Assert.Single(cut.FindAll(".home-disc-section"));

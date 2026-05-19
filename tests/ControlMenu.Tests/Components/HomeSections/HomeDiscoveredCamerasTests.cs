@@ -12,7 +12,7 @@ using Moq;
 
 namespace ControlMenu.Tests.Components.HomeSections;
 
-public class HomeDiscoveredCamerasTests : TestContext
+public class HomeDiscoveredCamerasTests : BunitContext
 {
     private readonly Mock<ICameraScanService> _scanService = new();
     private readonly Mock<IOnvifClient> _onvif = new();
@@ -40,7 +40,7 @@ public class HomeDiscoveredCamerasTests : TestContext
     [Fact]
     public void EmptyCold_NoScanRun_RendersSectionWithPlaceholder()
     {
-        var cut = RenderComponent<HomeDiscoveredCameras>(p => p
+        var cut = Render<HomeDiscoveredCameras>(p => p
             .Add(c => c.HasScanned, false));
 
         // Section now ALWAYS renders; empty cold state shows the outlined placeholder card.
@@ -53,7 +53,7 @@ public class HomeDiscoveredCamerasTests : TestContext
     [Fact]
     public void PostScan_EmptyHits_RendersHeaderAndPlaceholder()
     {
-        var cut = RenderComponent<HomeDiscoveredCameras>(p => p
+        var cut = Render<HomeDiscoveredCameras>(p => p
             .Add(c => c.HasScanned, true));
 
         Assert.Single(cut.FindAll(".home-disc-section"));
@@ -80,7 +80,7 @@ public class HomeDiscoveredCamerasTests : TestContext
         _cameraService.Setup(s => s.GetAllAsync())
             .ReturnsAsync((IReadOnlyList<Camera>)new List<Camera>());
 
-        var cut = RenderComponent<HomeDiscoveredCameras>(p => p
+        var cut = Render<HomeDiscoveredCameras>(p => p
             .Add(c => c.HasScanned, true));
 
         var badge = cut.Find(".home-disc-count-cameras");
@@ -104,7 +104,7 @@ public class HomeDiscoveredCamerasTests : TestContext
                 new() { Name = "B", IpAddress = "10.0.0.2" },
             });
 
-        var cut = RenderComponent<HomeDiscoveredCameras>(p => p
+        var cut = Render<HomeDiscoveredCameras>(p => p
             .Add(c => c.HasScanned, true));
 
         var badge = cut.Find(".home-disc-count-cameras");
@@ -131,7 +131,7 @@ public class HomeDiscoveredCamerasTests : TestContext
                 new() { Name = "C", IpAddress = "10.0.0.3" },
             });
 
-        var cut = RenderComponent<HomeDiscoveredCameras>(p => p
+        var cut = Render<HomeDiscoveredCameras>(p => p
             .Add(c => c.HasScanned, true));
 
         // Filtered count is 0: badge shows 0 and the outlined placeholder card renders.

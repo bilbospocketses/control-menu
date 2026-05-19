@@ -3,12 +3,12 @@ using ControlMenu.Components.Shared.Settings;
 
 namespace ControlMenu.Tests.Components.Shared.Settings;
 
-public class SettingsSectionTests : TestContext
+public class SettingsSectionTests : BunitContext
 {
     [Fact]
     public void Renders_TitleAndChildContent()
     {
-        var cut = RenderComponent<SettingsSection>(parameters => parameters
+        var cut = Render<SettingsSection>(parameters => parameters
             .Add(p => p.Title, "Email (SMTP)")
             .AddChildContent("<p data-testid=\"body\">hello</p>")
         );
@@ -20,7 +20,7 @@ public class SettingsSectionTests : TestContext
     [Fact]
     public void Renders_TitleAsHeader()
     {
-        var cut = RenderComponent<SettingsSection>(parameters => parameters
+        var cut = Render<SettingsSection>(parameters => parameters
             .Add(p => p.Title, "General")
             .AddChildContent("<span/>")
         );

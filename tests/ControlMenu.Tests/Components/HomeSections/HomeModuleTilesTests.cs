@@ -8,7 +8,7 @@ using System.Runtime.CompilerServices;
 
 namespace ControlMenu.Tests.Components.HomeSections;
 
-public class HomeModuleTilesTests : TestContext
+public class HomeModuleTilesTests : BunitContext
 {
     public HomeModuleTilesTests()
     {
@@ -51,7 +51,7 @@ public class HomeModuleTilesTests : TestContext
             new NavEntry("Device List", "/android/devices", "/i.svg", 0),
             new NavEntry("Google TV",   "/android/googletv", "/i.svg", 1)));
 
-        var cut = RenderComponent<HomeModuleTiles>();
+        var cut = Render<HomeModuleTiles>();
         var anchor = cut.Find("a.home-tile[data-module-id='android-devices']");
         Assert.Equal("/android/devices", anchor.GetAttribute("href"));
     }
@@ -64,7 +64,7 @@ public class HomeModuleTilesTests : TestContext
             new NavEntry("Hidden", "/hidden", "/i.svg", 0, _ => false),
             new NavEntry("Visible", "/visible", "/i.svg", 1)));
 
-        var cut = RenderComponent<HomeModuleTiles>();
+        var cut = Render<HomeModuleTiles>();
         var anchor = cut.Find("a.home-tile[data-module-id='test-mod']");
         Assert.Equal("/visible", anchor.GetAttribute("href"));
     }
@@ -75,7 +75,7 @@ public class HomeModuleTilesTests : TestContext
         // Cameras module yields zero nav entries when no cameras are registered
         RegisterDiscovery(MakeModule("cameras", "Cameras"));
 
-        var cut = RenderComponent<HomeModuleTiles>();
+        var cut = Render<HomeModuleTiles>();
         var anchor = cut.Find("a.home-tile[data-module-id='cameras']");
         Assert.Equal("/settings/cameras", anchor.GetAttribute("href"));
     }
@@ -84,7 +84,7 @@ public class HomeModuleTilesTests : TestContext
     public void SettingsTile_AlwaysRoutesTo_SettingsGeneral()
     {
         RegisterDiscovery(); // no modules — Settings tile is hard-coded
-        var cut = RenderComponent<HomeModuleTiles>();
+        var cut = Render<HomeModuleTiles>();
         var anchor = cut.Find("a.home-tile[data-module-id='settings']");
         Assert.Equal("/settings/general", anchor.GetAttribute("href"));
     }

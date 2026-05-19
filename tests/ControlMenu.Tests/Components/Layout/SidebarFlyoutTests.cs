@@ -10,7 +10,7 @@ using System.Reflection;
 
 namespace ControlMenu.Tests.Components.Layout;
 
-public class SidebarFlyoutTests : TestContext
+public class SidebarFlyoutTests : BunitContext
 {
     private readonly Mock<IDeviceTypeCache> _cache = new();
     private readonly Mock<ICameraChangeNotifier> _cameraNotifier = new();
@@ -64,7 +64,7 @@ public class SidebarFlyoutTests : TestContext
             MakeModule("test-mod-2", "Test Module Two", "bi-box",
                 new NavEntry("Page B", "/test-mod-2/b", "bi-square")));
 
-        var cut = RenderComponent<Sidebar>();
+        var cut = Render<Sidebar>();
         cut.Find(".sidebar-toggle").Click();
 
         cut.Find("[data-flyout-anchor=\"test-mod-1\"]").Click();
@@ -84,7 +84,7 @@ public class SidebarFlyoutTests : TestContext
             MakeModule("test-mod-2", "Test Module Two", "bi-box",
                 new NavEntry("Page B", "/test-mod-2/b", "bi-square")));
 
-        var cut = RenderComponent<Sidebar>();
+        var cut = Render<Sidebar>();
         cut.Find(".sidebar-toggle").Click();
 
         cut.Find("[data-flyout-anchor=\"test-mod-1\"]").Click();
@@ -103,7 +103,7 @@ public class SidebarFlyoutTests : TestContext
             MakeModule("test-mod-1", "Test Module One", "bi-gear",
                 new NavEntry("Page A", "/test-mod-1/a", "bi-circle")));
 
-        var cut = RenderComponent<Sidebar>();
+        var cut = Render<Sidebar>();
         cut.Find(".sidebar-toggle").Click();
         cut.Find("[data-flyout-anchor=\"test-mod-1\"]").Click();
 
@@ -121,7 +121,7 @@ public class SidebarFlyoutTests : TestContext
             MakeModule("test-mod-1", "Test Module One", "bi-gear",
                 new NavEntry("Page A", "/test-mod-1/a", "bi-circle")));
 
-        var cut = RenderComponent<Sidebar>();
+        var cut = Render<Sidebar>();
         // Sidebar starts expanded — clicking the group header toggles expansion, not flyout.
         cut.Find("[data-flyout-anchor=\"test-mod-1\"]").Click();
 
@@ -134,7 +134,7 @@ public class SidebarFlyoutTests : TestContext
         RegisterDiscovery(
             MakeModule("empty-mod", "Empty", "bi-x"));  // no nav entries
 
-        var cut = RenderComponent<Sidebar>();
+        var cut = Render<Sidebar>();
         cut.Find(".sidebar-toggle").Click();
         cut.Find("[data-flyout-anchor=\"empty-mod\"]").Click();
 
