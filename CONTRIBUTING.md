@@ -4,7 +4,7 @@ Thanks for your interest. This document covers the essentials for getting a deve
 
 ## Prerequisites
 
-- **.NET 9 SDK** — install from [dotnet.microsoft.com](https://dotnet.microsoft.com/download)
+- **.NET 10 SDK** — install from [dotnet.microsoft.com](https://dotnet.microsoft.com/download)
 - **SQLite 3** — runtime library; auto-installed by the app's dependency manager at first run, or install manually
 - **ADB** (Android Debug Bridge) — required for Android device management; auto-installed by the dependency manager
 - **scrcpy** — required for the Android devices module; auto-installed
@@ -22,7 +22,7 @@ dotnet build
 dotnet run --project src/ControlMenu
 ```
 
-The app listens on `http://localhost:5000` (or the port shown in console output). Open it in a browser and walk through the first-run wizard.
+The app listens on `http://localhost:5159` (or the port shown in console output — configurable via `WebPort` in `appsettings.json`). Open it in a browser and walk through the first-run wizard.
 
 ## Development Workflow
 
@@ -66,7 +66,7 @@ To add a new module, create a folder under `src/ControlMenu/Modules/`, add a cla
 
 ## Code Style
 
-- **C# 12 / .NET 9** features welcome — pattern matching, records, file-scoped namespaces, primary constructors
+- **C# 14 / .NET 10** features welcome — pattern matching, records, file-scoped namespaces, primary constructors, collection expressions
 - **Nullable reference types** enabled project-wide; don't suppress nullability warnings without a justifying comment
 - **Razor**: use partial classes (`*.razor.cs`) for page logic longer than a handful of lines; keep the `.razor` file for markup + minimal `@code`
 - **Dependency injection** for services; no static singletons unless genuinely required
@@ -106,7 +106,20 @@ Do not include AI-generated attribution lines in commit messages.
 
 ## Branch Strategy
 
-`master` is the development branch. Maintainer commits directly; contributors submit PRs from forks.
+`master` is the development branch and is **PR-gated** (since 2026-05-18). Direct pushes to master are blocked at the ruleset level; every change goes branch → PR → 5 required checks green → squash-merge.
+
+**Required status checks** (all must be green before merge):
+- `build-and-test` — `dotnet restore/build/test ControlMenu.sln` on `windows-latest`
+- `Analyze (csharp)` — CodeQL static analysis
+- `Analyze (javascript-typescript)` — CodeQL static analysis on wwwroot JS/TS
+- `Analyze (actions)` — CodeQL static analysis on workflow YAML
+- `Scorecard analysis` — OpenSSF supply-chain scoring
+
+**Merge method:** Squash only. Rebase is disallowed at the ruleset level (would skip GitHub's web-flow signature on the merge commit, producing an unsigned commit that fails the `required_signatures` rule).
+
+**Signed commits required.** Both regular commits to master and `v*` tags must be signed. SSH commit signing is the project convention — see `reference_ssh_signing_windows.md` (maintainer-only) for the canonical Windows setup.
+
+**Workflow file edits:** any change to `.github/workflows/*.yml` must SHA-pin every action with a precise version comment (`# vX.Y.Z`, never bare `# v4`) and use the underlying commit SHA, not the annotated-tag object SHA. Repo-level `sha_pinning_required=true` enforces the SHA shape; the precise-version-comment + commit-SHA conventions exist so Dependabot tracks bumps correctly and downstream verifiers (OpenSSF webapp, sigstore) don't reject pins. The existing pins are good reference examples; the inline comments in `.github/workflows/scorecard.yml` explain the gotchas.
 
 ## Reporting Bugs
 
