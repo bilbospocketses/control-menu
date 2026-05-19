@@ -117,7 +117,16 @@ jobs:
       #   Output — signed exes placed back into `publish/` before the `vpk pack`
       #            step below picks them up.
       # Spec § "Phase 4 — v1.1.0 Phase 4 (CI + Azure Trusted Signing)" calls
-      # for Azure Trusted Signing via Azure/trusted-signing-action.
+      # for Azure Trusted Signing via `azure/artifact-signing-action`
+      # (renamed from `Azure/trusted-signing-action` at v2.0.0 — pre-v2.0.0
+      # versions transitively `uses: actions/cache@v4` unpinned, which fails
+      # this repo's `sha_pinning_required` policy at action-resolution time;
+      # v2.0.0 internally pins `actions/cache@<sha> # v5.0.4`, clean).
+      # Pin to the commit SHA, not the annotated-tag-object SHA — see PR #15
+      # for the OpenSSF Scorecard webapp's "imposter commit" failure mode.
+      # At time of writing: v2.0.0 = c7ab2a863ab5f9a846ddb8265964877ef296ee82.
+      # Allowlist prereq: add `azure/artifact-signing-action@*` to repo
+      # `allowed_actions.patterns_allowed` before this step can resolve.
 
       - name: vpk pack (PerMachine MSI)
         shell: pwsh

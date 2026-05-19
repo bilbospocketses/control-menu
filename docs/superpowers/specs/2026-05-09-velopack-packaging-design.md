@@ -229,7 +229,7 @@ P/Invoke-heavy. Reused if any future flow needs to spawn in user session from el
 - Trigger: push of `v*` tag
 - Runner: `windows-latest` (Trusted Signing's signtool plugin is Windows-only)
 - Permissions: `id-token: write` (OIDC federation), `contents: write` (release creation)
-- Stages: checkout → setup-dotnet 10 → build + test → publish + Servy fetch → sign individual binaries (Azure/trusted-signing-action) → vpk pack → sign Setup.exe + Update.exe → softprops/action-gh-release with `prerelease=false`
+- Stages: checkout → setup-dotnet 10 → build + test → publish + Servy fetch → sign individual binaries (`azure/artifact-signing-action` — renamed from `Azure/trusted-signing-action` at v2.0.0; pre-v2.0.0 versions fail transitive SHA-pin enforcement) → vpk pack → sign Setup.exe + Update.exe → softprops/action-gh-release with `prerelease=false`
 
 **Service-principal client-secret fallback** documented for rollback if OIDC federation hits unexpected friction.
 
