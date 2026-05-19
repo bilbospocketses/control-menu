@@ -28,6 +28,13 @@ on:
     - cron: '0 13 * * 1'
   push:
     branches: [master]
+  # PR trigger added 2026-05-19 when the branch ruleset added `Scorecard
+  # analysis` to required_status_checks — without firing on PRs, the
+  # required check would never report and merges would block forever.
+  # Same-repo PRs use the head-branch's workflow file for trigger resolution,
+  # so this trigger is in effect from this PR forward.
+  pull_request:
+    branches: [master]
 
 permissions: read-all
 
@@ -63,7 +70,12 @@ jobs:
           # Publishes the score to api.securityscorecards.dev so the public
           # https://scorecard.dev/viewer/?uri=github.com/<owner>/<repo> page
           # stays current. No PAT needed — uses OIDC via id-token: write above.
-          publish_results: true
+          # Gated to push events only — PR runs would publish a branch-HEAD
+          # SHA that isn't on master yet, which the OpenSSF webapp verifier
+          # would reject with the same "imposter commit" 400 pattern we hit
+          # with the annotated-tag-object SHA in PR #15 (different cause,
+          # same SHA-not-on-commit-graph failure mode).
+          publish_results: ${{ github.event_name == 'push' }}
 
       - name: Upload SARIF artifact (for run-level inspection)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
