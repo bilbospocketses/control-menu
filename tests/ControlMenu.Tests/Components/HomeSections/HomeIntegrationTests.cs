@@ -18,7 +18,7 @@ using Moq;
 
 namespace ControlMenu.Tests.Components.HomeSections;
 
-public class HomeIntegrationTests : TestContext
+public class HomeIntegrationTests : BunitContext
 {
     /// <summary>
     /// Bypass the reflection-based ModuleDiscoveryService constructor by using
@@ -82,7 +82,7 @@ public class HomeIntegrationTests : TestContext
     [Fact]
     public void SetupComplete_RendersAllFourSections()
     {
-        var cut = RenderComponent<ControlMenu.Components.Pages.Home>();
+        var cut = Render<ControlMenu.Components.Pages.Home>();
 
         Assert.Single(cut.FindAll(".home-header"));
         Assert.Single(cut.FindAll(".home-tiles-band"));
@@ -96,7 +96,7 @@ public class HomeIntegrationTests : TestContext
         _config.Setup(c => c.GetSettingAsync("setup-completed", null))
             .ReturnsAsync((string?)null);
 
-        var cut = RenderComponent<ControlMenu.Components.Pages.Home>();
+        var cut = Render<ControlMenu.Components.Pages.Home>();
 
         Assert.Empty(cut.FindAll(".home-header"));
     }
@@ -104,7 +104,7 @@ public class HomeIntegrationTests : TestContext
     [Fact]
     public void StatusLine_BeforeAnyScan_ShowsEmptyStateCopy()
     {
-        var cut = RenderComponent<ControlMenu.Components.Pages.Home>();
+        var cut = Render<ControlMenu.Components.Pages.Home>();
 
         var status = cut.Find(".home-status").TextContent;
         Assert.Contains("Find devices and cameras", status);
@@ -152,7 +152,7 @@ public class HomeIntegrationTests : TestContext
             .ReturnsAsync((IReadOnlyList<Camera>)new List<Camera> { new() { Name = "c1", IpAddress = "10.0.0.20" } });
         Services.AddSingleton(cameraService.Object);
 
-        var cut = RenderComponent<ControlMenu.Components.Pages.Home>();
+        var cut = Render<ControlMenu.Components.Pages.Home>();
 
         // Force the post-scan branch by setting _androidScanned via reflection
         // (the StatusLine getter switches branches on this flag).
@@ -181,7 +181,7 @@ public class HomeIntegrationTests : TestContext
             .ReturnsAsync((DetectedSubnet?)null);
         Services.AddSingleton(detector.Object);
 
-        var cut = RenderComponent<ControlMenu.Components.Pages.Home>();
+        var cut = Render<ControlMenu.Components.Pages.Home>();
 
         // Act: invoke the private ScanCamerasAsync method directly.
         var instance = cut.Instance;

@@ -3,12 +3,12 @@ using ControlMenu.Components.Shared.Settings;
 
 namespace ControlMenu.Tests.Components.Shared.Settings;
 
-public class SettingsGridCellTests : TestContext
+public class SettingsGridCellTests : BunitContext
 {
     [Fact]
     public void Renders_AllSlotsWhenProvided()
     {
-        var cut = RenderComponent<SettingsGridCell>(parameters => parameters
+        var cut = Render<SettingsGridCell>(parameters => parameters
             .Add(p => p.Label, b => b.AddContent(0, "Theme"))
             .Add(p => p.ChildContent, b => b.AddMarkupContent(0, "<button data-testid=\"ctl\">go</button>"))
             .Add(p => p.Hint, b => b.AddContent(0, "extra info"))
@@ -22,7 +22,7 @@ public class SettingsGridCellTests : TestContext
     [Fact]
     public void OmitsLabelHeader_WhenLabelSlotEmpty()
     {
-        var cut = RenderComponent<SettingsGridCell>(parameters => parameters
+        var cut = Render<SettingsGridCell>(parameters => parameters
             .Add(p => p.ChildContent, b => b.AddMarkupContent(0, "<button>save</button>"))
         );
 
@@ -32,7 +32,7 @@ public class SettingsGridCellTests : TestContext
     [Fact]
     public void OmitsHint_WhenHintSlotEmpty()
     {
-        var cut = RenderComponent<SettingsGridCell>(parameters => parameters
+        var cut = Render<SettingsGridCell>(parameters => parameters
             .Add(p => p.Label, b => b.AddContent(0, "X"))
             .Add(p => p.ChildContent, b => b.AddMarkupContent(0, "<input/>"))
         );
@@ -43,7 +43,7 @@ public class SettingsGridCellTests : TestContext
     [Fact]
     public void FullRow_AppliesGridColumnSpan()
     {
-        var cut = RenderComponent<SettingsGridCell>(parameters => parameters
+        var cut = Render<SettingsGridCell>(parameters => parameters
             .Add(p => p.FullRow, true)
             .Add(p => p.ChildContent, b => b.AddMarkupContent(0, "<input/>"))
         );

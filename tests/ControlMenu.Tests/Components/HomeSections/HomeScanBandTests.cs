@@ -4,12 +4,12 @@ using Microsoft.AspNetCore.Components;
 
 namespace ControlMenu.Tests.Components.HomeSections;
 
-public class HomeScanBandTests : TestContext
+public class HomeScanBandTests : BunitContext
 {
     [Fact]
     public void Idle_RendersThreeButtons_FixedWidth_WithIdleLabels()
     {
-        var cut = RenderComponent<HomeScanBand>(p => p
+        var cut = Render<HomeScanBand>(p => p
             .Add(c => c.AndroidRunning, false)
             .Add(c => c.CamerasRunning, false)
             .Add(c => c.AllRunning, false)
@@ -29,7 +29,7 @@ public class HomeScanBandTests : TestContext
     [Fact]
     public void Running_AndroidOnly_ShowsScanningLabel_AndroidDisabled_OthersIdle()
     {
-        var cut = RenderComponent<HomeScanBand>(p => p
+        var cut = Render<HomeScanBand>(p => p
             .Add(c => c.AndroidRunning, true)
             .Add(c => c.CamerasRunning, false)
             .Add(c => c.AllRunning, false));
@@ -46,7 +46,7 @@ public class HomeScanBandTests : TestContext
     [Fact]
     public void Running_AllRunning_AllButtonsDisabled_AllShowRunningLabel()
     {
-        var cut = RenderComponent<HomeScanBand>(p => p
+        var cut = Render<HomeScanBand>(p => p
             .Add(c => c.AndroidRunning, true)
             .Add(c => c.CamerasRunning, true)
             .Add(c => c.AllRunning, true));
@@ -62,7 +62,7 @@ public class HomeScanBandTests : TestContext
     public async Task Click_AndroidButton_FiresOnScanAndroidCallback()
     {
         var fired = false;
-        var cut = RenderComponent<HomeScanBand>(p => p
+        var cut = Render<HomeScanBand>(p => p
             .Add(c => c.OnScanAndroid, EventCallback.Factory.Create(this, () => { fired = true; })));
 
         await cut.Find("button.scan-button-android").ClickAsync(new());

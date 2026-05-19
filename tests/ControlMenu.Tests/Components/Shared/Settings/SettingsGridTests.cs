@@ -3,12 +3,12 @@ using ControlMenu.Components.Shared.Settings;
 
 namespace ControlMenu.Tests.Components.Shared.Settings;
 
-public class SettingsGridTests : TestContext
+public class SettingsGridTests : BunitContext
 {
     [Fact]
     public void Renders_ChildrenInGridContainer()
     {
-        var cut = RenderComponent<SettingsGrid>(parameters => parameters
+        var cut = Render<SettingsGrid>(parameters => parameters
             .AddChildContent("<div data-testid=\"a\"/><div data-testid=\"b\"/>")
         );
 
