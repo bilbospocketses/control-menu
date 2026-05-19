@@ -125,14 +125,19 @@ git -C C:/Users/jscha/source/repos/control-menu push origin {old}
 
 **Verify the GitHub Release was created:**
 - Navigate to `https://github.com/bilbospocketses/control-menu/releases`.
-- The `{old}` Release should be present with these assets (substitute the
-  numeric portion of `{old}` into the filenames — e.g. `v1.1.0` → `1.1.0`):
-  - `ControlMenu-<old-numeric>-win-Setup.msi`
-  - `ControlMenu-<old-numeric>-win.nupkg` (full)
-  - `ControlMenu-<old-numeric>-win-delta.nupkg` (delta; may be absent for the
-    first release on a channel)
-  - `releases.<channel>.json`
-  - `SHA256SUMS`
+- The `{old}` Release should be present with these assets. vpk's filename
+  convention embeds the **channel** (not the version) in the MSI name and
+  the **version + channel** in the nupkg names — this is intentional;
+  channel separation is the load-bearing axis for Velopack's update feed.
+  Substitute the channel (`stable` or `beta`) and numeric portion of
+  `{old}` accordingly — e.g. `v1.1.0` on stable channel produces
+  `ControlMenu-stable.msi` and `ControlMenu-1.1.0-stable-full.nupkg`:
+  - `ControlMenu-<channel>.msi` (PerMachine MSI installer)
+  - `ControlMenu-<old-numeric>-<channel>-full.nupkg` (full update package)
+  - `ControlMenu-<old-numeric>-<channel>-delta.nupkg` (delta; absent for
+    the first release on a channel)
+  - `releases.<channel>.json` (Velopack channel feed file)
+  - `SHA256SUMS` (file integrity hashes)
 
 **If the Actions run fails:** view the workflow logs in the Actions tab. Common
 failure modes:

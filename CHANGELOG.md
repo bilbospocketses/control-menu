@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`release.yml` publish-job download-artifact path** — added explicit `name: windows-final` + `path: artifacts/windows-final/` to the `actions/download-artifact@v8.0.1` step. **Symptom:** v1.1.0's release.yml run completed with all 3 jobs green, but the published v1.1.0 GitHub Release contained only `SHA256SUMS` (195 bytes); the MSI + nupkg + releases.stable.json were missing despite being present in the workflow artifact. **Root cause:** `actions/download-artifact@v8` with no `name:` filter and `path: artifacts/` flattens a single artifact's files directly into `artifacts/` (no auto-subdirectory), but the `softprops/action-gh-release@v3.0.0` globs below targeted `artifacts/windows-final/*.msi` / `*.nupkg` / `releases.<channel>.json` — zero matches, silent skip per softprops's "Pattern '...' does not match any files" advisory. Drift introduced when Dependabot bumped download-artifact (PR #4, v4 → v8) on 2026-05-18 — v4 may have behaved differently for single-artifact downloads; either way, the explicit `name:` + nested `path:` is the deterministic fix that also future-proofs against any version-specific behavior. **Recovery:** v1.1.0 release patched 2026-05-19 via manual `gh run download` + `gh release upload` of the original artifact bytes (SHAs verified against existing SHA256SUMS); no rebuild required, original Sigstore attestation unchanged + still verifies against the patched MSI.
+- **`scripts/fresh-vm-smoke.md` MSI filename references** — step 1's expected release assets list listed `ControlMenu-<version>-win-Setup.msi` / `*-win.nupkg` / `*-win-delta.nupkg` — that's a notional naming convention that doesn't match vpk's actual output. vpk embeds the **channel** (not the version) in the MSI name and the **version + channel** in the nupkg names: `ControlMenu-<channel>.msi`, `ControlMenu-<version>-<channel>-full.nupkg`, `ControlMenu-<version>-<channel>-delta.nupkg`. Runbook updated with the correct convention + a note that channel separation (not version embedding) is the load-bearing axis for Velopack's update feed.
+
 ## [1.1.0] - 2026-05-19
 
 ### Changed
