@@ -204,13 +204,13 @@ public sealed class NetworkScanService : INetworkScanService
                 // not tear down the whole scan. Log and keep receiving.
                 try
                 {
-                    _logger.LogInformation("ws-scan frame: {Json}", json);
+                    _logger.LogInformation("ws-scan frame: {Json}", LogSafe(json));
                     var evt = ParseServerMessage(json, _logger);
                     if (evt is not null) Dispatch(evt);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "ws-scan: failed to process frame, skipping. Frame: {Json}", json);
+                    _logger.LogWarning(ex, "ws-scan: failed to process frame, skipping. Frame: {Json}", LogSafe(json));
                 }
             }
         }
@@ -332,6 +332,10 @@ public sealed class NetworkScanService : INetworkScanService
             // eventual close/drop regardless.
         }
     }
+
+    // Strip line terminators from user-controllable content before logging,
+    // preventing log forging via injected CR/LF. See CodeQL rule cs/log-forging.
+    private static string LogSafe(string s) => s.ReplaceLineEndings(" ");
 
     private sealed class Subscriber : IDisposable
     {

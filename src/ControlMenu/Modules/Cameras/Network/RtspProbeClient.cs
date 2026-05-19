@@ -59,7 +59,7 @@ public class RtspProbeClient : IRtspProbeClient
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "RTSP DESCRIBE failed for {Url}", rtspUrl);
+            _logger.LogDebug(ex, "RTSP DESCRIBE failed for {Url}", RedactUrlCredentials(rtspUrl));
             return new RtspDescribeResult(false, 0, ex.Message, null);
         }
     }
@@ -79,5 +79,15 @@ public class RtspProbeClient : IRtspProbeClient
         var body = bodyStart >= 0 ? text[(bodyStart + 4)..] : null;
 
         return new RtspDescribeResult(code == 200, code, reason, body);
+    }
+
+    // Replace any userinfo (user:password@) in the URL with "***@" before logging.
+    // Prevents cleartext credential exposure per CodeQL rule
+    // cs/cleartext-storage-of-sensitive-information.
+    private static string RedactUrlCredentials(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.UserInfo))
+            return url.Replace(uri.UserInfo + "@", "***@");
+        return url;
     }
 }

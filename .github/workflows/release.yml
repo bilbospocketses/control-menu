@@ -7,6 +7,8 @@ on:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read   # Only needs to read the checked-out tag — no writes
     outputs:
       channel: ${{ steps.channel.outputs.channel }}
       signing_mode: ${{ steps.signing.outputs.mode }}
