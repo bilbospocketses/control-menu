@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-05-19
+
 ### Changed
 
 - **Refreshed `release.yml` FUTURE SIGNER comment block** to reference `azure/artifact-signing-action` (renamed from `Azure/trusted-signing-action` at v2.0.0). Pre-v2.0.0 versions transitively `uses: actions/cache@v4` unpinned and would fail this repo's `sha_pinning_required` policy at action-resolution time; v2.0.0 internally pins `actions/cache@<sha> # v5.0.4`, clean. Comment block now includes the v2.0.0 commit SHA `c7ab2a863ab5f9a846ddb8265964877ef296ee82` (pin to commit SHA, not tag-object SHA, per the OpenSSF Scorecard webapp "imposter commit" failure mode caught in PR #15) and notes the `allowed_actions.patterns_allowed` allowlist prereq. Phase 4 (Azure Trusted Signing) wiring will reference the new name from the start, avoiding the transitive-SHA-pinning failure tiny11options v1.0.23 → v1.0.24 hit on its tag push. Companion change: same rename in `docs/superpowers/specs/2026-05-09-velopack-packaging-design.md` Phase 4 section. **Empirical sanity check at time of writing:** all currently-used composite actions (`actions/attest-build-provenance` → transitively `actions/attest`) are SHA-pinned at v4.1.0; CM's tag push resolves cleanly.
