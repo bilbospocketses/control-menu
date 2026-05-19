@@ -59,7 +59,12 @@ public class RtspProbeClient : IRtspProbeClient
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "RTSP DESCRIBE failed for {Url}", RedactUrlCredentials(rtspUrl));
+            // Log only non-credential Uri components — never the raw rtspUrl string,
+            // which could include userinfo (user:password@) per RFC 3986. CodeQL's
+            // taint flow analysis (cs/cleartext-storage-of-sensitive-information)
+            // recognizes Uri.Scheme/Host/Port/AbsolutePath as safe properties.
+            _logger.LogDebug(ex, "RTSP DESCRIBE failed for {Scheme}://{Host}:{Port}{Path}",
+                uri.Scheme, uri.Host, uri.Port, uri.AbsolutePath);
             return new RtspDescribeResult(false, 0, ex.Message, null);
         }
     }
@@ -81,13 +86,4 @@ public class RtspProbeClient : IRtspProbeClient
         return new RtspDescribeResult(code == 200, code, reason, body);
     }
 
-    // Replace any userinfo (user:password@) in the URL with "***@" before logging.
-    // Prevents cleartext credential exposure per CodeQL rule
-    // cs/cleartext-storage-of-sensitive-information.
-    private static string RedactUrlCredentials(string url)
-    {
-        if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.UserInfo))
-            return url.Replace(uri.UserInfo + "@", "***@");
-        return url;
-    }
 }
