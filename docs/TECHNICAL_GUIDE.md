@@ -65,7 +65,7 @@ Control Menu is a .NET 10 Blazor Server web application that manages Android dev
 | SQLite | Single-file database, no external server required |
 | SkiaSharp for images | Cross-platform replacement for System.Drawing.Common |
 | ws-scrcpy-web via iframe | Screen mirroring without native scrcpy binary dependency |
-| Self-contained dependencies | 5 auto-managed tools in `dependencies/`; 2 external (Docker, ws-scrcpy-web) |
+| Self-contained dependencies | 3 auto-managed tools in `dependencies/`; 2 external (Docker, ws-scrcpy-web) |
 
 ### Project Layout
 
@@ -181,7 +181,7 @@ public record ConfigRequirement(
 
 | Module | Id | SortOrder | Dependencies | Nav Entries |
 |--------|----|-----------|--------------|-------------|
-| Android Devices | `android-devices` | 1 | adb, scrcpy, node, ws-scrcpy-web | Device List, Google TV, Android Phone |
+| Android Devices | `android-devices` | 1 | adb, ws-scrcpy-web | Device List, Google TV, Android Phone |
 | Android Power Tools | `android-power-tools` | 2 | (none — shares ws-scrcpy-web with Android Devices) | Power Tools |
 | Jellyfin | `jellyfin` | 3 | docker, sqlite3 | DB Date Update, Cast & Crew |
 | Utilities | `utilities` | 4 | (none) | Icon Converter, File Unblocker |
@@ -249,13 +249,11 @@ MAC addresses are normalized to lowercase with dashes on startup (see `Program.c
 
 ### Dependencies
 
-The module declares four dependencies, each auto-managed in the `dependencies/` folder:
+The module declares two dependencies — `adb` (auto-managed in `dependencies/`) and `ws-scrcpy-web` (external, user-configured):
 
 | Name | Source Type | Install Path | Purpose |
 |------|-----------|--------------|---------|
 | adb | DirectUrl (Google) | `dependencies/platform-tools` | Device management |
-| scrcpy | GitHub (Genymobile/scrcpy) | `dependencies/scrcpy` | Screen mirroring server binary |
-| node | DirectUrl (nodejs.org) | `dependencies/node` | ws-scrcpy-web runtime |
 | ws-scrcpy-web | Manual | (user-configured) | Browser-based screen mirroring |
 
 ### Pages
@@ -913,21 +911,17 @@ For Linux:
 dotnet publish -c Release -r linux-x64 --self-contained
 ```
 
-### PATH Injection
+### Dependency Path Resolution
 
-On startup, `Program.cs` prepends all subdirectories of `dependencies/` to the `PATH` environment variable. This allows the app to find managed tools (adb, scrcpy, node, sqlite3) without requiring system-wide installation:
+Managed tools are resolved by **absolute local path**, never via the system `PATH`. At startup `Program.cs` seeds a holder from the data-path resolver, before module discovery runs:
 
 ```csharp
-var depsRoot = Path.Combine(builder.Environment.ContentRootPath, "dependencies");
-if (Directory.Exists(depsRoot))
-{
-    var depPaths = Directory.GetDirectories(depsRoot)
-        .Where(d => !Path.GetFileName(d).StartsWith('.'));
-    var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
-    var newPath = string.Join(Path.PathSeparator, depPaths) + Path.PathSeparator + currentPath;
-    Environment.SetEnvironmentVariable("PATH", newPath);
-}
+ControlMenu.Services.DepsRootHolder.Path = dataPathResolver.GetDependenciesDir();
 ```
+
+Each module then builds its tool paths directly off that root — e.g. `AndroidDevicesModule` resolves `Path.Combine(DepsRoot, "platform-tools")` and `CamerasModule` resolves `Path.Combine(DepsRoot, "go2rtc")`. Runtime resolution and version checks flow through `IDependencyPathResolver` (honouring any `dep-path-{name}` override) and **never fall back to a system-`PATH` lookup** — enforced by the "Local Dependencies Only" architectural rule, not just convention.
+
+> An earlier build prepended every `dependencies/` subdirectory to the `PATH` environment variable. That approach was removed in the April 2026 Local-Dependencies-Only audit in favour of explicit absolute-path resolution; the app no longer reads or mutates `PATH` for tool discovery.
 
 ### External Requirements
 
