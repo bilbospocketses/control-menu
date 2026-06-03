@@ -22,11 +22,13 @@ public class AndroidDevicesModuleTests
     public void Icon_IsPhoneIcon() => Assert.Equal("bi-phone", _module.Icon);
 
     [Fact]
-    public void Dependencies_IncludesAdbAndScrcpy()
+    public void Dependencies_IncludesAdb_AndNotScrcpy()
     {
         var deps = _module.Dependencies.ToList();
         Assert.Contains(deps, d => d.Name == "adb");
-        Assert.Contains(deps, d => d.Name == "scrcpy");
+        // scrcpy was removed — the native client has been orphaned since the
+        // ws-scrcpy-web sidecar replaced it (Phase 8a). Guard re-introduction.
+        Assert.DoesNotContain(deps, d => d.Name == "scrcpy");
     }
 
     [Fact]
@@ -97,14 +99,6 @@ public class AndroidDevicesModuleTests
         var adb = _module.Dependencies.First(d => d.Name == "adb");
         Assert.Equal("adb --version", adb.VersionCommand);
         Assert.Equal("adb", adb.ExecutableName);
-    }
-
-    [Fact]
-    public void ScrcpyDependency_HasGitHubSource()
-    {
-        var scrcpy = _module.Dependencies.First(d => d.Name == "scrcpy");
-        Assert.Equal(UpdateSourceType.GitHub, scrcpy.SourceType);
-        Assert.Equal("Genymobile/scrcpy", scrcpy.GitHubRepo);
     }
 
     private static IServiceProvider BuildServiceProviderWithTypes(params DeviceType[] typesPresent)

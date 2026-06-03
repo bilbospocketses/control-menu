@@ -225,23 +225,23 @@ public class DependencyManagerServiceTests : IDisposable
     [Fact]
     public async Task CheckDependencyAsync_GitHub_DetectsUpdateAvailable()
     {
-        var (installDir, localExe) = MakeLocalInstall("scrcpy-install", "scrcpy");
+        var (installDir, localExe) = MakeLocalInstall("fake-tool-install", "fake-tool");
         var module = new FakeModule("android-module", "Android",
         [
             new ModuleDependency
             {
-                Name = "scrcpy",
-                ExecutableName = "scrcpy",
-                VersionCommand = "scrcpy --version",
-                VersionPattern = @"scrcpy ([\d.]+)",
+                Name = "fake-tool",
+                ExecutableName = "fake-tool",
+                VersionCommand = "fake-tool --version",
+                VersionPattern = @"fake-tool ([\d.]+)",
                 SourceType = UpdateSourceType.GitHub,
-                GitHubRepo = "Genymobile/scrcpy",
+                GitHubRepo = "example/fake-tool",
                 InstallPath = installDir
             }
         ]);
 
         _mockExecutor.Setup(e => e.ExecuteAsync(localExe, "--version", null, default))
-            .ReturnsAsync(new CommandResult(0, "scrcpy 3.3.2", "", false));
+            .ReturnsAsync(new CommandResult(0, "fake-tool 3.3.2", "", false));
 
         var depId = Guid.NewGuid();
         using var setupDb = _dbFactory.CreateDbContext();
@@ -249,7 +249,7 @@ public class DependencyManagerServiceTests : IDisposable
         {
             Id = depId,
             ModuleId = "android-module",
-            Name = "scrcpy",
+            Name = "fake-tool",
             SourceType = UpdateSourceType.GitHub,
             Status = DependencyStatus.UpToDate,
             InstalledVersion = "3.3.2"

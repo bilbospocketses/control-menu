@@ -99,12 +99,38 @@ public class SeedHydratorTests : IDisposable
     [Fact]
     public void Hydrate_NestedDirectoriesInSeed_AreCopiedRecursively()
     {
-        Seed("scrcpy", "scrcpy.exe", "EXE");
-        Seed("scrcpy", "lib/sub/data.bin", "NESTED");
+        Seed("fake-tool", "fake-tool.exe", "EXE");
+        Seed("fake-tool", "lib/sub/data.bin", "NESTED");
 
         SeedHydrator.Hydrate(_currentDir, _depsDir);
 
-        Assert.True(File.Exists(Path.Combine(_depsDir, "scrcpy", "lib", "sub", "data.bin")));
-        Assert.Equal("NESTED", File.ReadAllText(Path.Combine(_depsDir, "scrcpy", "lib", "sub", "data.bin")));
+        Assert.True(File.Exists(Path.Combine(_depsDir, "fake-tool", "lib", "sub", "data.bin")));
+        Assert.Equal("NESTED", File.ReadAllText(Path.Combine(_depsDir, "fake-tool", "lib", "sub", "data.bin")));
+    }
+
+    [Fact]
+    public void Hydrate_PrunesRetiredScrcpyLeaf_FromDataRoot()
+    {
+        // An existing install hydrated scrcpy/ before it was retired. Hydrate must
+        // delete it on launch so the ~40MB is reclaimed.
+        var scrcpyDir = Path.Combine(_depsDir, "scrcpy");
+        Directory.CreateDirectory(Path.Combine(scrcpyDir, "lib"));
+        File.WriteAllText(Path.Combine(scrcpyDir, "scrcpy.exe"), "OLD");
+        File.WriteAllText(Path.Combine(scrcpyDir, "lib", "SDL2.dll"), "OLD");
+
+        var result = SeedHydrator.Hydrate(_currentDir, _depsDir);
+
+        Assert.Equal(1, result.Pruned);
+        Assert.False(Directory.Exists(scrcpyDir));
+    }
+
+    [Fact]
+    public void Hydrate_NoRetiredLeaf_PrunesNothing()
+    {
+        Seed("platform-tools", "adb.exe", "ADB");
+
+        var result = SeedHydrator.Hydrate(_currentDir, _depsDir);
+
+        Assert.Equal(0, result.Pruned);
     }
 }

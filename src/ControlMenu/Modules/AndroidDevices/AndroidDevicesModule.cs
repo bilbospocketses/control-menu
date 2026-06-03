@@ -32,18 +32,6 @@ public class AndroidDevicesModule : IToolModule
                 : "https://dl.google.com/android/repository/platform-tools_r{version}-linux.zip",
             InstallPath = Path.Combine(DepsRoot, "platform-tools")
         },
-        new ModuleDependency
-        {
-            Name = "scrcpy",
-            ExecutableName = "scrcpy",
-            VersionCommand = "scrcpy --version",
-            VersionPattern = @"scrcpy ([\d.]+)",
-            SourceType = UpdateSourceType.GitHub,
-            GitHubRepo = "Genymobile/scrcpy",
-            ProjectHomeUrl = "https://github.com/Genymobile/scrcpy",
-            AssetPattern = @"scrcpy-win64-v[\d.]+\.zip",
-            InstallPath = Path.Combine(DepsRoot, "scrcpy")
-        },
         // node was a CM dependency when Managed-mode spawned the ws-scrcpy-web
         // node process. External-mode-only refactor removed all process-spawn
         // code; node is no longer invoked anywhere in CM. Declaration removed
