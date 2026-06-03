@@ -5,7 +5,7 @@ public class UtilitiesModule : IToolModule
     public string Id => "utilities";
     public string DisplayName => "Utilities";
     public string Icon => "bi-tools";
-    public int SortOrder => 3;
+    public int SortOrder => 4;
 
     public IEnumerable<ModuleDependency> Dependencies => [];
     public IEnumerable<ConfigRequirement> ConfigRequirements => [];

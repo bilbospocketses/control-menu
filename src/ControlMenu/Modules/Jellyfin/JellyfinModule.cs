@@ -7,7 +7,7 @@ public class JellyfinModule : IToolModule
     public string Id => "jellyfin";
     public string DisplayName => "Jellyfin";
     public string Icon => "bi-film";
-    public int SortOrder => 2;
+    public int SortOrder => 3;
 
     private static readonly string DepsRoot = ControlMenu.Services.DepsRootHolder.Path;
 

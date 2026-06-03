@@ -13,7 +13,7 @@ public class CamerasModuleTests
     public void DisplayName_IsCameras() => Assert.Equal("Cameras", _sut.DisplayName);
 
     [Fact]
-    public void SortOrder_Is4() => Assert.Equal(4, _sut.SortOrder);
+    public void SortOrder_Is5() => Assert.Equal(5, _sut.SortOrder);
 
     [Fact]
     public void GetNavEntries_ReturnsEntriesFromEnabledCameras()
