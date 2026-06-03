@@ -41,6 +41,10 @@ Control Menu replaces a collection of PowerShell scripts with a cross-platform w
 
 ## Quick Start
 
+### Install (Windows, end users)
+
+Download the latest **`ControlMenu-*.msi`** from the [Releases page](https://github.com/bilbospocketses/control-menu/releases) and run it. It installs per-machine to `C:\Program Files\ControlMenu\`, manages its own runtime dependencies, and updates in place via **Settings → General → Check for updates**. The steps below are for running from source.
+
 ### Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
@@ -62,7 +66,7 @@ Open http://localhost:5159 in your browser. The first-run wizard will guide you 
 dotnet test
 ```
 
-143+ tests covering services, modules, and integrations.
+445 tests covering services, modules, the launcher, and integrations (across `ControlMenu.Tests`, `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests`).
 
 ## Architecture
 

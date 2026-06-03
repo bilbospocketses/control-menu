@@ -261,5 +261,10 @@ First official release.
 - **`fix(theme)` TopBar theme toggle** stays in sync when theme changes via the iframe bridge.
 - **`fix(theme)` Blazor subscriber pattern** — switched from returning a JS unsubscribe closure (broke the Blazor circuit) to a numeric-token handle pattern.
 
-[Unreleased]: https://github.com/bilbospocketses/control-menu/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/bilbospocketses/control-menu/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/bilbospocketses/control-menu/compare/v1.0.1...v1.1.0
+[1.1.0-beta.3]: https://github.com/bilbospocketses/control-menu/compare/v1.1.0-beta.2...v1.1.0-beta.3
+[1.1.0-beta.2]: https://github.com/bilbospocketses/control-menu/compare/v1.1.0-beta.1...v1.1.0-beta.2
+[1.1.0-beta.1]: https://github.com/bilbospocketses/control-menu/compare/v1.0.1...v1.1.0-beta.1
+[1.0.1]: https://github.com/bilbospocketses/control-menu/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/bilbospocketses/control-menu/releases/tag/v1.0.0

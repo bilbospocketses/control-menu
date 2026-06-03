@@ -31,10 +31,10 @@ Security fixes target the latest commit on `master`. Older commits are not maint
 
 ## Scope
 
-In scope: the ASP.NET Core / Blazor Server app, its SQLite store, ADB / scrcpy / go2rtc / ws-scrcpy-web orchestration, email notification delivery, and the first-run wizard flow.
+In scope: the ASP.NET Core / Blazor Server app, its SQLite store, ADB / go2rtc / ws-scrcpy-web orchestration, email notification delivery, and the first-run wizard flow.
 
 Out of scope:
-- Vulnerabilities in upstream dependencies (ws-scrcpy-web, go2rtc, scrcpy, node-pty, EF Core, etc.) that have not been released against Control Menu — report those upstream.
+- Vulnerabilities in upstream dependencies (ws-scrcpy-web, go2rtc, node-pty, EF Core, etc.) that have not been released against Control Menu — report those upstream.
 - Issues requiring physical or console access to a host already running the app.
 - Self-XSS or similar issues requiring the victim to paste attacker-controlled code into devtools.
 - Anything that requires the reporter to have valid admin credentials on the host machine.

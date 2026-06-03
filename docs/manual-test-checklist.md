@@ -170,7 +170,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Toggle Enabled back on. Verify the sidebar entry reappears within seconds.
 - [ ] Open Control Menu in a second browser tab. Add/delete/enable-toggle/rename a camera in tab #1; verify tab #2's sidebar updates without requiring its own refresh (cross-circuit notifier propagation).
 - [ ] Delete a camera. Verify it's gone from the table; no orphan secret rows in the DB.
-- [ ] Set `cameras-scan-interval-minutes` to `1`; wait ~90 seconds; verify periodic-scan log line appears. Set to `0`; verify scans stop within 1 minute.
+- [ ] Set `cameras-liveness-interval-seconds` to `300` (minimum); wait for a liveness tick; verify enabled cameras' Status/Last Seen refresh. Set to `0`; verify liveness probing stops. (The old periodic subnet auto-scan was replaced by per-camera liveness in v1.0.0 — there is no longer an automatic Discovered-panel scan.)
 - [ ] Add a subnet via the AddSubnetModal; verify next scan covers it.
 - [ ] Close the camera scan modal while a scan is running. Verify the modal closes, the scan continues in the background, and partial Hits accumulate as discovered.
 
@@ -197,9 +197,9 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 
 - [ ] Step 1 (Welcome) loads
 - [ ] Step 2 (Devices): Add a device, advance to Step 3, **click Back** — device still visible in table
-- [ ] Step 3 (Cameras): camera slots appear, fill details for Camera 1
-- [ ] Step 3: leave others empty, advance — only filled cameras are saved
-- [ ] Step 3: click Back to Step 2, then forward — Camera 1 data persists
+- [ ] Step 3 (Cameras): "Scan Network" auto-detects the LAN subnet and runs an ONVIF-only scan; discovered cameras stream into the DiscoveredCamerasPanel
+- [ ] Step 3: inline-Add a discovered camera (optional shared credentials above the grid) — it moves into the registered-cameras summary table
+- [ ] Step 3: click Back to Step 2, then forward — added cameras persist
 - [ ] Step 4 (Jellyfin): settings show as configured
 - [ ] Step 5 (Email): SMTP fields and notification email
 - [ ] Step 6 (Dependencies): scan runs, found items show green "Found" badges
@@ -296,7 +296,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] ADB shows correct local version, not a stale system PATH version
 - [ ] If ADB update available: "Update" button resolves to a versioned URL (not `-latest-`)
 - [ ] After updating a dependency: no infinite update loop (status stays "Up to date")
-- [ ] Node.js does NOT appear in the dependency list (removed in v1.0.0; CM no longer invokes node directly).
+- [ ] Neither Node.js nor scrcpy appears in the dependency list (node removed in v1.0.0; the orphaned scrcpy dependency was later dropped — CM invokes neither directly).
 
 ## 17. Cast & Crew Email Notifications
 
@@ -333,7 +333,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 
 - [ ] If ws-scrcpy-web is configured and running: "Screen mirroring unavailable" does NOT show
 - [ ] If ws-scrcpy-web crashes: mirror shows unavailable (not stale "running" state)
-- [ ] Restart via code: service comes back online with readiness check
+- [ ] ws-scrcpy-web is external — CM does not spawn or restart it; after you restart your own ws-scrcpy-web instance, the mirror reflects reachability via the HTTP probe (`ProbeAsync`), with no CM-side readiness wait
 - [ ] **Stream quality refresh does not kill mouse input** (race condition fixed)
 - [ ] **Offline devices do not crash ws-scrcpy-web** (WebSocket close reason truncated)
 
