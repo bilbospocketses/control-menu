@@ -38,9 +38,10 @@ Control Menu is a .NET 10 Blazor Server web application that manages Android dev
 +-----------------------------------------------------------+
 |  Layer 2: Module System (IToolModule)                     |
 |  - AndroidDevices (sort 1)                                |
-|  - Jellyfin (sort 2)                                      |
-|  - Utilities (sort 3)                                     |
-|  - Cameras (sort 4)                                       |
+|  - AndroidPowerTools (sort 2)                             |
+|  - Jellyfin (sort 3)                                      |
+|  - Utilities (sort 4)                                     |
+|  - Cameras (sort 5)                                       |
 |  - Auto-discovered via reflection at startup              |
 +-----------------------------------------------------------+
 |  Layer 3: Core Services                                   |
@@ -48,7 +49,7 @@ Control Menu is a .NET 10 Blazor Server web application that manages Android dev
 |  - DependencyManager, BackgroundJobs, Email                |
 |  - WsScrcpy, Go2Rtc, NetworkDiscovery, DeviceService      |
 +-----------------------------------------------------------+
-|  Layer 4: Persistence (SQLite via EF Core 9)              |
+|  Layer 4: Persistence (SQLite via EF Core 10)             |
 |  - IDbContextFactory pattern for Blazor Server            |
 |  - Tables: Devices, Jobs, Dependencies, Settings          |
 |  - Auto-migrations on startup                             |
@@ -90,6 +91,7 @@ src/ControlMenu/
     ModuleDiscoveryService.cs
     NavEntry.cs, BackgroundJobDefinition.cs, ModuleDependency.cs, ConfigRequirement.cs
     AndroidDevices/          # Module class, Pages/, Services/
+    AndroidPowerTools/       # Module class (ws-scrcpy-web home-page iframe host)
     Cameras/                 # Module class, Pages/, Services/ (Go2RtcService)
     Jellyfin/                # Module class, Pages/, Services/, Workers/
     Utilities/               # Module class, Pages/, Services/
@@ -181,7 +183,7 @@ public record ConfigRequirement(
 
 | Module | Id | SortOrder | Dependencies | Nav Entries |
 |--------|----|-----------|--------------|-------------|
-| Android Devices | `android-devices` | 1 | adb, ws-scrcpy-web | Device List, Google TV, Android Phone |
+| Android Devices | `android-devices` | 1 | adb, ws-scrcpy-web | Device List; Google TV / Phone / Tablet / Watch (each shown when ≥1 device of that type is registered) |
 | Android Power Tools | `android-power-tools` | 2 | (none — shares ws-scrcpy-web with Android Devices) | Power Tools |
 | Jellyfin | `jellyfin` | 3 | docker, sqlite3 | DB Date Update, Cast & Crew |
 | Utilities | `utilities` | 4 | (none) | Icon Converter, File Unblocker |
@@ -264,15 +266,15 @@ The module declares two dependencies — `adb` (auto-managed in `dependencies/`)
 
 ### WsScrcpyService
 
-`WsScrcpyService` is registered as both a singleton and an `IHostedService`. It manages the Node.js ws-scrcpy-web child process.
+`WsScrcpyService` is registered as both a singleton and an `IHostedService`, but it is **external-only** — it does **not** spawn or supervise the ws-scrcpy-web process. The user runs their own ws-scrcpy-web instance; Control Menu only holds its URL and checks reachability on demand.
 
 Lifecycle:
-1. **StartAsync**: Reads `ws_scrcpy_web_path` setting, finds `dist/index.js`, kills any orphan process on port 8000, spawns the Node process, waits up to 15 seconds for HTTP readiness
-2. **Health monitoring**: The `Exited` event handler restarts the process up to 2 times within a 30-second window before giving up
-3. **Orphan cleanup**: On startup, checks if port 8000 is in use and kills the owning process (uses `netstat -ano` on Windows, `lsof -t -i :8000` on Linux)
-4. **StopAsync**: Kills the process tree and marks service as not ready
+1. **StartAsync**: reads the `wsscrcpy-url` setting (default `http://localhost:8000`), stores it as `BaseUrl`, and marks the service ready. No process is launched.
+2. **`IsRunning`**: indicates only that a URL was resolved at startup — **not** that ws-scrcpy-web is currently reachable.
+3. **`ProbeAsync(ct)`**: issues an HTTP `HEAD` to `BaseUrl/` with a 2-second timeout; returns `true` on any response, `false` on connection-refused / DNS-failure / timeout. UI that embeds the iframe (the Android Power Tools page) gates on this probe, not on `IsRunning`.
+4. **StopAsync**: clears the ready flag.
 
-The `Restart()` method is used during ADB dependency updates -- the dependency manager stops ws-scrcpy-web before updating ADB (since ws-scrcpy-web uses ADB), then restarts it after.
+> Managed mode — CM spawning the Node process, health-monitoring, orphan-killing on port 8000, and a `Restart()` hook — was **removed in v1.0.0**. ws-scrcpy-web is configured under **Settings → General → External Dependencies**, and the legacy `ws_scrcpy_web_path` / `wsscrcpy-mode` settings are dropped on startup by a one-time cleanup service.
 
 ---
 
@@ -323,7 +325,7 @@ The phone mirror panel required explicit sizing for iframe click handling to wor
 
 ### Fallback Behavior
 
-When `WsScrcpy.IsRunning` is false, the component renders a warning alert instead of the iframe. When `Inline` is false, it renders a "Screen Mirror" button that opens a popup window (`window.open` with specific dimensions and no browser chrome).
+When ws-scrcpy-web is unavailable, the component renders a warning alert instead of the iframe. (Note: `WsScrcpy.IsRunning` now only means a URL was resolved at startup — actual reachability is the HTTP probe described in [§3](#3-android-devices-module).) When `Inline` is false, it renders a "Screen Mirror" button that opens a popup window (`window.open` with specific dimensions and no browser chrome).
 
 ### Android Power Tools Module
 
@@ -403,14 +405,14 @@ Execution flow:
 
 ### OperationLogger
 
-`OperationLogger` writes timestamped log files to `jellyfin-data/logging/`. Each operation creates a new file named `{operation}_{yyyyMMdd_HHmmss}.log`.
+`OperationLogger` writes timestamped log files under `<dataRoot>/logs/jellyfin/` (resolved via `IDataPathResolver.GetLogsDir()`). Each operation creates a new file named `{operation}_{yyyyMMdd_HHmmss}.log`.
 
 Log levels: `START`, `STEP`, `OK`, `FAIL`, `DONE`
 
-The logger respects the `app-timezone` setting for timestamp display. It also provides static methods:
-- `GetRecentLogs(count)` -- Returns the N most recent log entries with status inference (reads last line for DONE/FAIL markers)
-- `GetLogDirectory()` -- Returns `{BaseDirectory}/jellyfin-data/logging/`
-- `GetBackupDirectory()` -- Returns `{BaseDirectory}/jellyfin-data/backups/`, creates if missing
+The logger respects the `app-timezone` setting for timestamp display. It is constructed via `OperationLogger.Create(operation, utcOffset, IDataPathResolver)` and also provides static helpers:
+- `GetRecentLogs(count, paths)` -- Returns the N most recent log entries with status inference (reads last line for DONE/FAIL markers)
+- `GetDefaultLogDirectory(paths)` -- Returns `<dataRoot>/logs/jellyfin/`
+- `GetDefaultBackupDirectory(paths)` -- Returns `<dataRoot>/jellyfin-backups/` (`GetJellyfinBackupsDir()`), creates if missing
 
 ### Pages
 
@@ -587,8 +589,9 @@ go2rtc is auto-installable via the dependency manager. During updates, `Dependen
 
 ### Tests
 
-- `CameraServiceTests` (8 tests) -- CRUD operations, credential storage, camera count management
+- `CameraServiceTests` (9 tests) -- CRUD operations, credential storage, camera count management
 - `CamerasModuleTests` (5 tests) -- Module metadata, dynamic nav entry generation
+- Scanner / network coverage: `CameraScanServiceTests`, `OnvifClientTests`, `RtspProbeClientTests`, `HikvisionIsapiClientTests`, `CameraLivenessHostedServiceTests`, `PurgeLegacyCameraSettingsMigrationTests`
 
 ---
 
@@ -663,7 +666,7 @@ public class SecretStore : ISecretStore
 }
 ```
 
-Data Protection keys are persisted to `%LOCALAPPDATA%/ControlMenu/keys/` and scoped to application name `"ControlMenu"`. This means encrypted settings survive app restarts but are tied to the Windows user account.
+Data Protection keys are persisted under `<dataRoot>/keys/` (`IDataPathResolver.GetKeysDir()`), scoped to application name `"ControlMenu"`, and on Windows additionally encrypted at rest with DPAPI (`ProtectKeysWithDpapi`). `<dataRoot>` is `C:\ProgramData\ControlMenu` in an installed (Velopack) build and the app base directory under `dotnet run`. These keys must be preserved when migrating machines — losing them makes all encrypted settings unreadable.
 
 ### DependencyManagerService
 
@@ -745,14 +748,7 @@ Required settings:
 
 ### Connection
 
-SQLite file: `controlmenu.db` in the project directory. Connection string in `appsettings.json`:
-```json
-{
-  "ConnectionStrings": {
-    "DefaultConnection": "Data Source=controlmenu.db"
-  }
-}
-```
+SQLite database file `controlmenu.db`. Its path is resolved at startup via `IDataPathResolver.GetDbPath()` → `<dataRoot>/config/controlmenu.db` (installed: `C:\ProgramData\ControlMenu\config\`; dev: under the app base directory), and `Program.cs` builds the EF Core connection string from that resolved path.
 
 ### Factory Pattern
 
@@ -868,8 +864,8 @@ During the **Cameras** step, `SubnetDetectionClient.DetectAsync()` calls ws-scrc
 
 | Tab | Component | Key Settings |
 |-----|-----------|-------------|
-| General | GeneralSettings | `smtp-server`, `smtp-port`, `smtp-username`, `smtp-password` (secret), `smtp-from-email`, `notification-email`, `app-timezone` |
-| Devices | DeviceManagement | Device CRUD, `ws_scrcpy_web_path` (module: `android-devices`) |
+| General | GeneralSettings | `smtp-server`, `smtp-port`, `smtp-username`, `smtp-password` (secret), `smtp-from-email`, `notification-email`, `app-timezone`; **External Dependencies**: `wsscrcpy-url` (ws-scrcpy-web URL) + docker executable path |
+| Android Devices | DeviceManagement | Device CRUD (the `Devices` table). The ws-scrcpy-web URL lives on General → External Dependencies (`wsscrcpy-url`), not here. |
 | Cameras | CameraSettings | `cameras-liveness-interval-seconds`, `cameras-scan-subnets`, per-camera username/password as `camera-{guid:N}-username/-password` (secrets) (module: `cameras`). Camera rows live in the `Cameras` DB table, not in Settings. |
 | Jellyfin | JellyfinSettingsSection | `jellyfin-compose-path`, `jellyfin-api-key` (secret), `jellyfin-url`, `jellyfin-user-id` |
 | Dependencies | DependencyManagement | Per-dependency install paths (`dep-path-{name}`), version check, install/update buttons, check interval (`dep-check-interval`) |
@@ -885,7 +881,7 @@ Settings marked as secrets go through `ConfigurationService.SetSecretAsync` whic
 2. Stores the ciphertext in `Setting.Value` with `IsSecret = true`
 3. On read, `GetSecretAsync` checks `IsSecret` and decrypts transparently
 
-The DPAPI keys in `%LOCALAPPDATA%/ControlMenu/keys/` must be preserved when migrating between machines. Loss of these keys means all encrypted settings become unreadable.
+The Data Protection keys under `<dataRoot>/keys/` (`C:\ProgramData\ControlMenu\keys\` in an installed build, DPAPI-encrypted at rest on Windows) must be preserved when migrating between machines. Loss of these keys means all encrypted settings become unreadable.
 
 ---
 
@@ -911,6 +907,26 @@ For Linux:
 dotnet publish -c Release -r linux-x64 --self-contained
 ```
 
+### Packaging & Distribution (Velopack)
+
+Shipping builds are packaged with [Velopack](https://github.com/velopack/velopack) into a **PerMachine MSI** (`vpk pack --msi --instLocation PerMachine`), installing to `C:\Program Files\ControlMenu\`. The installed app is a **three-binary** layout:
+
+| Binary | Role |
+|--------|------|
+| `ControlMenuLauncher.exe` | Velopack supervisor — runs `VelopackApp.Build().Run()`, hydrates seeded dependencies, spawns the host, and orchestrates updates (apply-on-exit-75). |
+| `ControlMenu.exe` | The Blazor Server host (this codebase). Also calls `VelopackApp.Build().SetAutoApplyOnStartup(false).Run()` so it initializes its own `VelopackLocator`. |
+| `ControlMenuTray.exe` | Phase 1 stub (tray UI is a later phase). |
+
+**Path resolution.** All writable state routes through `IDataPathResolver` (`ControlMenu.Common.Paths`), chosen at startup by `DataPathResolverFactory`:
+- **Installed (Velopack)** → `VelopackDataPathResolver`, rooted at `C:\ProgramData\ControlMenu\` (detected by probing for `..\..\Update.exe`).
+- **Dev (`dotnet run`)** → `DevDataPathResolver`, rooted at `AppContext.BaseDirectory`.
+
+Under `<dataRoot>`: `config/controlmenu.db`, `logs/` (+ `logs/jellyfin/`), `keys/` (DataProtection), `dependencies/`, `jellyfin-backups/`.
+
+**Dependency pre-seeding.** The MSI bundles pinned runtime binaries (adb, sqlite3, go2rtc) under `seed/dependencies/`; on launch `SeedHydrator` copies any missing leaf into `<dataRoot>/dependencies/` (idempotent, preserves a user-updated version). CI stages the seed via `scripts/stage-seed.ps1` + `scripts/dependencies/fetch-*.ps1` between `dotnet publish` and `vpk pack`.
+
+**In-app updates.** Settings → General → "Check for updates" uses `VelopackUpdateService` (`Velopack.UpdateManager` + `GithubSource`) against the GitHub Releases feed. Apply signals the launcher via `Environment.ExitCode = 75` + `StopApplication`; the launcher performs the Velopack swap and relaunches. The tag-triggered release pipeline lives in `.github/workflows/release.yml`.
+
 ### Dependency Path Resolution
 
 Managed tools are resolved by **absolute local path**, never via the system `PATH`. At startup `Program.cs` seeds a holder from the data-path resolver, before module discovery runs:
@@ -931,13 +947,15 @@ Each module then builds its tool paths directly off that root — e.g. `AndroidD
 
 ### Data Locations
 
-| Item | Path |
-|------|------|
-| SQLite database | `controlmenu.db` (project root) |
-| DPAPI encryption keys | `%LOCALAPPDATA%/ControlMenu/keys/` |
-| Managed dependencies | `dependencies/` (project root) |
-| Jellyfin operation logs | `jellyfin-data/logging/` (relative to base directory) |
-| Jellyfin backups | `jellyfin-data/backups/` (relative to base directory) |
+All paths resolve under `<dataRoot>` via `IDataPathResolver` — `C:\ProgramData\ControlMenu\` in an installed (Velopack) build, or `AppContext.BaseDirectory` under `dotnet run`.
+
+| Item | Resolver method | Path under `<dataRoot>` |
+|------|-----------------|--------------------------|
+| SQLite database | `GetDbPath()` | `config/controlmenu.db` |
+| DataProtection keys | `GetKeysDir()` | `keys/` (DPAPI-encrypted on Windows) |
+| Managed dependencies | `GetDependenciesDir()` | `dependencies/` |
+| Jellyfin operation logs | `GetLogsDir()` | `logs/jellyfin/` |
+| Jellyfin backups | `GetJellyfinBackupsDir()` | `jellyfin-backups/` |
 
 ---
 
@@ -947,7 +965,8 @@ Each module then builds its tool paths directly off that root — e.g. `AndroidD
 
 - **xUnit** -- test runner
 - **Moq** -- mocking framework
-- 143 tests across services, modules, and data layer
+- **bunit** -- Blazor (Razor) component testing
+- **445 tests** (all green on net10.0) across three projects — `ControlMenu.Tests` (app), `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests` — run together via `ControlMenu.sln`
 
 ### Test Database
 
@@ -984,6 +1003,8 @@ tests/ControlMenu.Tests/
     Fakes/                        # Test doubles
     ModuleDiscoveryServiceTests.cs
 ```
+
+Two further test projects sit alongside this one and run together via `ControlMenu.sln`: **`ControlMenu.Common.Tests`** (path / config / seeding helpers in `ControlMenu.Common`) and **`ControlMenuLauncher.Tests`** (the Velopack launcher — single-instance, hook dispatch, child supervisor, install-ACL).
 
 ### Running Tests
 
@@ -1043,11 +1064,9 @@ foreach (var device in devicesWithBadMac)
 
 **Fix**: `GetInstalledVersionAsync` now prioritizes the local install path over system PATH for dependencies that have an `InstallPath` configured. If the local binary exists, it checks only that binary. If it does not exist, it returns null (not installed) rather than falling back to a stale system PATH version.
 
-### ws-scrcpy-web Orphan Process
+### ws-scrcpy-web Orphan Process (historical — no longer applicable)
 
-**Problem**: If the app crashes or is force-killed, the ws-scrcpy-web Node process remains running and holds port 8000, preventing restart.
-
-**Fix**: `WsScrcpyService.StartAsync` calls `KillOrphanOnPortAsync` before spawning a new process. This checks if port 8000 is in use, finds the PID via `netstat -ano` (Windows) or `lsof -t -i :8000` (Linux), and kills the orphan process tree.
+Earlier builds spawned ws-scrcpy-web as a managed child and had to kill orphans holding port 8000 on restart. Since v1.0.0, ws-scrcpy-web is **external** (the user runs it), so CM no longer spawns or orphan-kills it. The analogous live mechanism today is `Go2RtcService`, which kills orphan `go2rtc` processes on startup (`KillAllOrphans`) and waits for confirmed exit on stop — see the [Cameras module](#7-cameras-module).
 
 ### ComposeParser Windows Drive Letters
 

@@ -7,9 +7,8 @@ Thanks for your interest. This document covers the essentials for getting a deve
 - **.NET 10 SDK** — install from [dotnet.microsoft.com](https://dotnet.microsoft.com/download)
 - **SQLite 3** — runtime library; auto-installed by the app's dependency manager at first run, or install manually
 - **ADB** (Android Debug Bridge) — required for Android device management; auto-installed by the dependency manager
-- **scrcpy** — required for the Android devices module; auto-installed
 - **go2rtc** — required for the Cameras module (RTSP → WebRTC streaming); auto-installed
-- **ws-scrcpy-web** — required for screen mirroring; separate repo at [bilbospocketses/ws-scrcpy-web](https://github.com/bilbospocketses/ws-scrcpy-web). Runs as a child process managed by Control Menu
+- **ws-scrcpy-web** — required for screen mirroring; separate repo at [bilbospocketses/ws-scrcpy-web](https://github.com/bilbospocketses/ws-scrcpy-web). You run it yourself (external); Control Menu connects to its configured URL (`wsscrcpy-url`, default `http://localhost:8000`)
 - **A modern Chromium-based browser** (Chrome, Edge, Brave) for the Blazor Server UI. Firefox works but has reduced support for File System Access API in the Icon Converter
 
 ## Setup
@@ -41,7 +40,7 @@ dotnet ef migrations add <Name> --project src/ControlMenu      # new migration
 src/ControlMenu/
 ├── Components/          Shared Blazor components and page layouts
 ├── Data/                EF Core DbContext, entities, migrations
-├── Modules/             Tool modules (AndroidDevices, Jellyfin, Cameras, Utilities)
+├── Modules/             Tool modules (AndroidDevices, AndroidPowerTools, Jellyfin, Cameras, Utilities)
 │   └── <Module>/
 │       ├── Pages/       Module-specific Razor pages
 │       ├── Services/    Module-specific services
@@ -49,7 +48,7 @@ src/ControlMenu/
 ├── Services/            Cross-cutting services (DB, config, deps, notifications)
 ├── wwwroot/             Static assets
 └── Program.cs           Startup, DI container, module discovery
-tests/                   xUnit test project
+tests/                   xUnit test projects (ControlMenu.Tests, ControlMenu.Common.Tests, ControlMenuLauncher.Tests)
 docs/                    TECHNICAL_GUIDE.md, manual-test-checklist.md
 ```
 
@@ -57,12 +56,13 @@ docs/                    TECHNICAL_GUIDE.md, manual-test-checklist.md
 
 Modules implement the `IToolModule` interface and are discovered at startup via reflection. Each module:
 
-- Declares its menu entry (name, icon, sort order)
-- Registers its own services via `ConfigureServices(IServiceCollection)`
-- Runs its own initialization via `InitializeAsync()`
+- Has a parameterless constructor (required for reflection-based discovery)
+- Declares its identity and ordering (`Id`, `DisplayName`, `Icon`, `SortOrder`)
+- Declares its `Dependencies` and `ConfigRequirements`
+- Contributes sidebar links via `GetNavEntries()` and long-running tasks via `GetBackgroundJobs()`
 - Contributes Razor pages under `Modules/<Name>/Pages/`
 
-To add a new module, create a folder under `src/ControlMenu/Modules/`, add a class implementing `IToolModule`, and it will be picked up automatically.
+Module services are registered in `Program.cs` (there is no per-module `ConfigureServices` / `InitializeAsync` hook on `IToolModule`). To add a new module, create a folder under `src/ControlMenu/Modules/`, add a class implementing `IToolModule` with a parameterless constructor, and it will be picked up automatically.
 
 ## Code Style
 
@@ -110,9 +110,7 @@ Do not include AI-generated attribution lines in commit messages.
 
 **Required status checks** (all must be green before merge):
 - `build-and-test` — `dotnet restore/build/test ControlMenu.sln` on `windows-latest`
-- `Analyze (csharp)` — CodeQL static analysis
-- `Analyze (javascript-typescript)` — CodeQL static analysis on wwwroot JS/TS
-- `Analyze (actions)` — CodeQL static analysis on workflow YAML
+- `CodeQL` — GitHub Advanced Security code-scanning result (CodeQL default setup covering csharp, javascript-typescript, and actions). Required as the single `CodeQL` context — not the per-language `Analyze (...)` jobs — so that dependency-only PRs (where those per-language jobs don't run) aren't permanently blocked.
 - `Scorecard analysis` — OpenSSF supply-chain scoring
 
 **Merge method:** Squash only. Rebase is disallowed at the ruleset level (would skip GitHub's web-flow signature on the merge commit, producing an unsigned commit that fails the `required_signatures` rule).
@@ -129,7 +127,7 @@ Open an issue on GitHub with:
 - OS (Windows 10/11, Linux distro + version), .NET runtime version
 - Browser + version
 - Relevant excerpt from the Control Menu logs (Settings → Logs, or `logs/` directory)
-- If the bug is in a module's interaction with an external tool (ADB, scrcpy, Jellyfin, go2rtc, ws-scrcpy-web), include the version of that tool
+- If the bug is in a module's interaction with an external tool (ADB, Jellyfin, go2rtc, ws-scrcpy-web), include the version of that tool
 
 ## Reporting Security Issues
 
