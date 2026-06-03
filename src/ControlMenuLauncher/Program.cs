@@ -87,9 +87,9 @@ internal static class Program
         try
         {
             var hydrate = SeedHydrator.Hydrate(paths.GetCurrentDir(), paths.GetDependenciesDir());
-            if (hydrate.Copied > 0 || hydrate.Skipped > 0)
+            if (hydrate.Copied > 0 || hydrate.Skipped > 0 || hydrate.Pruned > 0)
             {
-                LauncherLogger.Info($"seed hydrate: copied={hydrate.Copied} skipped={hydrate.Skipped}");
+                LauncherLogger.Info($"seed hydrate: copied={hydrate.Copied} skipped={hydrate.Skipped} pruned={hydrate.Pruned}");
             }
         }
         catch (Exception ex)

@@ -14,13 +14,27 @@ namespace ControlMenu.Common.Seeding;
 /// </summary>
 public static class SeedHydrator
 {
-    public record Result(int Copied, int Skipped);
+    public record Result(int Copied, int Skipped, int Pruned);
+
+    /// <summary>
+    /// Dependencies that were previously seeded/installed but have since been
+    /// removed from the app. The dependency manager never cleans a removed dep's
+    /// directory, so <see cref="Hydrate"/> prunes them from
+    /// <c>&lt;dataRoot&gt;\dependencies\</c> on launch to reclaim disk space.
+    /// Best-effort — a delete failure (locked file, permissions) is swallowed so
+    /// it can never block launch; the next launch retries.
+    /// </summary>
+    private static readonly string[] RetiredLeaves = ["scrcpy"];
 
     public static Result Hydrate(string currentDir, string targetDependenciesDir)
     {
+        // Prune retired deps first so existing installs reclaim the space even in
+        // dev mode (no seed/), where the hydration loop below early-returns.
+        var pruned = PruneRetiredLeaves(targetDependenciesDir);
+
         var seedRoot = Path.Combine(currentDir, "seed", "dependencies");
         if (!Directory.Exists(seedRoot))
-            return new Result(0, 0);
+            return new Result(0, 0, pruned);
 
         Directory.CreateDirectory(targetDependenciesDir);
 
@@ -42,7 +56,32 @@ public static class SeedHydrator
             copied++;
         }
 
-        return new Result(copied, skipped);
+        return new Result(copied, skipped, pruned);
+    }
+
+    private static int PruneRetiredLeaves(string targetDependenciesDir)
+    {
+        if (!Directory.Exists(targetDependenciesDir))
+            return 0;
+
+        var pruned = 0;
+        foreach (var leaf in RetiredLeaves)
+        {
+            var dir = Path.Combine(targetDependenciesDir, leaf);
+            if (!Directory.Exists(dir))
+                continue;
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+                pruned++;
+            }
+            catch
+            {
+                // Best-effort: a locked file or permission issue must never block
+                // launch. The next launch retries.
+            }
+        }
+        return pruned;
     }
 
     private static void CopyTree(string source, string dest)

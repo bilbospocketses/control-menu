@@ -5,7 +5,6 @@
 # Inputs:  scripts/dependencies/fetch-*.ps1 (each downloads + verifies + stages)
 # Output:  publish/seed/dependencies/
 #           platform-tools/     adb.exe + DLLs
-#           scrcpy/             scrcpy.exe + libs
 #           sqlite3/            sqlite3.exe
 #           go2rtc/             go2rtc.exe
 #

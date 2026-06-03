@@ -88,12 +88,12 @@ public class DependencyScanTests : IDisposable
         [
             new ModuleDependency
             {
-                Name = "scrcpy",
-                ExecutableName = "scrcpy",
-                VersionCommand = "scrcpy --version",
-                VersionPattern = @"scrcpy ([\d.]+)",
+                Name = "fake-tool",
+                ExecutableName = "fake-tool",
+                VersionCommand = "fake-tool --version",
+                VersionPattern = @"fake-tool ([\d.]+)",
                 SourceType = UpdateSourceType.GitHub,
-                ProjectHomeUrl = "https://github.com/Genymobile/scrcpy"
+                ProjectHomeUrl = "https://github.com/example/fake-tool"
             }
         ]);
 
@@ -106,7 +106,7 @@ public class DependencyScanTests : IDisposable
         Assert.Single(results);
         var result = results[0];
         Assert.False(result.Found);
-        Assert.Equal("scrcpy", result.Name);
+        Assert.Equal("fake-tool", result.Name);
         Assert.Equal("Not found", result.Source);
         Assert.Null(result.Version);
         Assert.Null(result.Path);
