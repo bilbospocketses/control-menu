@@ -10,7 +10,7 @@ public class CamerasModule : IToolModule
     public string Id => "cameras";
     public string DisplayName => "Cameras";
     public string Icon => "bi-camera-video";
-    public int SortOrder => 4;
+    public int SortOrder => 5;
 
     /// <summary>
     /// Set by Program.cs on startup AND on CameraChangeNotifier.CamerasChanged.

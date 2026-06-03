@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Module `SortOrder` values renumbered to eliminate a collision.** `JellyfinModule` and `AndroidPowerToolsModule` both declared `SortOrder = 2`, so the sidebar order held only by the `DisplayName` alphabetical tiebreak. Renumbered Jellyfin `2 → 3`, Utilities `3 → 4`, and Cameras `4 → 5` so every module has a distinct ordering key (Android Devices `1` and Android Power Tools `2` unchanged). The rendered sidebar / module-tile order is unchanged — this only removes the fragile tie. `CamerasModuleTests.SortOrder_Is4` renamed to `SortOrder_Is5`.
+
 ### Removed
 
 - **Orphaned `scrcpy` dependency dropped from the Android Devices module.** `AndroidDevicesModule` declared `scrcpy` (GitHub-sourced, `Genymobile/scrcpy`) as a `ModuleDependency`, but nothing in the app has invoked `scrcpy.exe` since the ws-scrcpy-web sidecar replaced the native-scrcpy mirror in Phase 8a (2026-04-11). Impact: (1) drops a per-dependency-sync GitHub releases API call; (2) removing `scripts/dependencies/fetch-scrcpy.ps1` (auto-discovered by `stage-seed.ps1`) stops bundling the ~40 MB `scrcpy-win64` payload — `scrcpy.exe` + SDL/ffmpeg DLLs + `scrcpy-server` + a duplicate `adb.exe` — into every MSI; (3) `SeedHydrator` now prunes a pre-existing `<dataRoot>\dependencies\scrcpy\` on launch (best-effort, logged) so existing installs reclaim the space on upgrade. Synthetic test fixtures that used `"scrcpy"` as a dependency name were renamed to `"fake-tool"`. README dependency tables updated to match.
