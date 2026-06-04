@@ -8,7 +8,7 @@ namespace ControlMenu.Services.Update;
 /// <summary>
 /// Provides update-check, download, and apply-signaling for Control Menu via Velopack.
 ///
-/// API surface verified against Velopack 0.0.1298 (Context7, 2026-05-10):
+/// API surface verified against Velopack 1.1.1 (clean build + 445 tests, 2026-06-03):
 /// - UpdateManager.IsInstalled: bool property (not a method)
 /// - UpdateManager.CurrentVersion: SemanticVersion? property (null when not installed)
 /// - UpdateManager.CheckForUpdatesAsync(): Task&lt;UpdateInfo?&gt; — null means no update
