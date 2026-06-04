@@ -52,14 +52,14 @@ jobs:
         with:
           dotnet-version: 10.x
 
-      # Pin vpk to the prerelease that has --msi / --instLocation flags.
-      # Stable vpk 0.0.1298 (the default with no --version) does NOT have
-      # those flags — they were added in the 0.0.1500+ prerelease line.
-      # Match the NuGet `Velopack` package version pinned in
-      # ControlMenu.csproj + ControlMenuLauncher.csproj to keep client/server
-      # serialization in sync. Mirrors ws-scrcpy-web's release.yml pin.
+      # Pin vpk to match the NuGet `Velopack` package version in
+      # ControlMenu.csproj + ControlMenuLauncher.csproj — the CLI and the
+      # runtime library share a release/serialization line and must stay in
+      # lockstep. 1.1.1 is the first stable line we ship on; `--msi` /
+      # `--instLocation` are standard post-1.0 (the earlier 0.0.1589 prerelease
+      # pin predated their stable availability). Mirrors ws-scrcpy-web's pin.
       - name: Install vpk CLI
-        run: dotnet tool install -g vpk --version 0.0.1589-ga2c5a97
+        run: dotnet tool install -g vpk --version 1.1.1
 
       # No .sln in this repo — restore + build per project directly.
       # Mirrors the local-pack.ps1 approach (3x dotnet publish below).

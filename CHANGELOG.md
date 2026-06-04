@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Module `SortOrder` values renumbered to eliminate a collision.** `JellyfinModule` and `AndroidPowerToolsModule` both declared `SortOrder = 2`, so the sidebar order held only by the `DisplayName` alphabetical tiebreak. Renumbered Jellyfin `2 → 3`, Utilities `3 → 4`, and Cameras `4 → 5` so every module has a distinct ordering key (Android Devices `1` and Android Power Tools `2` unchanged). The rendered sidebar / module-tile order is unchanged — this only removes the fragile tie. `CamerasModuleTests.SortOrder_Is4` renamed to `SortOrder_Is5`.
+- **Velopack `0.0.1589-ga2c5a97` (prerelease) → `1.1.1` (stable).** Bumped in both production csprojs (`ControlMenu`, `ControlMenuLauncher`) and the `vpk` CLI pin (`release.yml`, `scripts/local-pack.ps1`) — the CLI and runtime library share a release line and must stay in lockstep. The earlier prerelease pin predated stable `--msi` / `--instLocation`, now standard post-1.0. The consumed .NET surface (`UpdateManager` / `GithubSource` / `CheckForUpdatesAsync` / `DownloadUpdatesAsync` / `VelopackApp.Build().SetAutoApplyOnStartup(false).Run()`) is source-compatible — verified by a clean Release build, the full 445-test suite, and a local `vpk 1.1.1` `--msi --instLocation PerMachine` pack producing a working `ControlMenu-stable.msi`. Supersedes Dependabot #34.
 
 ### Removed
 
