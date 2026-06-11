@@ -31,7 +31,9 @@ Security fixes target the latest commit on `master`. Older commits are not maint
 
 ## Scope
 
-In scope: the ASP.NET Core / Blazor Server app, its SQLite store, ADB / go2rtc / ws-scrcpy-web orchestration, email notification delivery, and the first-run wizard flow.
+In scope: the ASP.NET Core / Blazor Server app, its SQLite store, ADB / go2rtc / ws-scrcpy-web orchestration, the Imaging Tools' invocation of the bundled image binaries (ImageMagick, vtracer, potrace), email notification delivery, and the first-run wizard flow.
+
+> The bundled ImageMagick is shipped with a hardened `policy.xml` (deny-by-default coders + a small format allowlist, known-CVE-historical coders denied explicitly, and resource caps) staged next to `magick.exe`. If you find a way to bypass that policy or to make the Imaging Tools process attacker-controlled input unsafely, that is in scope — please report it.
 
 Out of scope:
 - Vulnerabilities in upstream dependencies (ws-scrcpy-web, go2rtc, node-pty, EF Core, etc.) that have not been released against Control Menu — report those upstream.
