@@ -2,6 +2,8 @@ using ControlMenu.Common.Paths;
 using ControlMenu.Modules.Imaging.Services.Options;
 using ControlMenu.Services;
 using Serilog;
+using SkiaSharp;
+using Svg.Skia;
 
 namespace ControlMenu.Modules.Imaging.Services;
 
@@ -157,8 +159,134 @@ public class ImageService : IImageService
     public Task<byte[]> RemoveBackgroundAsync(byte[] input, BackgroundRemoveOptions options, CancellationToken ct = default)
         => throw new NotImplementedException("Phase E");
 
-    public Task<byte[]> RasterizeSvgAsync(byte[] svgBytes, RasterizeOptions options, CancellationToken ct = default)
-        => throw new NotImplementedException("Phase D");
+    /// <summary>
+    /// Rasterizes an SVG to a raster image. The SVG is rendered IN-PROCESS with Svg.Skia
+    /// (managed) — it is NEVER handed to magick, by design: our hardened policy.xml only
+    /// permits SVG <i>read</i>, and the security stance is to keep SVG out of magick's
+    /// parser entirely. magick is only reached, with already-rasterized PNG pixels, when
+    /// the "ico" output bundles the sizes via <see cref="ConvertToIcoAsync"/>.
+    ///
+    /// "png": renders once at the LARGEST requested size and returns the PNG bytes.
+    /// "ico": renders once at the largest size to PNG, then bundles <c>options.Sizes</c>
+    /// into a single .ico via the existing magick-backed ConvertToIcoAsync.
+    /// </summary>
+    public async Task<byte[]> RasterizeSvgAsync(byte[] svgBytes, RasterizeOptions options, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.Sizes is null || options.Sizes.Length == 0)
+            throw new ArgumentException("At least one size required", nameof(options));
+
+        var format = (options.OutputFormat ?? "png").Trim().ToLowerInvariant();
+        var largest = options.Sizes.Max();
+
+        // Render at the largest size; the ico path resamples down to the smaller sizes,
+        // and the png path returns this directly. Background-clearing happens inside.
+        var pngBytes = RenderSvgToPng(svgBytes, largest, options.Background, ct);
+
+        switch (format)
+        {
+            case "png":
+                return pngBytes;
+
+            case "ico":
+                // Hand the RASTERIZED png (not the SVG) to magick to bundle the sizes.
+                return await ConvertToIcoAsync(pngBytes, options.Sizes, ct: ct);
+
+            default:
+                throw new ArgumentException($"Unsupported output format: {options.OutputFormat}", nameof(options));
+        }
+    }
+
+    /// <summary>
+    /// Renders <paramref name="svgBytes"/> into a <paramref name="size"/>x<paramref name="size"/>
+    /// PNG using Svg.Skia. The SVG is scaled to fit the square preserving aspect ratio and
+    /// centered; the canvas is cleared to <paramref name="background"/> first ("transparent"
+    /// or a hex like "#ffffff"). Any load/parse failure (e.g. Svg.Skia's XmlException on
+    /// garbage input) is wrapped as <see cref="ImagingException"/>.
+    /// </summary>
+    private static byte[] RenderSvgToPng(byte[] svgBytes, int size, string? background, CancellationToken ct)
+    {
+        if (svgBytes is null || svgBytes.Length == 0)
+            throw new ImagingException("SVG input is empty");
+
+        ct.ThrowIfCancellationRequested();
+
+        var bg = ParseBackground(background);
+
+        // CRITICAL: Svg.Skia 5.0.0's SKSvg OWNS its SKPicture and DISPOSES it when the SKSvg
+        // is disposed. Touching the picture after the SKSvg is gone is a native use-after-free
+        // (0xC0000005). So the SKSvg MUST stay alive for the ENTIRE render+encode below — we
+        // never let it dispose until the PNG bytes are produced.
+        using var svg = new SKSvg();
+
+        SKPicture? picture;
+        try
+        {
+            using var input = new MemoryStream(svgBytes, writable: false);
+            // SKSvg.Load(Stream) parses the SVG and returns the SKPicture (also exposed as
+            // svg.Picture). It THROWS (XmlException) on malformed/empty XML rather than
+            // returning null, so a thrown load is the invalid-SVG signal.
+            picture = svg.Load(input);
+        }
+        catch (Exception ex)
+        {
+            throw new ImagingException($"Failed to parse SVG: {ex.Message}", ex);
+        }
+
+        if (picture is null)
+            throw new ImagingException("SVG produced no renderable picture");
+
+        ct.ThrowIfCancellationRequested();
+
+        var bounds = picture.CullRect;
+        if (bounds.Width <= 0 || bounds.Height <= 0)
+            throw new ImagingException("SVG has no intrinsic size (empty CullRect)");
+
+        var info = new SKImageInfo(size, size, SKColorType.Rgba8888, SKAlphaType.Premul);
+        using var bitmap = new SKBitmap(info);
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(bg);
+
+            // Fit-within-square preserving aspect ratio, then center the scaled picture.
+            var scale = Math.Min(size / bounds.Width, size / bounds.Height);
+            var dx = (size - bounds.Width * scale) / 2f;
+            var dy = (size - bounds.Height * scale) / 2f;
+
+            canvas.Translate(dx, dy);
+            canvas.Scale(scale);
+            // CullRect may not be origin-anchored; shift so its top-left maps to (0,0).
+            canvas.Translate(-bounds.Left, -bounds.Top);
+
+            canvas.DrawPicture(picture);
+            canvas.Flush();
+        }
+
+        ct.ThrowIfCancellationRequested();
+
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
+        // svg disposes here (method scope) — AFTER the picture is fully consumed.
+    }
+
+    /// <summary>
+    /// Parses the background spec into an <see cref="SKColor"/>. "transparent" (default,
+    /// case-insensitive) maps to <see cref="SKColors.Transparent"/>; anything else is parsed
+    /// as a hex color via <see cref="SKColor.Parse"/>. An unparseable value is an
+    /// <see cref="ArgumentException"/>.
+    /// </summary>
+    private static SKColor ParseBackground(string? background)
+    {
+        var spec = (background ?? "transparent").Trim();
+        if (spec.Length == 0 || spec.Equals("transparent", StringComparison.OrdinalIgnoreCase))
+            return SKColors.Transparent;
+
+        if (SKColor.TryParse(spec, out var color))
+            return color;
+
+        throw new ArgumentException($"Unrecognized background color: '{background}'", nameof(background));
+    }
 
     public async Task<ImageInfo> GetInfoAsync(byte[] input, CancellationToken ct = default)
     {
