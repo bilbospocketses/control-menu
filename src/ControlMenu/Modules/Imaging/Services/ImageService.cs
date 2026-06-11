@@ -42,8 +42,39 @@ public class ImageService : IImageService
     public Task<byte[]> RasterizeSvgAsync(byte[] svgBytes, RasterizeOptions options, CancellationToken ct = default)
         => throw new NotImplementedException("Phase D");
 
-    public Task<ImageInfo> GetInfoAsync(byte[] input, CancellationToken ct = default)
-        => throw new NotImplementedException("Phase B");
+    public async Task<ImageInfo> GetInfoAsync(byte[] input, CancellationToken ct = default)
+    {
+        var workDir = CreateWorkDir();
+        try
+        {
+            var inputPath = Path.Combine(workDir, "input");
+            await File.WriteAllBytesAsync(inputPath, input, ct);
+
+            // %w=width %h=height %m=format code (e.g. PNG) %A=alpha/matte state.
+            var result = await InvokeMagickAsync($"identify -format \"%w %h %m %A\" \"{inputPath}\"", ct);
+
+            var parts = result.StandardOutput.Trim().Split(' ');
+            if (parts.Length < 4)
+                throw new ImagingException($"Unexpected identify output: '{result.StandardOutput.Trim()}'");
+
+            // %A reports "True"/"Blend"/"False"/"Undefined"; treat anything that isn't
+            // an explicit no-alpha state as having an alpha channel.
+            var alpha = parts[3];
+            var hasAlpha = !alpha.Equals("False", StringComparison.OrdinalIgnoreCase)
+                        && !alpha.Equals("Undefined", StringComparison.OrdinalIgnoreCase);
+
+            return new ImageInfo(
+                Width: int.Parse(parts[0]),
+                Height: int.Parse(parts[1]),
+                Format: parts[2],
+                HasAlpha: hasAlpha,
+                SizeBytes: input.LongLength);
+        }
+        finally
+        {
+            try { Directory.Delete(workDir, recursive: true); } catch { /* best-effort cleanup */ }
+        }
+    }
 
     /// <summary>Allocate a per-call workdir under &lt;dataRoot&gt;/temp/imaging/&lt;guid&gt;/.</summary>
     private string CreateWorkDir()
