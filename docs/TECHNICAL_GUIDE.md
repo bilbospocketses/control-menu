@@ -13,13 +13,14 @@ This document is a comprehensive technical reference for developers working on t
 5. [Jellyfin Module](#5-jellyfin-module)
 6. [Utilities Module](#6-utilities-module)
 7. [Cameras Module](#7-cameras-module)
-8. [Core Services](#8-core-services)
-9. [Database Schema](#9-database-schema)
-10. [Setup Wizard](#10-setup-wizard)
-11. [Settings Architecture](#11-settings-architecture)
-12. [Build and Deployment](#12-build-and-deployment)
-13. [Testing](#13-testing)
-14. [Known Issues and Fixes](#14-known-issues-and-fixes)
+8. [Imaging Tools Module](#8-imaging-tools-module)
+9. [Core Services](#9-core-services)
+10. [Database Schema](#10-database-schema)
+11. [Setup Wizard](#11-setup-wizard)
+12. [Settings Architecture](#12-settings-architecture)
+13. [Build and Deployment](#13-build-and-deployment)
+14. [Testing](#14-testing)
+15. [Known Issues and Fixes](#15-known-issues-and-fixes)
 
 ---
 
@@ -42,6 +43,7 @@ Control Menu is a .NET 10 Blazor Server web application that manages Android dev
 |  - Jellyfin (sort 3)                                      |
 |  - Utilities (sort 4)                                     |
 |  - Cameras (sort 5)                                       |
+|  - Imaging (sort 6)                                       |
 |  - Auto-discovered via reflection at startup              |
 +-----------------------------------------------------------+
 |  Layer 3: Core Services                                   |
@@ -66,7 +68,7 @@ Control Menu is a .NET 10 Blazor Server web application that manages Android dev
 | SQLite | Single-file database, no external server required |
 | SkiaSharp for images | Cross-platform replacement for System.Drawing.Common |
 | ws-scrcpy-web via iframe | Screen mirroring without native scrcpy binary dependency |
-| Self-contained dependencies | 3 auto-managed tools in `dependencies/`; 2 external (Docker, ws-scrcpy-web) |
+| Self-contained dependencies | 6 auto-managed tools in `dependencies/`; 2 external (Docker, ws-scrcpy-web) |
 
 ### Project Layout
 
@@ -94,8 +96,9 @@ src/ControlMenu/
     AndroidPowerTools/       # Module class (ws-scrcpy-web home-page iframe host)
     Cameras/                 # Module class, Pages/, Services/ (Go2RtcService)
     Jellyfin/                # Module class, Pages/, Services/, Workers/
-    Utilities/               # Module class, Pages/, Services/
-  Services/                  # Core services (see section 7)
+    Imaging/                 # Module class, Pages/, Services/ (ImageService, TracingService), Resources/ (magick-policy.xml)
+    Utilities/               # Module class, Pages/, Services/ (FileUnblockService)
+  Services/                  # Core services (see section 9)
   wwwroot/                   # Static assets, CSS, theme, JS interop
 tests/ControlMenu.Tests/
   Data/                      # TestDbContextFactory, AppDbContextTests
@@ -186,8 +189,9 @@ public record ConfigRequirement(
 | Android Devices | `android-devices` | 1 | adb, ws-scrcpy-web | Device List; Google TV / Phone / Tablet / Watch (each shown when ≥1 device of that type is registered) |
 | Android Power Tools | `android-power-tools` | 2 | (none — shares ws-scrcpy-web with Android Devices) | Power Tools |
 | Jellyfin | `jellyfin` | 3 | docker, sqlite3 | DB Date Update, Cast & Crew |
-| Utilities | `utilities` | 4 | (none) | Icon Converter, File Unblocker |
-| Cameras | `cameras` | 5 | (none) | Dynamic: one entry per configured camera |
+| Utilities | `utilities` | 4 | (none) | File Unblocker |
+| Cameras | `cameras` | 5 | go2rtc | Dynamic: one entry per configured camera |
+| Imaging Tools | `imaging` | 6 | magick, vtracer, potrace | Icon Converter, Format Converter, Image Resize, SVG Rasterize, Magic Wand, Tracing |
 
 ### Sidebar Integration
 
@@ -321,7 +325,7 @@ The Android Watch dashboard (`/android/watch`) ships as a near-clone of the Andr
 
 ### Critical Bug Fix
 
-The phone mirror panel required explicit sizing for iframe click handling to work correctly. Without `position: relative` on the container and `position: absolute` on the iframe, click events would not propagate through to the ws-scrcpy-web stream. This is documented further in [Known Issues and Fixes](#14-known-issues-and-fixes).
+The phone mirror panel required explicit sizing for iframe click handling to work correctly. Without `position: relative` on the container and `position: absolute` on the iframe, click events would not propagate through to the ws-scrcpy-web stream. This is documented further in [Known Issues and Fixes](#15-known-issues-and-fixes).
 
 ### Fallback Behavior
 
@@ -425,22 +429,7 @@ The logger respects the `app-timezone` setting for timestamp display. It is cons
 
 The Utilities module provides standalone tools that do not depend on external services.
 
-### IconConversionService
-
-Converts images to ICO format using SkiaSharp. Supports PNG, JPG, BMP, GIF, WEBP, and TIFF input.
-
-Default output sizes: 64x64, 128x128, 256x256.
-
-Two entry points:
-- `ConvertToIcoAsync(sourcePath, targetPath, sizes)` -- File-to-file conversion
-- `ConvertToIcoBytesAsync(sourceBytes, sizes)` -- In-memory conversion (used with File System Access API)
-
-The ICO file format is written manually using `BinaryWriter`:
-1. ICONDIR header (6 bytes: reserved, type=1, count)
-2. ICONDIRENTRY array (16 bytes each: width, height, palette, reserved, planes=1, bpp=32, size, offset)
-3. PNG-encoded image data for each size
-
-Aspect ratio is preserved during resizing using Mitchell cubic resampling. Non-square images are centered with transparent padding.
+> **Icon conversion moved.** Image-to-ICO conversion lived here as `IconConversionService` (SkiaSharp-based) through v1.1.1. It was migrated to the [Imaging Tools module](#8-imaging-tools-module) (now magick-backed) and the service was removed. The old `/utilities/icon-converter` route is preserved by `IconConverterRedirect.razor`, which `replace`-redirects to `/imaging/icon-converter`. Utilities now contains only the File Unblocker.
 
 ### FileUnblockService
 
@@ -455,7 +444,7 @@ The PowerShell command counts blocked files before unblocking because `Unblock-F
 
 ### Pages
 
-- **IconConverter** (`/utilities/icon-converter`) -- Drag-and-drop or File System Access API picker, live preview, download via browser
+- **IconConverterRedirect** (`/utilities/icon-converter`) -- Legacy-route shim. `OnInitialized` calls `Nav.NavigateTo("/imaging/icon-converter", replace: true)` so old bookmarks land on the migrated tool.
 - **FileUnblocker** (`/utilities/file-unblocker`) -- Directory path input, one-click unblock, result count
 
 ---
@@ -595,7 +584,100 @@ go2rtc is auto-installable via the dependency manager. During updates, `Dependen
 
 ---
 
-## 8. Core Services
+## 8. Imaging Tools Module
+
+The Imaging Tools module (`Modules/Imaging/`) is a top-level sidebar section (SortOrder `6`, after Cameras) bundling six image utilities. It is the home of the migrated Icon Converter plus five new tools. The heavy lifting is done by three bundled binaries resolved through `IDependencyPathResolver` (Local-Dependencies-Only) and one in-process NuGet (`Svg.Skia`).
+
+### ImagingModule
+
+```csharp
+Id          => "imaging"
+DisplayName => "Imaging Tools"
+Icon        => "bi-image"
+SortOrder   => 6              // after Cameras (5); see code comment re: PR #39 renumber
+```
+
+`GetNavEntries()` returns six static entries (no dynamic visibility):
+
+| Nav entry | Route | Backing |
+|-----------|-------|---------|
+| Icon Converter | `/imaging/icon-converter` | magick (`icon:auto-resize`) |
+| Format Converter | `/imaging/format-converter` | magick |
+| Image Resize | `/imaging/image-resize` | magick |
+| SVG Rasterize | `/imaging/svg-rasterize` | Svg.Skia (in-process) |
+| Magic Wand | `/imaging/magic-wand` | SkiaSharp preview + magick apply |
+| Tracing | `/imaging/tracing` | vtracer (color) / potrace (mono) |
+
+`ConfigRequirements` and `GetBackgroundJobs()` are both empty. `MainLayout.razor`'s page-title switch has a dedicated `imaging/*` case per route for the breadcrumb.
+
+### Dependencies
+
+The module declares three auto-managed `ModuleDependency` entries (all pre-seeded into the MSI, resolved locally):
+
+| Name | Source | Pinned version | Asset / URL | Install leaf |
+|------|--------|----------------|-------------|--------------|
+| `magick` | GitHub (`ImageMagick/ImageMagick`) | 7.1.2-25 (portable Q8 x64) | `ImageMagick-*-portable-Q8-x64.7z` | `dependencies/magick/` |
+| `vtracer` | GitHub (`visioncortex/vtracer`) | 0.6.4 (no `v` prefix) | `vtracer-x86_64-pc-windows-msvc.zip` | `dependencies/vtracer/` |
+| `potrace` | DirectUrl (SourceForge) | 1.16 | `potrace-1.16.win64.zip` | `dependencies/potrace/` |
+
+Notes:
+- ImageMagick ships its Windows portables as `.7z` on GitHub (the imagemagick.org `.zip` archive path 404s for current builds), so the fetcher uses the new `Expand-Cm7z` helper (shells out to a build-time 7-Zip) rather than `Expand-Archive`. The version pattern matches `ImageMagick ([\d.]+-\d+)`.
+- vtracer's `--version` prints `visioncortex VTracer 0.6.4` (capital `VTracer`), so the version pattern is `VTracer ([\d.]+)`, not the lowercase executable name.
+- potrace is pinned (no version-check URL); its zip extracts to a nested `potrace-1.16.win64/` dir, which the fetcher flattens so `potrace.exe` lands at the leaf root.
+
+### Hardened ImageMagick policy
+
+`magick.exe` reads `policy.xml` from its own directory. The source lives at `Modules/Imaging/Resources/magick-policy.xml` (copied to the build output via a `<Content>` item) and is staged next to the seeded binary by `fetch-magick.ps1`, overwriting the portable's permissive default — no `MAGICK_CONFIGURE_PATH` env var needed. The override is deny-by-default:
+
+- `coder` rights `none` for `*`, then an explicit read|write allowlist: `PNG, JPG, JPEG, WEBP, AVIF, TIFF, HEIC, BMP, GIF, ICO`.
+- `SVG` is read-only (the SVG render path goes through Svg.Skia, not magick MSVG).
+- Known-CVE-historical coders (`MVG, MSL, XBM, EPHEMERAL, LABEL`) are denied explicitly (defense in depth).
+- Resource caps: memory 512MiB, map 1GiB, area 256MP (overridable per-invocation via `-limit`).
+
+### IImageService / ImageService
+
+`ImageService` (singleton) drives magick via `ICommandExecutor.ExecuteResolvedAsync(resolver, "imaging", "magick", …)` — never a bare `magick` invocation. Per-call work goes to a temp workdir that is cleaned up in a `finally`. SVG rasterization is the exception: it renders **in-process** with `Svg.Skia` (no magick), then encodes to PNG/ICO with SkiaSharp.
+
+```csharp
+public interface IImageService
+{
+    Task<byte[]> ConvertFormatAsync(byte[] input, string targetFormat, ConvertFormatOptions? options = null, CancellationToken ct = default);
+    Task<byte[]> ResizeAsync(byte[] input, ResizeOptions options, CancellationToken ct = default);
+    Task<byte[]> ConvertToIcoAsync(byte[] input, int[] sizes, IcoOptions? options = null, CancellationToken ct = default);
+    Task<byte[]> RemoveBackgroundAsync(byte[] input, BackgroundRemoveOptions options, CancellationToken ct = default);
+    Task<byte[]> RasterizeSvgAsync(byte[] svgBytes, RasterizeOptions options, CancellationToken ct = default);
+    Task<ImageInfo> GetInfoAsync(byte[] input, CancellationToken ct = default);
+}
+```
+
+- **Format Converter** exposes only this Q8 build's verified encoders: `PNG, JPG, WEBP, AVIF, TIFF, BMP, GIF`. **HEIC is intentionally excluded from the target dropdown** — this build has no HEIC encoder and would silently write PNG into a `.heic` file. (HEIC is still in the policy allowlist for *decode*.) A quality slider shows only for lossy targets (JPG/WEBP/AVIF).
+- **Magic Wand** removes a background by seed-click + tolerance. `FloodFillPreviewEngine` (in-process SkiaSharp) produces the responsive per-keystroke **preview** over the SignalR circuit; the bytes the user saves always come from magick (`RemoveBackgroundAsync`), never from the preview. The fuzz metric mirrors magick's `-fuzz` (Euclidean RGB distance normalized by √(3·255²)); Contiguous mode maps to magick `-floodfill`, Global to `-transparent`. The preview works on a downscaled copy (longest side ≤ 800px) for snappiness.
+
+### ITracingService / TracingService
+
+Tracing is kept in a **separate** service (`TracingService`, singleton) because it drives different bundled binaries than magick:
+
+```csharp
+Task<byte[]> TraceColorAsync(byte[] input, TraceColorOptions options, CancellationToken ct = default);       // vtracer
+Task<byte[]> TraceMonochromeAsync(byte[] input, TraceMonochromeOptions options, CancellationToken ct = default); // magick → potrace
+```
+
+- **Color**: vtracer reads the PNG directly and emits SVG. `TraceColorOptions` models the v1 subset of vtracer flags (`--colormode`, `--hierarchical`, `--mode`, `--filter_speckle`, `--color_precision`, `--path_precision`), defaulting to vtracer's own defaults.
+- **Monochrome**: potrace cannot read PNG, so magick first rasterizes the input to a bilevel **BMP** (the policy-allowed intermediate; PNM is denied by `policy.xml`), then potrace traces the BMP to SVG.
+
+All tracing methods return the SVG document as UTF-8 bytes.
+
+### Pages
+
+The six pages live under `Modules/Imaging/Pages/`. Browser-side, they use the File System Access API (Chrome/Edge) for native open/save dialogs — a generic `filePickerSaveAs()` JS helper derives the `accept` type from the output extension (the Icon Converter keeps its `.ico`-locked `filePickerSave`). The **Tracing** page additionally renders an inert, always-disabled "Open in svgedit" button (`title="Coming soon — opens when svgedit is embedded in Control Menu."`) — a placeholder for a future svgedit-embedding task.
+
+### Tests
+
+68 imaging tests under `tests/ControlMenu.Tests/Modules/Imaging/`. The `ImageService.*` and `TracingService*` integration tests drive the **real** bundled binaries via a collection fixture that copies `publish/seed/dependencies/{magick,vtracer,potrace}` into a temp deps dir and substitutes the `IDependencyPathResolver`; they are `SkippableFact`s (skipped when the seed is absent). Page render tests use bUnit. The test project adds `Xunit.SkippableFact`.
+
+---
+
+## 9. Core Services
 
 ### CommandExecutor
 
@@ -744,7 +826,7 @@ Required settings:
 
 ---
 
-## 9. Database Schema
+## 10. Database Schema
 
 ### Connection
 
@@ -834,7 +916,7 @@ Enum columns are stored as strings (`HasConversion<string>()`), not integers, fo
 
 ---
 
-## 10. Setup Wizard
+## 11. Setup Wizard
 
 The setup wizard runs on first launch (when the `setup-completed` setting is absent). It has seven steps, each a separate Razor component under `Components/Pages/Setup/`:
 
@@ -856,7 +938,7 @@ During the **Cameras** step, `SubnetDetectionClient.DetectAsync()` calls ws-scrc
 
 ---
 
-## 11. Settings Architecture
+## 12. Settings Architecture
 
 ### Settings Page
 
@@ -885,7 +967,7 @@ The Data Protection keys under `<dataRoot>/keys/` (`C:\ProgramData\ControlMenu\k
 
 ---
 
-## 12. Build and Deployment
+## 13. Build and Deployment
 
 ### Development
 
@@ -923,7 +1005,7 @@ Shipping builds are packaged with [Velopack](https://github.com/velopack/velopac
 
 Under `<dataRoot>`: `config/controlmenu.db`, `logs/` (+ `logs/jellyfin/`), `keys/` (DataProtection), `dependencies/`, `jellyfin-backups/`.
 
-**Dependency pre-seeding.** The MSI bundles pinned runtime binaries (adb, sqlite3, go2rtc) under `seed/dependencies/`; on launch `SeedHydrator` copies any missing leaf into `<dataRoot>/dependencies/` (idempotent, preserves a user-updated version). CI stages the seed via `scripts/stage-seed.ps1` + `scripts/dependencies/fetch-*.ps1` between `dotnet publish` and `vpk pack`.
+**Dependency pre-seeding.** The MSI bundles pinned runtime binaries (adb, sqlite3, go2rtc, magick, vtracer, potrace) under `seed/dependencies/`; on launch `SeedHydrator` copies any missing leaf into `<dataRoot>/dependencies/` (idempotent, preserves a user-updated version). CI stages the seed via `scripts/stage-seed.ps1` + `scripts/dependencies/fetch-*.ps1` (auto-discovered) between `dotnet publish` and `vpk pack`. The shared `_Fetcher.ps1` does pinned-URL + SHA-256 download, deterministic extract (`Expand-CmZip` for `.zip`, `Expand-Cm7z` for ImageMagick's `.7z` via a build-time 7-Zip), and idempotent caching; `fetch-magick.ps1` additionally stages the hardened `magick-policy.xml` next to `magick.exe`.
 
 **In-app updates.** Settings → General → "Check for updates" uses `VelopackUpdateService` (`Velopack.UpdateManager` + `GithubSource`) against the GitHub Releases feed. Apply signals the launcher via `Environment.ExitCode = 75` + `StopApplication`; the launcher performs the Velopack swap and relaunches. The tag-triggered release pipeline lives in `.github/workflows/release.yml`.
 
@@ -959,14 +1041,14 @@ All paths resolve under `<dataRoot>` via `IDataPathResolver` — `C:\ProgramData
 
 ---
 
-## 13. Testing
+## 14. Testing
 
 ### Framework
 
 - **xUnit** -- test runner
 - **Moq** -- mocking framework
 - **bunit** -- Blazor (Razor) component testing
-- **445 tests** (all green on net10.0) across three projects — `ControlMenu.Tests` (app), `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests` — run together via `ControlMenu.sln`
+- **508 tests** (all green on net10.0) across three projects — `ControlMenu.Tests` (app), `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests` — run together via `ControlMenu.sln`
 
 ### Test Database
 
@@ -999,7 +1081,8 @@ tests/ControlMenu.Tests/
     AndroidDevices/               # AdbService tests
     Cameras/                      # CameraService, CamerasModule, CameraProxyMiddleware tests
     Jellyfin/                     # JellyfinService, ComposeParser, CastCrewUpdateWorker tests
-    Utilities/                    # IconConversionService, FileUnblockService tests
+    Imaging/                      # ImageService (real-magick integration), TracingService, page render, ImagingModule (68 tests)
+    Utilities/                    # FileUnblockService tests
     Fakes/                        # Test doubles
     ModuleDiscoveryServiceTests.cs
 ```
@@ -1016,7 +1099,7 @@ All tests run in-process with no external dependencies. ADB, Docker, and other e
 
 ---
 
-## 14. Known Issues and Fixes
+## 15. Known Issues and Fixes
 
 ### Phone Mirror Panel Click Handling
 

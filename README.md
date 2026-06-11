@@ -24,8 +24,9 @@ Control Menu replaces a collection of PowerShell scripts with a cross-platform w
 - **Android Power Tools** &mdash; ws-scrcpy-web's full home page embedded in an iframe at `/android-power-tools`. Direct access to the power-user workflows not duplicated in the Devices module: shell (xterm), file browser, stream configuration, network scan + manual-add, and dependency updater. Theme syncs bidirectionally with the iframe via `postMessage` (requires ws-scrcpy-web v0.1.24-beta.5+).
 - **Cameras** &mdash; View LTS/Hikvision CCTV cameras via [go2rtc](https://github.com/AlexxIT/go2rtc) RTSP-to-browser streaming. Configurable camera count with encrypted credential storage. go2rtc is auto-installed and updated via the dependency manager.
 - **Jellyfin Media Server** &mdash; Database date updates, cast & crew image refresh (background worker with resume support), Docker container management, automated backups with configurable retention
-- **Utilities** &mdash; Image-to-ICO icon conversion (PNG, JPG, BMP, GIF, WEBP, TIFF via SkiaSharp) with native file picker, Windows Zone.Identifier file unblocker
-- **Dependency Management** &mdash; Auto-installs and updates ADB, sqlite3, and go2rtc to a self-contained `dependencies/` folder. Configurable install paths per tool. Version checks via GitHub API and direct URL scraping. Services are automatically stopped before binary updates and restarted after. Docker and ws-scrcpy-web are externally managed (configured in Settings → General).
+- **Imaging Tools** &mdash; Six image utilities backed by bundled [ImageMagick](https://imagemagick.org), [vtracer](https://github.com/visioncortex/vtracer), and [potrace](https://potrace.sourceforge.net/) plus the in-process [Svg.Skia](https://www.nuget.org/packages/Svg.Skia) NuGet: **Icon Converter** (image → multi-size `.ico`), **Format Converter** (PNG/JPG/WEBP/AVIF/TIFF/BMP/GIF), **Image Resize** (pixel / percentage / max-fit), **SVG Rasterize** (SVG → PNG/ICO via Svg.Skia, in-process), **Magic Wand** (click-to-remove background with a live SkiaSharp preview and an authoritative ImageMagick render), and **Tracing** (raster → SVG: color via vtracer, monochrome via potrace).
+- **Utilities** &mdash; Windows Zone.Identifier file unblocker
+- **Dependency Management** &mdash; Auto-installs and updates ADB, sqlite3, go2rtc, ImageMagick, vtracer, and potrace to a self-contained `dependencies/` folder. Configurable install paths per tool. Version checks via GitHub API and direct URL scraping. Services are automatically stopped before binary updates and restarted after. Docker and ws-scrcpy-web are externally managed (configured in Settings → General).
 
 ## Features
 
@@ -37,7 +38,7 @@ Control Menu replaces a collection of PowerShell scripts with a cross-platform w
 - **Background jobs** &mdash; Long-running tasks with progress tracking, cancellation, and resume
 - **Self-contained dependencies** &mdash; Bundled tools folder resolved through an `IDependencyPathResolver` boundary (no system `PATH` resolution for bundled binaries); install/update buttons in UI; services auto-stop/restart during updates
 - **Email notifications** &mdash; Configurable SMTP with dedicated From address for provider authorization
-- **File System Access API** &mdash; Native OS file picker for icon conversion in Chrome/Edge
+- **File System Access API** &mdash; Native OS file picker + save dialog for the Imaging Tools in Chrome/Edge
 
 ## Quick Start
 
@@ -66,7 +67,7 @@ Open http://localhost:5159 in your browser. The first-run wizard will guide you 
 dotnet test
 ```
 
-445 tests covering services, modules, the launcher, and integrations (across `ControlMenu.Tests`, `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests`).
+508 tests covering services, modules, the launcher, and integrations (across `ControlMenu.Tests`, `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests`).
 
 ## Architecture
 
@@ -82,7 +83,8 @@ src/ControlMenu/
     AndroidPowerTools/  #   ws-scrcpy-web home page iframe (shell, files, configure)
     Cameras/            #   CCTV camera streaming via go2rtc
     Jellyfin/           #   Docker ops, DB updates, Cast/Crew worker
-    Utilities/          #   Icon converter, File unblocker
+    Imaging/            #   6 image tools (magick, Svg.Skia, vtracer, potrace)
+    Utilities/          #   File unblocker
   Services/             # Core services (config, secrets, jobs, dependencies, email)
   wwwroot/              # Static assets, CSS, theme, JS interop
 tests/ControlMenu.Tests/
@@ -98,19 +100,22 @@ tests/ControlMenu.Tests/
 | SQLite | Single-file DB, no external database server needed |
 | SkiaSharp for images | Cross-platform replacement for System.Drawing.Common |
 | ws-scrcpy-web via iframe | Screen mirroring without native scrcpy binary dependency |
-| File System Access API | Native OS file dialogs for icon converter (Chrome/Edge) |
-| Self-contained dependencies | 3 auto-managed tools in `dependencies/`; 2 external (Docker, ws-scrcpy-web) |
+| File System Access API | Native OS file dialogs for the Imaging Tools (Chrome/Edge) |
+| Self-contained dependencies | 6 auto-managed tools in `dependencies/`; 2 external (Docker, ws-scrcpy-web) |
 
 ## Dependencies
 
 Control Menu manages two types of dependencies:
 
-**Auto-installable** (downloaded to `dependencies/` folder):
+**Auto-installable** (downloaded to `dependencies/` folder, pre-seeded into the MSI):
 | Tool | Source | Purpose |
 |------|--------|---------|
 | ADB | Google (DirectUrl) | Android device management |
 | sqlite3 | sqlite.org (DirectUrl) | Jellyfin database operations |
 | go2rtc | GitHub (AlexxIT/go2rtc) | RTSP-to-browser camera streaming |
+| ImageMagick (`magick`) | GitHub (ImageMagick/ImageMagick) | Imaging Tools — format/resize/ICO/background-removal (portable Q8 x64, hardened `policy.xml`) |
+| vtracer | GitHub (visioncortex/vtracer) | Imaging Tools — color raster → SVG tracing |
+| potrace | SourceForge (DirectUrl) | Imaging Tools — monochrome raster → SVG tracing |
 
 **External** (installed separately):
 | Tool | Purpose |

@@ -8,8 +8,9 @@ Thanks for your interest. This document covers the essentials for getting a deve
 - **SQLite 3** — runtime library; auto-installed by the app's dependency manager at first run, or install manually
 - **ADB** (Android Debug Bridge) — required for Android device management; auto-installed by the dependency manager
 - **go2rtc** — required for the Cameras module (RTSP → WebRTC streaming); auto-installed
+- **ImageMagick (`magick`), vtracer, potrace** — required for the Imaging Tools module; all auto-installed by the dependency manager (ImageMagick portable Q8 x64, vtracer 0.6.4, potrace 1.16). Their seed fetchers live in `scripts/dependencies/fetch-{magick,vtracer,potrace}.ps1`
 - **ws-scrcpy-web** — required for screen mirroring; separate repo at [bilbospocketses/ws-scrcpy-web](https://github.com/bilbospocketses/ws-scrcpy-web). You run it yourself (external); Control Menu connects to its configured URL (`wsscrcpy-url`, default `http://localhost:8000`)
-- **A modern Chromium-based browser** (Chrome, Edge, Brave) for the Blazor Server UI. Firefox works but has reduced support for File System Access API in the Icon Converter
+- **A modern Chromium-based browser** (Chrome, Edge, Brave) for the Blazor Server UI. Firefox works but has reduced support for the File System Access API used by the Imaging Tools
 
 ## Setup
 
@@ -40,7 +41,7 @@ dotnet ef migrations add <Name> --project src/ControlMenu      # new migration
 src/ControlMenu/
 ├── Components/          Shared Blazor components and page layouts
 ├── Data/                EF Core DbContext, entities, migrations
-├── Modules/             Tool modules (AndroidDevices, AndroidPowerTools, Jellyfin, Cameras, Utilities)
+├── Modules/             Tool modules (AndroidDevices, AndroidPowerTools, Jellyfin, Cameras, Imaging, Utilities)
 │   └── <Module>/
 │       ├── Pages/       Module-specific Razor pages
 │       ├── Services/    Module-specific services

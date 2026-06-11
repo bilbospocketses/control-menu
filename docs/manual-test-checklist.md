@@ -11,8 +11,8 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Cold state status line reads "Find devices and cameras on your network, then manage them."
 - [ ] DISCOVERED — ANDROID and DISCOVERED — CAMERAS sections render below the header with outlined dashed-border placeholder cards when no devices are discovered
 - [ ] Each placeholder card prompts the user to run a scan (Android: "No Android devices found on the last scan. Run a scan to look for Androids on your network."; Cameras: "No new cameras discovered. Run a scan to look for cameras on your network.")
-- [ ] Module-tile nav row pinned to bottom of viewport: Android Devices · Power Tools · Jellyfin · Cameras · Utilities · Settings
-- [ ] Each module tile routes to its module's first nav entry (e.g., Android Devices → /android/devices, Settings → /settings/general); Cameras tile falls back to /settings/cameras when no cameras are registered
+- [ ] Module-tile nav row pinned to bottom of viewport: Android Devices · Power Tools · Jellyfin · Cameras · Imaging Tools · Utilities · Settings
+- [ ] Each module tile routes to its module's first nav entry (e.g., Android Devices → /android/devices, Imaging Tools → /imaging/icon-converter, Settings → /settings/general); Cameras tile falls back to /settings/cameras when no cameras are registered
 - [ ] Click Scan Android — only that button shows ⏳ Scanning Android…; on completion the Discovered — Android section populates (or shows the empty placeholder if nothing found); status-line "last scan Xs ago" updates
 - [ ] Click Scan Cameras — symmetric behavior; if subnet detection fails, an inline error renders in the header band and Cameras section does NOT mark itself scanned
 - [ ] Click Scan All — all three buttons enter Running state simultaneously; Android + Cameras scan in parallel; both Discovered sections populate on completion
@@ -297,6 +297,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] If ADB update available: "Update" button resolves to a versioned URL (not `-latest-`)
 - [ ] After updating a dependency: no infinite update loop (status stays "Up to date")
 - [ ] Neither Node.js nor scrcpy appears in the dependency list (node removed in v1.0.0; the orphaned scrcpy dependency was later dropped — CM invokes neither directly).
+- [ ] The Imaging Tools deps appear and resolve locally: **magick** (GitHub source), **vtracer** (GitHub), **potrace** (DirectUrl) — each shows a local version after Check, not "Not found" (they're pre-seeded into the MSI). magick's Check parses `ImageMagick 7.1.2-25`; vtracer's parses `VTracer 0.6.4`; potrace's parses `potrace 1.16`.
 
 ## 17. Cast & Crew Email Notifications
 
@@ -305,12 +306,59 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Cancel a running Cast & Crew job — email is sent with cancellation notice
 - [ ] If no notification email is set — no error, notification is silently skipped
 
-## 18. Utilities > Icon Converter
+## 18. Imaging Tools (magick + Svg.Skia + vtracer + potrace)
 
-- [ ] Upload a PNG image
-- [ ] Select sizes, click Convert
-- [ ] Download link appears — file downloads successfully
-- [ ] UI is responsive during conversion (not frozen — async via Task.Run)
+Top-level sidebar section (after Cameras). All six tools accept an image via drag-and-drop or the File System Access API picker (Chrome/Edge) and save via the browser download / native save dialog. magick / vtracer / potrace are bundled (auto-installed); verify they show **Found** in Settings → Dependencies first.
+
+### 18a. Sidebar + routing
+
+- [ ] Sidebar shows an "Imaging Tools" group after Cameras with six entries: Icon Converter, Format Converter, Image Resize, SVG Rasterize, Magic Wand, Tracing
+- [ ] Navigating to each entry updates the TopBar breadcrumb to the matching tool name (Icon Converter / Format Converter / Image Resize / SVG Rasterize / Magic Wand / Tracing)
+- [ ] **Legacy redirect:** open `/utilities/icon-converter` directly in the URL bar → it `replace`-redirects to `/imaging/icon-converter` (no back-button trap)
+
+### 18b. Icon Converter (`/imaging/icon-converter`)
+
+- [ ] Upload a PNG image; select sizes; click Convert
+- [ ] Download link appears — `.ico` downloads successfully and opens as a valid multi-size icon
+- [ ] UI stays responsive during conversion (not frozen)
+
+### 18c. Format Converter (`/imaging/format-converter`)
+
+- [ ] Source readout shows width × height / format / alpha after picking an image
+- [ ] Target-format dropdown lists exactly: PNG, JPG, WEBP, AVIF, TIFF, BMP, GIF (no HEIC)
+- [ ] Quality slider appears only for lossy targets (JPG / WEBP / AVIF), hidden for PNG / TIFF / BMP / GIF
+- [ ] Convert PNG → WEBP and PNG → AVIF; output downloads and opens correctly
+- [ ] Output filename uses the chosen extension
+
+### 18d. Image Resize (`/imaging/image-resize`)
+
+- [ ] Original-dimensions readout shows after picking an image
+- [ ] Pixel mode: set explicit width/height, resize, verify output dimensions
+- [ ] Percentage mode: e.g. 50%, verify halved dimensions
+- [ ] Max-dimension-fit mode: longest side capped, aspect ratio preserved
+- [ ] Output preserves the source format; filename is `<base>-resized.<ext>`
+
+### 18e. SVG Rasterize (`/imaging/svg-rasterize`)
+
+- [ ] Pick an `.svg`; rasterize to PNG (rendered in-process via Svg.Skia, no magick)
+- [ ] Output PNG dimensions match the requested size; transparency preserved
+- [ ] Rasterize to ICO option produces a valid icon
+
+### 18f. Magic Wand — background removal (`/imaging/magic-wand`)
+
+- [ ] Pick an image with a clean background; click a background pixel to seed
+- [ ] Drag the tolerance slider — the **preview** updates live per change (in-process SkiaSharp flood-fill; snappy even on a large image because the preview is downscaled to ≤800px longest side)
+- [ ] Toggle Contiguous vs Global — Contiguous clears only the region connected to the seed; Global clears every matching pixel
+- [ ] Click Apply — the **saved** PNG is rendered authoritatively by magick (may differ slightly from the preview) with the background transparent
+- [ ] Save the result; reopen — background is transparent
+
+### 18g. Tracing — raster → SVG (`/imaging/tracing`)
+
+- [ ] Color mode: trace a colorful raster via vtracer; output SVG opens and resembles the source
+- [ ] Tune vtracer knobs (mode pixel/polygon/spline, filter speckle, color precision) — output reflects the change
+- [ ] Monochrome mode: trace a black-and-white raster via potrace (magick first makes a bilevel BMP, then potrace traces it); output is a clean single-color SVG
+- [ ] The "Open in svgedit" button is present but **always disabled** with a "Coming soon" tooltip (placeholder for a future task)
+- [ ] If a tracer binary is missing, a clear error surfaces (not a silent failure)
 
 ## 19. Utilities > File Unblocker (Windows only)
 
