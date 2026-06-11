@@ -54,8 +54,64 @@ window.filePickerSave = async function (suggestedName, base64Data) {
     }
 };
 
+// Opens native save picker with suggested name, writes bytes to the chosen location.
+// Generic variant: derives the accept entry from the suggested name's extension so the
+// picker accepts any image format (PNG/JPG/WEBP/AVIF/TIFF/BMP/GIF/...), unlike
+// filePickerSave which is hard-coded to .ico for the Icon Converter.
+// Returns the saved filename or null if cancelled.
+window.filePickerSaveAs = async function (suggestedName, base64Data) {
+    if (typeof window.showSaveFilePicker !== 'function') return null;
+    try {
+        const dot = suggestedName.lastIndexOf('.');
+        const ext = dot >= 0 ? suggestedName.substring(dot).toLowerCase() : '.png';
+        const mimeByExt = {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.webp': 'image/webp',
+            '.avif': 'image/avif',
+            '.tif': 'image/tiff',
+            '.tiff': 'image/tiff',
+            '.bmp': 'image/bmp',
+            '.gif': 'image/gif',
+            '.svg': 'image/svg+xml'
+        };
+        const mime = mimeByExt[ext] || 'application/octet-stream';
+        const handle = await window.showSaveFilePicker({
+            suggestedName: suggestedName,
+            types: [{
+                description: 'Image files',
+                accept: { [mime]: [ext] }
+            }]
+        });
+        const writable = await handle.createWritable();
+        const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+        await writable.write(bytes);
+        await writable.close();
+        return handle.name;
+    } catch (e) {
+        if (e.name === 'AbortError') return null;
+        throw e;
+    }
+};
+
 // Check if File System Access API is available
 window.hasFileSystemAccess = function () {
     return typeof window.showOpenFilePicker === 'function'
         && typeof window.showSaveFilePicker === 'function';
+};
+
+// Returns an image element's natural (intrinsic) and rendered (client) dimensions, so callers
+// can map a click's OffsetX/OffsetY (rendered coords) back to source-pixel coords:
+//   sourceX = offsetX * naturalWidth / renderedWidth.
+// Used by the Magic Wand page for click-to-seed. Returns null if the element is missing.
+window.getElementRect = function (id) {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    return {
+        naturalWidth: el.naturalWidth || 0,
+        naturalHeight: el.naturalHeight || 0,
+        renderedWidth: el.clientWidth || 0,
+        renderedHeight: el.clientHeight || 0
+    };
 };

@@ -1,0 +1,300 @@
+@page "/imaging/format-converter"
+@using ControlMenu.Modules.Imaging.Services
+@using ControlMenu.Modules.Imaging.Services.Options
+@inject IImageService Svc
+@inject IWebHostEnvironment Env
+@inject IJSRuntime JS
+
+<PageTitle>Format Converter</PageTitle>
+
+<h1><i class="bi bi-arrow-repeat"></i> Format Converter</h1>
+<p class="page-subtitle">Convert an image to a different format. Supported targets: PNG, JPG, WEBP, AVIF, TIFF, BMP, GIF.</p>
+
+<div class="converter-panel">
+    <div class="form-group">
+        <label class="form-label">Source Image</label>
+        @if (_hasFileSystemAccess)
+        {
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+                <button class="btn btn-secondary" @onclick="PickFile">
+                    <i class="bi bi-file-earmark-image"></i> Select Image
+                </button>
+                @if (!string.IsNullOrEmpty(_fileName))
+                {
+                    <span class="file-info">@_fileName (@ControlMenu.Services.FormatHelper.FormatSize(_fileBytes?.Length ?? 0))</span>
+                }
+            </div>
+        }
+        else
+        {
+            <input type="text" class="form-control" style="max-width:500px;"
+                   placeholder="C:\path\to\image.png"
+                   @bind="_sourcePath" @bind:after="OnSourcePathChanged" />
+            <div class="form-hint">File System Access API not available in this browser. Type the full path instead.</div>
+        }
+    </div>
+
+    @if (_sourceInfo is not null)
+    {
+        <div class="form-group">
+            <label class="form-label">Current Image</label>
+            <div class="info-line">
+                Format: <strong>@_sourceInfo.Format</strong>
+                &nbsp;·&nbsp; @_sourceInfo.Width × @_sourceInfo.Height px
+                &nbsp;·&nbsp; @ControlMenu.Services.FormatHelper.FormatSize(_sourceInfo.SizeBytes)
+                @if (_sourceInfo.HasAlpha)
+                {
+                    <span>&nbsp;·&nbsp; has transparency</span>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="form-group">
+        <label class="form-label">Target Format</label>
+        <select class="form-control" style="max-width:200px;" @bind="_targetFormat">
+            @foreach (var fmt in _targetFormats)
+            {
+                <option value="@fmt">@fmt</option>
+            }
+        </select>
+    </div>
+
+    @if (IsLossy(_targetFormat))
+    {
+        <div class="form-group">
+            <label class="form-label">Quality: @_quality</label>
+            <input type="range" min="0" max="100" step="1" class="quality-slider"
+                   value="@_quality"
+                   @oninput="OnQualityChanged" />
+            <div class="form-hint">Higher quality means a larger file. Applies to JPG, WEBP, and AVIF.</div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="error-panel">
+            <i class="bi bi-exclamation-triangle"></i> @_error
+        </div>
+    }
+
+    @if (_converting)
+    {
+        <div class="status-info">
+            <i class="bi bi-arrow-repeat spin"></i> Converting...
+        </div>
+    }
+
+    <button class="btn btn-primary btn-lg" @onclick="Convert"
+            disabled="@(!_canConvert || _converting)">
+        <i class="bi bi-arrow-right-circle"></i> Convert
+    </button>
+
+    @if (_resultMessage is not null)
+    {
+        <div class="download-panel">
+            <i class="bi bi-check-circle-fill" style="color:var(--success-color); font-size:1.2rem;"></i>
+            <div>
+                <strong>@_resultMessage</strong>
+                @if (_savedPath is not null)
+                {
+                    <div style="margin-top:0.25rem; font-size:0.85rem; color:var(--text-secondary);">
+                        Saved to: <code>@_savedPath</code>
+                    </div>
+                }
+            </div>
+            @if (_downloadUrl is not null)
+            {
+                <a href="@_downloadUrl" download="@_outFileName" class="btn-pill btn-pill-success">
+                    <i class="bi bi-download"></i> Download Copy
+                </a>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    // This Q8 build has verified encoders for these formats only. HEIC is intentionally
+    // excluded: magick has no HEIC encoder here and silently writes PNG for a .heic
+    // extension, which would mislead users.
+    private readonly string[] _targetFormats = ["PNG", "JPG", "WEBP", "AVIF", "TIFF", "BMP", "GIF"];
+    private string _targetFormat = "PNG";
+    private int _quality = 90;
+
+    private bool _converting;
+    private string? _error;
+    private string? _resultMessage;
+    private string? _savedPath;
+    private string? _downloadUrl;
+    private string? _outFileName;
+    private ImageInfo? _sourceInfo;
+
+    // File System Access API mode
+    private bool _hasFileSystemAccess;
+    private string? _fileName;
+    private byte[]? _fileBytes;
+
+    // Fallback path mode
+    private string _sourcePath = "";
+
+    private bool _canConvert => _fileBytes is not null || !string.IsNullOrWhiteSpace(_sourcePath);
+
+    private static bool IsLossy(string format) =>
+        format is "JPG" or "WEBP" or "AVIF";
+
+    private void OnQualityChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var q))
+            _quality = Math.Clamp(q, 0, 100);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _hasFileSystemAccess = await JS.InvokeAsync<bool>("hasFileSystemAccess");
+            StateHasChanged();
+        }
+    }
+
+    private async Task PickFile()
+    {
+        _resultMessage = null;
+        _downloadUrl = null;
+        _savedPath = null;
+        _error = null;
+        _sourceInfo = null;
+
+        try
+        {
+            var result = await JS.InvokeAsync<FilePickerResult?>("filePickerOpen", ".png,.jpg,.jpeg,.bmp,.gif,.webp,.tiff,.tif,.avif");
+            if (result is null) return;
+
+            _fileName = result.Name;
+            _fileBytes = System.Convert.FromBase64String(result.BytesBase64);
+
+            await LoadInfoAsync(_fileBytes);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not read selected file: {ex.Message}";
+        }
+    }
+
+    private async Task OnSourcePathChanged()
+    {
+        _resultMessage = null;
+        _downloadUrl = null;
+        _savedPath = null;
+        _error = null;
+        _sourceInfo = null;
+
+        var source = _sourcePath.Trim();
+        if (string.IsNullOrWhiteSpace(source) || !File.Exists(source)) return;
+
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(source);
+            await LoadInfoAsync(bytes);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not read image info: {ex.Message}";
+        }
+    }
+
+    private async Task LoadInfoAsync(byte[] bytes)
+    {
+        try
+        {
+            _sourceInfo = await Svc.GetInfoAsync(bytes);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not read image info: {ex.Message}";
+        }
+    }
+
+    private async Task Convert()
+    {
+        _converting = true;
+        _resultMessage = null;
+        _savedPath = null;
+        _downloadUrl = null;
+        _error = null;
+
+        try
+        {
+            var ext = _targetFormat.ToLowerInvariant();
+            var options = new ConvertFormatOptions { Quality = _quality };
+
+            if (_fileBytes is not null)
+            {
+                // File System Access API mode — convert in memory, save via browser.
+                var baseName = Path.GetFileNameWithoutExtension(_fileName ?? "image");
+                _outFileName = $"{baseName}.{ext}";
+
+                var outBytes = await Svc.ConvertFormatAsync(_fileBytes, _targetFormat, options);
+                var base64 = System.Convert.ToBase64String(outBytes);
+                var savedName = await JS.InvokeAsync<string?>("filePickerSaveAs", _outFileName, base64);
+
+                if (savedName is not null)
+                {
+                    _resultMessage = "Image converted successfully.";
+                    _savedPath = savedName;
+                    PublishWebCopy(outBytes, ext);
+                }
+                else
+                {
+                    _error = "Save cancelled.";
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(_sourcePath))
+            {
+                // Fallback path mode — read bytes, convert in memory, write bytes back to disk.
+                var source = _sourcePath.Trim();
+                if (!File.Exists(source))
+                {
+                    _error = $"File not found: {source}";
+                    return;
+                }
+
+                var sourceDir = Path.GetDirectoryName(source)!;
+                var baseName = Path.GetFileNameWithoutExtension(source);
+                _outFileName = $"{baseName}.{ext}";
+                var targetPath = Path.Combine(sourceDir, _outFileName);
+
+                var sourceBytes = await File.ReadAllBytesAsync(source);
+                var outBytes = await Svc.ConvertFormatAsync(sourceBytes, _targetFormat, options);
+                await File.WriteAllBytesAsync(targetPath, outBytes);
+                _resultMessage = "Image converted successfully.";
+                _savedPath = targetPath;
+                PublishWebCopy(outBytes, ext);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Conversion failed: {ex.Message}";
+        }
+        finally
+        {
+            _converting = false;
+        }
+    }
+
+    private void PublishWebCopy(byte[] bytes, string ext)
+    {
+        var tempDir = Path.Combine(Env.WebRootPath, "temp");
+        Directory.CreateDirectory(tempDir);
+        var webCopy = Path.Combine(tempDir, $"{Guid.NewGuid():N}.{ext}");
+        File.WriteAllBytes(webCopy, bytes);
+        _downloadUrl = $"/temp/{Path.GetFileName(webCopy)}";
+
+        _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+        {
+            try { if (File.Exists(webCopy)) File.Delete(webCopy); } catch { }
+        });
+    }
+
+    private record FilePickerResult(string Name, string BytesBase64);
+}

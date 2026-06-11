@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Imaging Tools — a new top-level module with six image utilities**, each backed by a bundled CLI engine (no managed-imaging-library bloat). New sidebar section at SortOrder 6 (after Cameras):
+  - **Icon Converter** — migrated from Utilities and rebuilt on `magick.exe`'s `icon:auto-resize` (multi-size `.ico`). The old SkiaSharp `IconConversionService` and `/utilities/icon-converter` route are removed; the old route now redirects to `/imaging/icon-converter`.
+  - **Format Converter** — PNG / JPG / WEBP / AVIF / TIFF / BMP / GIF, with a quality control for lossy formats. (HEIC is deliberately excluded — the bundled Q8 build has no HEVC encoder and would silently fall back to PNG.)
+  - **Image Resize** — pixel dimensions (aspect-locked or exact), percentage, or max-dimension fit.
+  - **SVG Rasterize** — renders SVG to PNG/ICO via `Svg.Skia` **in-process** (the SVG never reaches magick's parser) at selectable sizes over a transparent or solid background.
+  - **Magic Wand** — click-to-seed background removal with a live in-process SkiaSharp flood-fill preview and an authoritative `magick -floodfill` apply on save (contiguous or global, adjustable tolerance).
+  - **Tracing** — raster→SVG via two engines, **vtracer** (color) and **potrace** (black & white), each with their real tuning knobs; includes a disabled "Open in svgedit" stub for a future svgedit integration.
+- **Three new bundled binary dependencies**, pre-seeded into the MSI and resolved through the existing Local-Dependencies-Only path resolver (never PATH/env):
+  - **ImageMagick** 7.1.2-25 portable Q8 x64 (`magick`), shipped with a **hardened `policy.xml`** that denies every coder except a v1 format allowlist and explicitly blocks the MVG/MSL/XC generator coders — defense-in-depth against the historical ImageMagick coder CVEs. (This hardening also shaped the implementation: SVG rasterizes via Svg.Skia not magick, and potrace's bitmap intermediate is BMP since PNM coders are denied.)
+  - **vtracer** 0.6.4 (`visioncortex/vtracer` GitHub release).
+  - **potrace** 1.16 (official upstream Windows binary from potrace.sourceforge.net, fetched directly — no custom build repo).
+- **~68 Imaging tests** (xUnit integration tests driving the real bundled binaries end-to-end, plus bUnit page-render tests).
+
+### Changed
+
+- **Added `Svg.Skia` 5.0.0** (unifies on the project's existing SkiaSharp 3.119.2 — no version conflict).
+- The Velopack MSI now pre-seeds `magick` + `vtracer` + `potrace` (~25 MB of engines) so the Imaging tools work on first launch with no separate download. New `fetch-magick.ps1` / `fetch-vtracer.ps1` / `fetch-potrace.ps1` seed fetchers (auto-discovered by `stage-seed.ps1`); `_Fetcher.ps1` gains an `Expand-Cm7z` helper for ImageMagick's `.7z` portable.
+
 ## [1.1.1] - 2026-06-11
 
 ### Changed

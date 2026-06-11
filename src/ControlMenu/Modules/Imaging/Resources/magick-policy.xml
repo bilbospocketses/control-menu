@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policymap [
+  <!ELEMENT policymap (policy)*>
+  <!ELEMENT policy EMPTY>
+  <!ATTLIST policy domain (delegate|coder|filter|path|resource|cache) #IMPLIED>
+  <!ATTLIST policy name CDATA #IMPLIED>
+  <!ATTLIST policy rights CDATA #IMPLIED>
+  <!ATTLIST policy pattern CDATA #IMPLIED>
+  <!ATTLIST policy value CDATA #IMPLIED>
+]>
+<policymap>
+  <!-- Control Menu Imaging Tools policy override.
+       Deny all formats by default, then explicitly allow the v1 allowlist.
+       Read-only allowed for SVG (our pipeline reads via Svg.Skia, not magick MSVG). -->
+  <policy domain="coder" rights="none" pattern="*" />
+  <policy domain="coder" rights="read|write" pattern="{PNG,JPG,JPEG,WEBP,AVIF,TIFF,HEIC,BMP,GIF,ICO}" />
+  <policy domain="coder" rights="read" pattern="SVG" />
+  <!-- Deny known-CVE-historical coder formats explicitly even if the wildcard above
+       would have done it (defense in depth). -->
+  <policy domain="coder" rights="none" pattern="{MVG,MSL,XBM,EPHEMERAL,LABEL}" />
+  <!-- Pin resource caps; these can also be overridden per-invocation via -limit -->
+  <policy domain="resource" name="memory" value="512MiB" />
+  <policy domain="resource" name="map" value="1GiB" />
+  <policy domain="resource" name="area" value="256MP" />
+</policymap>

@@ -1,0 +1,476 @@
+@page "/imaging/tracing"
+@using System.Globalization
+@using ControlMenu.Modules.Imaging.Services
+@using ControlMenu.Modules.Imaging.Services.Options
+@inject ITracingService Svc
+@inject IWebHostEnvironment Env
+@inject IJSRuntime JS
+
+<PageTitle>Tracing</PageTitle>
+
+<h1><i class="bi bi-pencil"></i> Tracing</h1>
+<p class="page-subtitle">Trace a raster image into a scalable SVG. Pick <strong>Color</strong> (vtracer) for multi-color art or <strong>Black &amp; White</strong> (potrace) for line art and silhouettes. Supported inputs: PNG, JPG, JPEG, BMP, GIF, WEBP, TIFF.</p>
+
+<div class="converter-panel">
+    <div class="form-group">
+        <label class="form-label">Source Image</label>
+        @if (_hasFileSystemAccess)
+        {
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+                <button class="btn btn-secondary" @onclick="PickFile">
+                    <i class="bi bi-file-earmark-image"></i> Select Image
+                </button>
+                @if (!string.IsNullOrEmpty(_fileName))
+                {
+                    <span class="file-info">@_fileName (@ControlMenu.Services.FormatHelper.FormatSize(_fileBytes?.Length ?? 0))</span>
+                }
+            </div>
+        }
+        else
+        {
+            <input type="text" class="form-control" style="max-width:500px;"
+                   placeholder="C:\path\to\image.png"
+                   @bind="_sourcePath" @bind:after="OnSourcePathChanged" />
+            <div class="form-hint">File System Access API not available in this browser. Type the full path instead.</div>
+        }
+    </div>
+
+    <div class="form-group">
+        <label class="form-label">Engine</label>
+        <div class="mode-options">
+            <label class="mode-radio">
+                <input type="radio" name="engine" value="color"
+                       checked="@(_engine == "color")"
+                       @onchange="@(() => SetEngine("color"))" />
+                Color (vtracer)
+            </label>
+            <label class="mode-radio">
+                <input type="radio" name="engine" value="bw"
+                       checked="@(_engine == "bw")"
+                       @onchange="@(() => SetEngine("bw"))" />
+                Black &amp; White (potrace)
+            </label>
+        </div>
+        <div class="form-hint">
+            @if (_engine == "color")
+            {
+                <span>vtracer reads the raster directly and emits a layered, multi-color SVG.</span>
+            }
+            else
+            {
+                <span>potrace traces a single-color path from a bilevel version of the image.</span>
+            }
+        </div>
+    </div>
+
+    @if (_engine == "color")
+    {
+        <div class="options-grid">
+            <div class="form-group">
+                <label class="form-label">Color Mode</label>
+                <select class="form-control" style="max-width:200px;" @bind="_colorColorMode">
+                    <option value="color">Color</option>
+                    <option value="bw">Binary (bw)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Hierarchical</label>
+                <select class="form-control" style="max-width:200px;" @bind="_colorHierarchical">
+                    <option value="stacked">Stacked</option>
+                    <option value="cutout">Cutout</option>
+                </select>
+                <div class="form-hint">How overlapping color layers are composed (color mode only).</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Curve Mode</label>
+                <select class="form-control" style="max-width:200px;" @bind="_colorMode">
+                    <option value="pixel">Pixel</option>
+                    <option value="polygon">Polygon</option>
+                    <option value="spline">Spline</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Filter Speckle: @_colorFilterSpeckle px</label>
+                <input type="number" min="0" max="128" step="1" class="form-control" style="max-width:120px;"
+                       value="@_colorFilterSpeckle" @oninput="OnColorFilterSpeckleChanged" />
+                <div class="form-hint">Discard patches smaller than this many pixels.</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Color Precision: @_colorColorPrecision bits</label>
+                <input type="number" min="1" max="8" step="1" class="form-control" style="max-width:120px;"
+                       value="@_colorColorPrecision" @oninput="OnColorColorPrecisionChanged" />
+                <div class="form-hint">Significant bits per RGB channel.</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Path Precision: @_colorPathPrecision decimals</label>
+                <input type="number" min="0" max="16" step="1" class="form-control" style="max-width:120px;"
+                       value="@_colorPathPrecision" @oninput="OnColorPathPrecisionChanged" />
+                <div class="form-hint">Decimal places in path coordinates.</div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="options-grid">
+            <div class="form-group">
+                <label class="form-label">Threshold: @((int)Math.Round(_monoThreshold * 100))%</label>
+                <input type="range" min="0" max="100" step="1" class="threshold-slider"
+                       value="@((int)Math.Round(_monoThreshold * 100))" @oninput="OnMonoThresholdChanged" />
+                <div class="form-hint">Black/white cutoff. Lower keeps more white; higher keeps more black.</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Turd Size: @_monoTurdSize px</label>
+                <input type="number" min="0" max="128" step="1" class="form-control" style="max-width:120px;"
+                       value="@_monoTurdSize" @oninput="OnMonoTurdSizeChanged" />
+                <div class="form-hint">Suppress speckles up to this many pixels.</div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Alpha Max: @_monoAlphaMax.ToString("0.0", CultureInfo.InvariantCulture)</label>
+                <input type="number" min="0" max="1.334" step="0.1" class="form-control" style="max-width:120px;"
+                       value="@_monoAlphaMax.ToString("0.0##", CultureInfo.InvariantCulture)" @oninput="OnMonoAlphaMaxChanged" />
+                <div class="form-hint">Corner threshold. Higher = smoother corners, lower = sharper.</div>
+            </div>
+
+            <div class="form-group">
+                <label class="size-checkbox">
+                    <input type="checkbox" checked="@_monoOptimizeCurve" @onchange="e => _monoOptimizeCurve = (bool)e.Value!" />
+                    Optimize curves
+                </label>
+                <div class="form-hint">On = fewer, longer Bézier segments (potrace default).</div>
+            </div>
+
+            <div class="form-group">
+                <label class="size-checkbox">
+                    <input type="checkbox" checked="@_monoInvert" @onchange="e => _monoInvert = (bool)e.Value!" />
+                    Invert (trace white on black)
+                </label>
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="error-panel">
+            <i class="bi bi-exclamation-triangle"></i> @_error
+        </div>
+    }
+
+    @if (_tracing)
+    {
+        <div class="status-info">
+            <i class="bi bi-arrow-repeat spin"></i> Tracing@(_engine == "color" ? " with vtracer" : " with potrace")...
+        </div>
+    }
+
+    <div class="action-row">
+        <button class="btn btn-primary btn-lg" @onclick="Trace"
+                disabled="@(!_canTrace || _tracing)">
+            <i class="bi bi-arrow-right-circle"></i> Trace
+        </button>
+
+        @* svgedit embedding lands in a future task; this is an inert, always-disabled placeholder
+           until then (activated by the svgedit-integration task on the roadmap). *@
+        <button class="btn btn-secondary btn-lg" disabled
+                title="Coming soon — opens when svgedit is embedded in Control Menu.">
+            <i class="bi bi-vector-pen"></i> Open in svgedit
+        </button>
+    </div>
+
+    @if (_previewUrl is not null)
+    {
+        <div class="form-group" style="margin-top:1.25rem;">
+            <label class="form-label">SVG Preview</label>
+            <div class="trace-stage checker">
+                <img src="@_previewUrl" class="trace-image" alt="Traced SVG preview" />
+            </div>
+        </div>
+    }
+
+    @if (_resultMessage is not null)
+    {
+        <div class="download-panel">
+            <i class="bi bi-check-circle-fill" style="color:var(--success-color); font-size:1.2rem;"></i>
+            <div>
+                <strong>@_resultMessage</strong>
+                @if (_savedPath is not null)
+                {
+                    <div style="margin-top:0.25rem; font-size:0.85rem; color:var(--text-secondary);">
+                        Saved to: <code>@_savedPath</code>
+                    </div>
+                }
+            </div>
+            @if (_downloadUrl is not null)
+            {
+                <a href="@_downloadUrl" download="@_outFileName" class="btn-pill btn-pill-success">
+                    <i class="bi bi-download"></i> Download Copy
+                </a>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    // "color" => vtracer, "bw" => potrace. Drives which option block + which service call runs.
+    private string _engine = "color";
+
+    // Color (vtracer) options — mirror TraceColorOptions defaults exactly.
+    private string _colorColorMode = "color";
+    private string _colorHierarchical = "stacked";
+    private string _colorMode = "spline";
+    private int _colorFilterSpeckle = 4;
+    private int _colorColorPrecision = 6;
+    private int _colorPathPrecision = 8;
+
+    // Black & White (potrace) options — mirror TraceMonochromeOptions defaults exactly.
+    private double _monoThreshold = 0.5;
+    private int _monoTurdSize = 2;
+    private double _monoAlphaMax = 1.0;
+    private bool _monoOptimizeCurve = true;
+    private bool _monoInvert;
+
+    private bool _tracing;
+    private string? _error;
+    private string? _resultMessage;
+    private string? _savedPath;
+    private string? _downloadUrl;
+    private string? _outFileName;
+
+    // Rendered SVG preview (a temp web-copy URL under /temp; SVG renders fine in <img>).
+    private string? _previewUrl;
+
+    // File System Access API mode
+    private bool _hasFileSystemAccess;
+    private string? _fileName;
+    private byte[]? _fileBytes;
+
+    // Fallback path mode
+    private string _sourcePath = "";
+
+    private bool _canTrace => _fileBytes is not null || !string.IsNullOrWhiteSpace(_sourcePath);
+
+    private void SetEngine(string engine)
+    {
+        _engine = engine;
+        // Switching engines invalidates a prior trace from the other engine.
+        ResetResult();
+        _previewUrl = null;
+    }
+
+    private void OnColorFilterSpeckleChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v)) _colorFilterSpeckle = Math.Clamp(v, 0, 128);
+    }
+
+    private void OnColorColorPrecisionChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v)) _colorColorPrecision = Math.Clamp(v, 1, 8);
+    }
+
+    private void OnColorPathPrecisionChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v)) _colorPathPrecision = Math.Clamp(v, 0, 16);
+    }
+
+    private void OnMonoThresholdChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var pct))
+            _monoThreshold = Math.Clamp(pct, 0, 100) / 100.0;
+    }
+
+    private void OnMonoTurdSizeChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v)) _monoTurdSize = Math.Clamp(v, 0, 128);
+    }
+
+    private void OnMonoAlphaMaxChanged(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+            _monoAlphaMax = Math.Clamp(v, 0.0, 1.334);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _hasFileSystemAccess = await JS.InvokeAsync<bool>("hasFileSystemAccess");
+            StateHasChanged();
+        }
+    }
+
+    private async Task PickFile()
+    {
+        ResetResult();
+        _previewUrl = null;
+        _error = null;
+
+        try
+        {
+            var result = await JS.InvokeAsync<FilePickerResult?>("filePickerOpen", ".png,.jpg,.jpeg,.bmp,.gif,.webp,.tiff,.tif");
+            if (result is null) return;
+
+            _fileName = result.Name;
+            _fileBytes = System.Convert.FromBase64String(result.BytesBase64);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not read selected file: {ex.Message}";
+        }
+    }
+
+    private async Task OnSourcePathChanged()
+    {
+        ResetResult();
+        _previewUrl = null;
+        _error = null;
+
+        var source = _sourcePath.Trim();
+        if (string.IsNullOrWhiteSpace(source) || !File.Exists(source)) return;
+
+        // Path mode reads bytes lazily at trace time; just clear stale state here.
+        await Task.CompletedTask;
+    }
+
+    private async Task Trace()
+    {
+        _tracing = true;
+        ResetResult();
+        _previewUrl = null;
+        _error = null;
+
+        try
+        {
+            byte[] sourceBytes;
+            string baseName;
+
+            if (_fileBytes is not null)
+            {
+                sourceBytes = _fileBytes;
+                baseName = Path.GetFileNameWithoutExtension(_fileName ?? "image");
+            }
+            else if (!string.IsNullOrWhiteSpace(_sourcePath))
+            {
+                var source = _sourcePath.Trim();
+                if (!File.Exists(source))
+                {
+                    _error = $"File not found: {source}";
+                    return;
+                }
+                sourceBytes = await File.ReadAllBytesAsync(source);
+                baseName = Path.GetFileNameWithoutExtension(source);
+            }
+            else
+            {
+                return;
+            }
+
+            _outFileName = $"{baseName}.svg";
+
+            // Run the matching tracer to get SVG bytes.
+            var svgBytes = _engine == "color"
+                ? await Svc.TraceColorAsync(sourceBytes, new TraceColorOptions
+                {
+                    ColorMode = _colorColorMode,
+                    Hierarchical = _colorHierarchical,
+                    Mode = _colorMode,
+                    FilterSpeckle = _colorFilterSpeckle,
+                    ColorPrecision = _colorColorPrecision,
+                    PathPrecision = _colorPathPrecision
+                })
+                : await Svc.TraceMonochromeAsync(sourceBytes, new TraceMonochromeOptions
+                {
+                    Threshold = _monoThreshold,
+                    TurdSize = _monoTurdSize,
+                    AlphaMax = _monoAlphaMax,
+                    OptimizeCurve = _monoOptimizeCurve,
+                    Invert = _monoInvert
+                });
+
+            // Publish a temp web-copy so the <img> preview can render the SVG. The same copy
+            // doubles as the Download Copy target (matches the other Imaging pages).
+            PublishWebCopy(svgBytes, baseName, out var previewUrl);
+            _previewUrl = previewUrl;
+            _downloadUrl = previewUrl;
+
+            // Save via the native picker (FSA mode) or back to the source directory (path mode).
+            if (_fileBytes is not null)
+            {
+                var base64 = System.Convert.ToBase64String(svgBytes);
+                var savedName = await JS.InvokeAsync<string?>("filePickerSaveAs", _outFileName, base64);
+                if (savedName is not null)
+                {
+                    _resultMessage = "Image traced successfully.";
+                    _savedPath = savedName;
+                }
+                else
+                {
+                    // Save cancelled, but the preview is still useful — keep it, note the cancel.
+                    _resultMessage = "Image traced. Save cancelled — use Download Copy below.";
+                }
+            }
+            else
+            {
+                var source = _sourcePath.Trim();
+                var sourceDir = Path.GetDirectoryName(source)!;
+                var targetPath = Path.Combine(sourceDir, _outFileName);
+                await File.WriteAllBytesAsync(targetPath, svgBytes);
+                _resultMessage = "Image traced successfully.";
+                _savedPath = targetPath;
+            }
+        }
+        catch (ArgumentException ex)
+        {
+            _error = $"Could not trace image: {ex.Message}";
+        }
+        catch (ImagingException ex)
+        {
+            // Non-zero tracer/magick exit surfaces here.
+            _error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Trace failed: {ex.Message}";
+        }
+        finally
+        {
+            _tracing = false;
+        }
+    }
+
+    /// <summary>
+    /// Writes <paramref name="svgBytes"/> to a GUID-named .svg under wwwroot/temp and returns the
+    /// public URL via <paramref name="url"/>, scheduling a best-effort delete after 5 minutes.
+    /// The basename is only kept for the download filename; the on-disk temp name is a GUID to
+    /// avoid collisions between concurrent traces.
+    /// </summary>
+    private void PublishWebCopy(byte[] svgBytes, string baseName, out string url)
+    {
+        var tempDir = Path.Combine(Env.WebRootPath, "temp");
+        Directory.CreateDirectory(tempDir);
+        var webCopy = Path.Combine(tempDir, $"{Guid.NewGuid():N}.svg");
+        File.WriteAllBytes(webCopy, svgBytes);
+        url = $"/temp/{Path.GetFileName(webCopy)}";
+
+        _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+        {
+            try { if (File.Exists(webCopy)) File.Delete(webCopy); } catch { }
+        });
+    }
+
+    private void ResetResult()
+    {
+        _resultMessage = null;
+        _savedPath = null;
+        _downloadUrl = null;
+        _outFileName = null;
+    }
+
+    // FilePickerResult is the shared public record in this namespace (FilePickerInterop.cs) so
+    // render tests can hand the same type to the bUnit JSInterop mock.
+}

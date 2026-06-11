@@ -12,7 +12,6 @@ public class UtilitiesModule : IToolModule
 
     public IEnumerable<NavEntry> GetNavEntries() =>
     [
-        new NavEntry("Icon Converter", "/utilities/icon-converter", "🖼️", 0),
         new NavEntry("File Unblocker", "/utilities/file-unblocker", "🔓", 1)
     ];
 

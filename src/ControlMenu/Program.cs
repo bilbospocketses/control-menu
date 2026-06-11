@@ -126,8 +126,15 @@ builder.Services.AddScoped<IJellyfinService, JellyfinService>();
 builder.Services.AddScoped<IBackgroundJobService, BackgroundJobService>();
 
 // Utilities module services
-builder.Services.AddSingleton<IIconConversionService, IconConversionService>();
 builder.Services.AddSingleton<IFileUnblockService, FileUnblockService>();
+
+// Imaging Tools module services (magick-backed)
+builder.Services.AddSingleton<ControlMenu.Modules.Imaging.Services.IImageService,
+                              ControlMenu.Modules.Imaging.Services.ImageService>();
+// Tracing service (raster -> SVG: vtracer color + potrace monochrome). Separate from
+// IImageService because it drives the vtracer/potrace bundled binaries, not just magick.
+builder.Services.AddSingleton<ControlMenu.Modules.Imaging.Services.ITracingService,
+                              ControlMenu.Modules.Imaging.Services.TracingService>();
 
 // Cameras module services
 builder.Services.AddSingleton<ICameraChangeNotifier, CameraChangeNotifier>();
