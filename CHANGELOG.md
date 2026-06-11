@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-06-11
+
 ### Changed
 
 - **Module `SortOrder` values renumbered to eliminate a collision.** `JellyfinModule` and `AndroidPowerToolsModule` both declared `SortOrder = 2`, so the sidebar order held only by the `DisplayName` alphabetical tiebreak. Renumbered Jellyfin `2 → 3`, Utilities `3 → 4`, and Cameras `4 → 5` so every module has a distinct ordering key (Android Devices `1` and Android Power Tools `2` unchanged). The rendered sidebar / module-tile order is unchanged — this only removes the fragile tie. `CamerasModuleTests.SortOrder_Is4` renamed to `SortOrder_Is5`.
-- **Velopack `0.0.1589-ga2c5a97` (prerelease) → `1.1.1` (stable).** Bumped in both production csprojs (`ControlMenu`, `ControlMenuLauncher`) and the `vpk` CLI pin (`release.yml`, `scripts/local-pack.ps1`) — the CLI and runtime library share a release line and must stay in lockstep. The earlier prerelease pin predated stable `--msi` / `--instLocation`, now standard post-1.0. The consumed .NET surface (`UpdateManager` / `GithubSource` / `CheckForUpdatesAsync` / `DownloadUpdatesAsync` / `VelopackApp.Build().SetAutoApplyOnStartup(false).Run()`) is source-compatible — verified by a clean Release build, the full 445-test suite, and a local `vpk 1.1.1` `--msi --instLocation PerMachine` pack producing a working `ControlMenu-stable.msi`. Supersedes Dependabot #34.
+- **Velopack `0.0.1589-ga2c5a97` (prerelease) → `1.2.0` (stable).** Bumped in both production csprojs (`ControlMenu`, `ControlMenuLauncher`) and the `vpk` CLI pin (`release.yml`, `scripts/local-pack.ps1`) — the CLI and runtime library share a release line and must stay in lockstep. Landed in two steps: PR #41 moved the prerelease pin to `1.1.1` (superseding Dependabot #34), then Dependabot #44 auto-bumped the NuGet `Velopack` package `1.1.1 → 1.2.0`; this release brings the `vpk` CLI pin up to `1.2.0` to restore lockstep. `1.2.0` is the line where `--msi --instLocation PerMachine` is solidly supported (bundled WiX 5). The consumed .NET surface (`UpdateManager` / `GithubSource` / `CheckForUpdatesAsync` / `DownloadUpdatesAsync` / `VelopackApp.Build().SetAutoApplyOnStartup(false).Run()`) is source-compatible — verified by a clean Release build and the full 445-test suite. `1.2.0`'s `--msi --instLocation PerMachine` packaging is exercised by the release CI on tag and by `scripts/local-pack.ps1` locally.
+- **Bumped `xunit` `2.9.2 → 2.9.3`** (test dependency; Dependabot #45).
 
 ### Removed
 
@@ -20,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **`release.yml` publish-job download-artifact path** — added explicit `name: windows-final` + `path: artifacts/windows-final/` to the `actions/download-artifact@v8.0.1` step. **Symptom:** v1.1.0's release.yml run completed with all 3 jobs green, but the published v1.1.0 GitHub Release contained only `SHA256SUMS` (195 bytes); the MSI + nupkg + releases.stable.json were missing despite being present in the workflow artifact. **Root cause:** `actions/download-artifact@v8` with no `name:` filter and `path: artifacts/` flattens a single artifact's files directly into `artifacts/` (no auto-subdirectory), but the `softprops/action-gh-release@v3.0.0` globs below targeted `artifacts/windows-final/*.msi` / `*.nupkg` / `releases.<channel>.json` — zero matches, silent skip per softprops's "Pattern '...' does not match any files" advisory. Drift introduced when Dependabot bumped download-artifact (PR #4, v4 → v8) on 2026-05-18 — v4 may have behaved differently for single-artifact downloads; either way, the explicit `name:` + nested `path:` is the deterministic fix that also future-proofs against any version-specific behavior. **Recovery:** v1.1.0 release patched 2026-05-19 via manual `gh run download` + `gh release upload` of the original artifact bytes (SHAs verified against existing SHA256SUMS); no rebuild required, original Sigstore attestation unchanged + still verifies against the patched MSI.
 - **`scripts/fresh-vm-smoke.md` MSI filename references** — step 1's expected release assets list listed `ControlMenu-<version>-win-Setup.msi` / `*-win.nupkg` / `*-win-delta.nupkg` — that's a notional naming convention that doesn't match vpk's actual output. vpk embeds the **channel** (not the version) in the MSI name and the **version + channel** in the nupkg names: `ControlMenu-<channel>.msi`, `ControlMenu-<version>-<channel>-full.nupkg`, `ControlMenu-<version>-<channel>-delta.nupkg`. Runbook updated with the correct convention + a note that channel separation (not version embedding) is the load-bearing axis for Velopack's update feed.
+
+### Security
+
+- **Hardened the Dependabot auto-merge workflow** (`.github/workflows/dependabot-auto-merge.yml`, #42). The top-level token is narrowed to `contents: read`, with the job stepping up to only the writes it needs (`contents` + `pull-requests: write`) — a top-level write token is flagged high-severity by OpenSSF Scorecard's `TokenPermissions` check. Auto-merge now covers patch/minor bumps **and security updates of any size** (gated on `dependabot/fetch-metadata`'s `ghsa-id`), while non-security **major** bumps are held with a `needs-manual-review` label + comment instead of merging.
+- **Bumped `github/codeql-action` `4.36.1 → 4.36.2`** (`scorecard.yml`, #43) — SHA-pinned with a precise version comment, per the repo's pin discipline.
 
 ## [1.1.0] - 2026-05-19
 
@@ -262,7 +270,8 @@ First official release.
 - **`fix(theme)` TopBar theme toggle** stays in sync when theme changes via the iframe bridge.
 - **`fix(theme)` Blazor subscriber pattern** — switched from returning a JS unsubscribe closure (broke the Blazor circuit) to a numeric-token handle pattern.
 
-[Unreleased]: https://github.com/bilbospocketses/control-menu/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/bilbospocketses/control-menu/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/bilbospocketses/control-menu/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/bilbospocketses/control-menu/compare/v1.0.1...v1.1.0
 [1.1.0-beta.3]: https://github.com/bilbospocketses/control-menu/compare/v1.1.0-beta.2...v1.1.0-beta.3
 [1.1.0-beta.2]: https://github.com/bilbospocketses/control-menu/compare/v1.1.0-beta.1...v1.1.0-beta.2

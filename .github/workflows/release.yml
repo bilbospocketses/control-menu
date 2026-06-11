@@ -55,11 +55,11 @@ jobs:
       # Pin vpk to match the NuGet `Velopack` package version in
       # ControlMenu.csproj + ControlMenuLauncher.csproj — the CLI and the
       # runtime library share a release/serialization line and must stay in
-      # lockstep. 1.1.1 is the first stable line we ship on; `--msi` /
-      # `--instLocation` are standard post-1.0 (the earlier 0.0.1589 prerelease
-      # pin predated their stable availability). Mirrors ws-scrcpy-web's pin.
+      # lockstep. 1.2.0 matches the Dependabot bump of the Velopack NuGet
+      # package (#44); `--msi` / `--instLocation PerMachine` are solidly
+      # supported on the 1.2.0 line (bundled WiX 5). Mirrors ws-scrcpy-web's pin.
       - name: Install vpk CLI
-        run: dotnet tool install -g vpk --version 1.1.1
+        run: dotnet tool install -g vpk --version 1.2.0
 
       # No .sln in this repo — restore + build per project directly.
       # Mirrors the local-pack.ps1 approach (3x dotnet publish below).

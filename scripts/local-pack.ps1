@@ -59,7 +59,7 @@ function Resolve-VendoredDotnet {
 # Resolve vpk (global tool, mirrors ws-scrcpy-web release.yml)
 # ---------------------------------------------------------------------------
 function Resolve-Vpk {
-    $vpkVersion = '1.1.1'
+    $vpkVersion = '1.2.0'
     $listed = dotnet tool list -g | Select-String -Pattern "^vpk\s+$([regex]::Escape($vpkVersion))\s"
     if (-not $listed) {
         Write-Host "Installing vpk $vpkVersion globally (matches the Velopack NuGet pin)..."
