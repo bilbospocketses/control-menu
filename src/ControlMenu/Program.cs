@@ -129,6 +129,10 @@ builder.Services.AddScoped<IBackgroundJobService, BackgroundJobService>();
 builder.Services.AddSingleton<IIconConversionService, IconConversionService>();
 builder.Services.AddSingleton<IFileUnblockService, FileUnblockService>();
 
+// Imaging Tools module services (magick-backed)
+builder.Services.AddSingleton<ControlMenu.Modules.Imaging.Services.IImageService,
+                              ControlMenu.Modules.Imaging.Services.ImageService>();
+
 // Cameras module services
 builder.Services.AddSingleton<ICameraChangeNotifier, CameraChangeNotifier>();
 builder.Services.AddScoped<ICameraService, CameraService>();

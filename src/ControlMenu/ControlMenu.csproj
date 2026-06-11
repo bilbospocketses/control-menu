@@ -33,4 +33,10 @@
     <ProjectReference Include="..\ControlMenu.Common\ControlMenu.Common.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Modules\Imaging\Resources\magick-policy.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

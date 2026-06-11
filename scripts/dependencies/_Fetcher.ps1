@@ -82,6 +82,30 @@ function Expand-CmZip {
     Expand-Archive -LiteralPath $Archive -DestinationPath $DestDir -Force
 }
 
+function Expand-Cm7z {
+    param(
+        [Parameter(Mandatory)][string] $Archive,
+        [Parameter(Mandatory)][string] $DestDir
+    )
+    # Some deps (ImageMagick) ship .7z portables. Expand-Archive can't read .7z,
+    # so shell out to 7-Zip. CI (windows-latest) has 7z on PATH; locally we fall
+    # back to the default install dir. 7z is a BUILD tool (like vpk / dotnet),
+    # not a bundled app dependency, so a system 7z is acceptable for staging.
+    $sevenZip = (Get-Command 7z -ErrorAction SilentlyContinue).Source
+    if (-not $sevenZip) {
+        $candidate = Join-Path $env:ProgramFiles '7-Zip\7z.exe'
+        if (Test-Path $candidate) { $sevenZip = $candidate }
+    }
+    if (-not $sevenZip) {
+        throw "7-Zip not found. CI runners have 7z on PATH; install 7-Zip locally to extract .7z deps."
+    }
+    if (Test-Path $DestDir) { Remove-Item -LiteralPath $DestDir -Recurse -Force }
+    New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
+    Write-Host "  extracting : $Archive -> $DestDir (7z)"
+    & $sevenZip x $Archive "-o$DestDir" -y -bso0 -bsp0
+    if ($LASTEXITCODE -ne 0) { throw "7z extraction failed (exit $LASTEXITCODE): $Archive" }
+}
+
 function Copy-CmStage {
     param(
         [Parameter(Mandatory)][string] $From,
