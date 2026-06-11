@@ -37,7 +37,9 @@ public class ImagingModule : IToolModule
 
     public IEnumerable<NavEntry> GetNavEntries() =>
     [
-        new NavEntry("Icon Converter", "/imaging/icon-converter", "🖼️", 0)
+        new NavEntry("Icon Converter", "/imaging/icon-converter", "🖼️", 0),
+        new NavEntry("Format Converter", "/imaging/format-converter", "🔁", 1),
+        new NavEntry("Image Resize", "/imaging/image-resize", "📐", 2)
     ];
 
     public IEnumerable<BackgroundJobDefinition> GetBackgroundJobs() => [];

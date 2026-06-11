@@ -54,6 +54,46 @@ window.filePickerSave = async function (suggestedName, base64Data) {
     }
 };
 
+// Opens native save picker with suggested name, writes bytes to the chosen location.
+// Generic variant: derives the accept entry from the suggested name's extension so the
+// picker accepts any image format (PNG/JPG/WEBP/AVIF/TIFF/BMP/GIF/...), unlike
+// filePickerSave which is hard-coded to .ico for the Icon Converter.
+// Returns the saved filename or null if cancelled.
+window.filePickerSaveAs = async function (suggestedName, base64Data) {
+    if (typeof window.showSaveFilePicker !== 'function') return null;
+    try {
+        const dot = suggestedName.lastIndexOf('.');
+        const ext = dot >= 0 ? suggestedName.substring(dot).toLowerCase() : '.png';
+        const mimeByExt = {
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.webp': 'image/webp',
+            '.avif': 'image/avif',
+            '.tif': 'image/tiff',
+            '.tiff': 'image/tiff',
+            '.bmp': 'image/bmp',
+            '.gif': 'image/gif'
+        };
+        const mime = mimeByExt[ext] || 'application/octet-stream';
+        const handle = await window.showSaveFilePicker({
+            suggestedName: suggestedName,
+            types: [{
+                description: 'Image files',
+                accept: { [mime]: [ext] }
+            }]
+        });
+        const writable = await handle.createWritable();
+        const bytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+        await writable.write(bytes);
+        await writable.close();
+        return handle.name;
+    } catch (e) {
+        if (e.name === 'AbortError') return null;
+        throw e;
+    }
+};
+
 // Check if File System Access API is available
 window.hasFileSystemAccess = function () {
     return typeof window.showOpenFilePicker === 'function'
