@@ -1,0 +1,107 @@
+.converter-panel {
+    max-width: 700px;
+}
+
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+.form-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.file-info {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-muted, #6c757d);
+    margin-top: 0.25rem;
+}
+
+.info-line {
+    font-size: 0.9rem;
+    color: var(--text-secondary, #495057);
+}
+
+.size-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.tolerance-slider {
+    width: 100%;
+    max-width: 400px;
+    display: block;
+}
+
+/* The stage holds the clickable image (or its preview). The checkerboard shows through wherever
+   the preview/result is transparent, so removed regions read clearly. */
+.wand-stage {
+    border: 1px solid var(--border-color, #dee2e6);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    line-height: 0; /* kill the inline-image descender gap */
+}
+
+.checker {
+    /* 16px light/dark checkerboard via two crossed conic gradients. */
+    background-color: #fff;
+    background-image:
+        linear-gradient(45deg, #ccc 25%, transparent 25%),
+        linear-gradient(-45deg, #ccc 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #ccc 75%),
+        linear-gradient(-45deg, transparent 75%, #ccc 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+
+.wand-image {
+    /* defensive: ensure clicks land on the image content box for OffsetX/OffsetY */
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+/* Seed marker: a small ringed dot centered on the click point (positioned by percentage). */
+.seed-marker {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border: 2px solid #ff3b30;
+    background: rgba(255, 59, 48, 0.25);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
+}
+
+.status-info {
+    padding: 0.75rem;
+    color: var(--accent-color, #0d6efd);
+    margin-bottom: 1rem;
+}
+
+.download-panel {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: var(--success-bg, #d4edda);
+    color: var(--success-text, #155724);
+    border-radius: 0.5rem;
+    margin-top: 1rem;
+}
+
+.error-panel {
+    background: var(--danger-bg, #f8d7da);
+    color: var(--danger-text, #721c24);
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { 100% { transform: rotate(360deg); } }

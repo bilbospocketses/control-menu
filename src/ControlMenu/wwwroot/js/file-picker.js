@@ -99,3 +99,18 @@ window.hasFileSystemAccess = function () {
     return typeof window.showOpenFilePicker === 'function'
         && typeof window.showSaveFilePicker === 'function';
 };
+
+// Returns an image element's natural (intrinsic) and rendered (client) dimensions, so callers
+// can map a click's OffsetX/OffsetY (rendered coords) back to source-pixel coords:
+//   sourceX = offsetX * naturalWidth / renderedWidth.
+// Used by the Magic Wand page for click-to-seed. Returns null if the element is missing.
+window.getElementRect = function (id) {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    return {
+        naturalWidth: el.naturalWidth || 0,
+        naturalHeight: el.naturalHeight || 0,
+        renderedWidth: el.clientWidth || 0,
+        renderedHeight: el.clientHeight || 0
+    };
+};

@@ -40,7 +40,8 @@ public class ImagingModule : IToolModule
         new NavEntry("Icon Converter", "/imaging/icon-converter", "🖼️", 0),
         new NavEntry("Format Converter", "/imaging/format-converter", "🔁", 1),
         new NavEntry("Image Resize", "/imaging/image-resize", "📐", 2),
-        new NavEntry("SVG Rasterize", "/imaging/svg-rasterize", "🖌️", 3)
+        new NavEntry("SVG Rasterize", "/imaging/svg-rasterize", "🖌️", 3),
+        new NavEntry("Magic Wand", "/imaging/magic-wand", "🪄", 4)
     ];
 
     public IEnumerable<BackgroundJobDefinition> GetBackgroundJobs() => [];

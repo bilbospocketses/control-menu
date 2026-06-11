@@ -47,6 +47,13 @@ public class ImagingModuleTests
     }
 
     [Fact]
+    public void NavEntries_IncludeMagicWand()
+    {
+        var entries = _module.GetNavEntries().ToList();
+        Assert.Contains(entries, e => e.Href == "/imaging/magic-wand");
+    }
+
+    [Fact]
     public void NavEntries_AreOrderedBySortOrder()
     {
         var entries = _module.GetNavEntries().ToList();
@@ -54,5 +61,6 @@ public class ImagingModuleTests
         Assert.Equal("/imaging/format-converter", entries[1].Href);
         Assert.Equal("/imaging/image-resize", entries[2].Href);
         Assert.Equal("/imaging/svg-rasterize", entries[3].Href);
+        Assert.Equal("/imaging/magic-wand", entries[4].Href);
     }
 }
