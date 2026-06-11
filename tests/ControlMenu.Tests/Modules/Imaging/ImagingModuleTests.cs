@@ -54,6 +54,13 @@ public class ImagingModuleTests
     }
 
     [Fact]
+    public void NavEntries_IncludeTracing()
+    {
+        var entries = _module.GetNavEntries().ToList();
+        Assert.Contains(entries, e => e.Href == "/imaging/tracing");
+    }
+
+    [Fact]
     public void NavEntries_AreOrderedBySortOrder()
     {
         var entries = _module.GetNavEntries().ToList();
@@ -62,5 +69,6 @@ public class ImagingModuleTests
         Assert.Equal("/imaging/image-resize", entries[2].Href);
         Assert.Equal("/imaging/svg-rasterize", entries[3].Href);
         Assert.Equal("/imaging/magic-wand", entries[4].Href);
+        Assert.Equal("/imaging/tracing", entries[5].Href);
     }
 }

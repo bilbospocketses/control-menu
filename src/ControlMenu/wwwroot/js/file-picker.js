@@ -73,7 +73,8 @@ window.filePickerSaveAs = async function (suggestedName, base64Data) {
             '.tif': 'image/tiff',
             '.tiff': 'image/tiff',
             '.bmp': 'image/bmp',
-            '.gif': 'image/gif'
+            '.gif': 'image/gif',
+            '.svg': 'image/svg+xml'
         };
         const mime = mimeByExt[ext] || 'application/octet-stream';
         const handle = await window.showSaveFilePicker({
