@@ -1,0 +1,12 @@
+@page "/utilities/icon-converter"
+@inject NavigationManager Nav
+
+@* Icon Converter moved to the Imaging Tools module (magick-backed). This stub
+   preserves the old /utilities/icon-converter route for any existing bookmarks
+   and forwards to the new location, replacing the history entry so Back does
+   not bounce the user between the two URLs. *@
+
+@code {
+    protected override void OnInitialized()
+        => Nav.NavigateTo("/imaging/icon-converter", replace: true);
+}

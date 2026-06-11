@@ -1,6 +1,6 @@
-@page "/utilities/icon-converter"
-@using ControlMenu.Modules.Utilities.Services
-@inject IIconConversionService IconService
+@page "/imaging/icon-converter"
+@using ControlMenu.Modules.Imaging.Services
+@inject IImageService IconService
 @inject IWebHostEnvironment Env
 @inject IJSRuntime JS
 
@@ -162,7 +162,7 @@
             if (_fileBytes is not null)
             {
                 // File System Access API mode — convert in memory, save via browser
-                var icoBytes = await IconService.ConvertToIcoBytesAsync(_fileBytes, sizes);
+                var icoBytes = await IconService.ConvertToIcoAsync(_fileBytes, sizes);
                 var base64 = System.Convert.ToBase64String(icoBytes);
                 var savedName = await JS.InvokeAsync<string?>("filePickerSave", _icoFileName, base64);
 
@@ -190,7 +190,7 @@
             }
             else if (!string.IsNullOrWhiteSpace(_sourcePath))
             {
-                // Fallback path mode — convert on disk
+                // Fallback path mode — read bytes, convert in memory, write bytes back to disk
                 var source = _sourcePath.Trim();
                 if (!File.Exists(source))
                 {
@@ -203,14 +203,16 @@
                 _icoFileName = $"{baseName}.ico";
                 var targetPath = Path.Combine(sourceDir, _icoFileName);
 
-                await IconService.ConvertToIcoAsync(source, targetPath, sizes);
+                var sourceBytes = await File.ReadAllBytesAsync(source);
+                var icoBytes = await IconService.ConvertToIcoAsync(sourceBytes, sizes);
+                await File.WriteAllBytesAsync(targetPath, icoBytes);
                 _resultMessage = "Icon created successfully.";
                 _savedPath = targetPath;
 
                 var tempDir = Path.Combine(Env.WebRootPath, "temp");
                 Directory.CreateDirectory(tempDir);
                 var webCopy = Path.Combine(tempDir, $"{Guid.NewGuid():N}.ico");
-                File.Copy(targetPath, webCopy);
+                await File.WriteAllBytesAsync(webCopy, icoBytes);
                 _downloadUrl = $"/temp/{Path.GetFileName(webCopy)}";
 
                 _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>

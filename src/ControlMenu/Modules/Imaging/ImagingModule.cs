@@ -37,9 +37,7 @@ public class ImagingModule : IToolModule
 
     public IEnumerable<NavEntry> GetNavEntries() =>
     [
-        // Pages added in later phases. Phase A leaves this empty so the module
-        // registers cleanly and magick shows up in Settings -> Dependencies
-        // before any tool pages exist.
+        new NavEntry("Icon Converter", "/imaging/icon-converter", "🖼️", 0)
     ];
 
     public IEnumerable<BackgroundJobDefinition> GetBackgroundJobs() => [];

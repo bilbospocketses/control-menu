@@ -126,7 +126,6 @@ builder.Services.AddScoped<IJellyfinService, JellyfinService>();
 builder.Services.AddScoped<IBackgroundJobService, BackgroundJobService>();
 
 // Utilities module services
-builder.Services.AddSingleton<IIconConversionService, IconConversionService>();
 builder.Services.AddSingleton<IFileUnblockService, FileUnblockService>();
 
 // Imaging Tools module services (magick-backed)

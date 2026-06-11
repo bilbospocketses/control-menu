@@ -38,11 +38,20 @@ public class UtilitiesModuleTests
     }
 
     [Fact]
-    public void NavEntries_IncludesIconConverterAndFileUnblocker()
+    public void NavEntries_IncludesFileUnblocker()
     {
         var entries = _module.GetNavEntries().ToList();
-        Assert.Contains(entries, e => e.Href == "/utilities/icon-converter");
         Assert.Contains(entries, e => e.Href == "/utilities/file-unblocker");
+    }
+
+    [Fact]
+    public void NavEntries_DoesNotIncludeIconConverter()
+    {
+        // Icon Converter migrated to the Imaging Tools module
+        // (/imaging/icon-converter); the old /utilities/icon-converter route is
+        // now a redirect stub, not a sidebar nav entry.
+        var entries = _module.GetNavEntries().ToList();
+        Assert.DoesNotContain(entries, e => e.Href == "/utilities/icon-converter");
     }
 
     [Fact]
