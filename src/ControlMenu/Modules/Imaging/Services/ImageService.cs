@@ -33,8 +33,31 @@ public class ImageService : IImageService
     public Task<byte[]> ResizeAsync(byte[] input, ResizeOptions options, CancellationToken ct = default)
         => throw new NotImplementedException("Phase C");
 
-    public Task<byte[]> ConvertToIcoAsync(byte[] input, int[] sizes, IcoOptions? options = null, CancellationToken ct = default)
-        => throw new NotImplementedException("Phase B");
+    public async Task<byte[]> ConvertToIcoAsync(byte[] input, int[] sizes, IcoOptions? options = null, CancellationToken ct = default)
+    {
+        if (sizes is null || sizes.Length == 0)
+            throw new ArgumentException("At least one size required", nameof(sizes));
+
+        // magick's icon:auto-resize wants the target sizes ascending, comma-separated.
+        var csv = string.Join(",", sizes.OrderBy(s => s));
+
+        var workDir = CreateWorkDir();
+        try
+        {
+            var inputPath = Path.Combine(workDir, "in.bin");
+            var outputPath = Path.Combine(workDir, "out.ico");
+            await File.WriteAllBytesAsync(inputPath, input, ct);
+
+            await InvokeMagickAsync(
+                $"{LimitFlags} \"{inputPath}\" -define icon:auto-resize={csv} \"{outputPath}\"", ct);
+
+            return await File.ReadAllBytesAsync(outputPath, ct);
+        }
+        finally
+        {
+            try { Directory.Delete(workDir, recursive: true); } catch { /* best-effort cleanup */ }
+        }
+    }
 
     public Task<byte[]> RemoveBackgroundAsync(byte[] input, BackgroundRemoveOptions options, CancellationToken ct = default)
         => throw new NotImplementedException("Phase E");
