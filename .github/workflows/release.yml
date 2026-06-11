@@ -61,8 +61,8 @@ jobs:
       - name: Install vpk CLI
         run: dotnet tool install -g vpk --version 1.2.0
 
-      # No .sln in this repo — restore + build per project directly.
-      # Mirrors the local-pack.ps1 approach (3x dotnet publish below).
+      # Restore + build per project directly (not via ControlMenu.sln) to
+      # mirror the local-pack.ps1 approach (3x dotnet publish below).
       - name: Restore
         run: |
           dotnet restore src/ControlMenu/ControlMenu.csproj
@@ -90,7 +90,7 @@ jobs:
             -o publish -p:PublishSingleFile=false `
             /p:Version=${{ needs.prepare.outputs.version }}
 
-      # Pre-seed runtime dependencies (adb, scrcpy, sqlite3, go2rtc) into
+      # Pre-seed runtime dependencies (adb, sqlite3, go2rtc) into
       # publish/seed/dependencies/<leaf>/. Each fetch-*.ps1 script downloads
       # its pinned version, verifies SHA-256, and stages the binary tree the
       # launcher's SeedHydrator copies into <dataRoot>/dependencies/ on first
