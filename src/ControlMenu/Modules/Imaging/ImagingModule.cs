@@ -30,6 +30,39 @@ public class ImagingModule : IToolModule
             // full-feature portable. e.g. ImageMagick-7.1.2-25-portable-Q8-x64.7z
             AssetPattern = @"ImageMagick-[\d.]+-\d+-portable-Q8-x64\.7z",
             InstallPath = Path.Combine(DepsRoot, "magick")
+        },
+        // vtracer: color raster -> SVG tracer (Phase G "Tracing"). GitHub source.
+        // Release tags carry NO "v" prefix (0.6.4). The Windows zip extracts
+        // vtracer.exe flat at the archive root. NOTE: --version prints
+        // "visioncortex VTracer 0.6.4" (capital VTracer), so the pattern matches
+        // "VTracer", not the lowercase executable name.
+        new ModuleDependency
+        {
+            Name = "vtracer",
+            ExecutableName = "vtracer",
+            VersionCommand = "vtracer --version",
+            VersionPattern = @"VTracer ([\d.]+)",
+            SourceType = UpdateSourceType.GitHub,
+            GitHubRepo = "visioncortex/vtracer",
+            ProjectHomeUrl = "https://github.com/visioncortex/vtracer",
+            AssetPattern = @"vtracer-x86_64-pc-windows-msvc\.zip",
+            InstallPath = Path.Combine(DepsRoot, "vtracer")
+        },
+        // potrace: B&W raster -> SVG tracer (Phase G "Tracing"). DirectUrl from
+        // upstream SourceForge (no GitHub mirror). potrace 1.16 is stable/pinned,
+        // so no version-check URL. The zip extracts to a nested
+        // potrace-1.16.win64/ dir containing potrace.exe (+ mkbitmap.exe, docs);
+        // the fetcher stages that subfolder so potrace.exe lands at the leaf root.
+        new ModuleDependency
+        {
+            Name = "potrace",
+            ExecutableName = "potrace",
+            VersionCommand = "potrace --version",
+            VersionPattern = @"potrace ([\d.]+)",
+            SourceType = UpdateSourceType.DirectUrl,
+            ProjectHomeUrl = "https://potrace.sourceforge.net/",
+            DownloadUrl = "https://potrace.sourceforge.net/download/1.16/potrace-1.16.win64.zip",
+            InstallPath = Path.Combine(DepsRoot, "potrace")
         }
     ];
 
