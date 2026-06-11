@@ -156,8 +156,73 @@ public class ImageService : IImageService
         }
     }
 
-    public Task<byte[]> RemoveBackgroundAsync(byte[] input, BackgroundRemoveOptions options, CancellationToken ct = default)
-        => throw new NotImplementedException("Phase E");
+    /// <summary>
+    /// Magic-wand background removal. Samples the pixel colour at (SeedX,SeedY) and turns
+    /// matching pixels (within <c>Tolerance</c> percent fuzz) transparent. Output is ALWAYS
+    /// PNG (alpha required). Two modes:
+    ///   * Contiguous (default): floods ONLY the connected region reachable from the seed
+    ///     (<c>-floodfill +X+Y &lt;seedColor&gt;</c>).
+    ///   * Non-contiguous: clears EVERY pixel matching the seed colour anywhere in the image
+    ///     (<c>-transparent &lt;seedColor&gt;</c>), even disjoint regions.
+    ///
+    /// SECURITY: our hardened policy.xml DENIES the MVG coder, so <c>-draw "color X,Y
+    /// floodfill"</c> (which compiles to MVG) is NOT usable. We use the <c>-floodfill</c> /
+    /// <c>-transparent</c> OPERATORS instead, and sample the seed colour with
+    /// <c>identify -format "%[pixel:p{X,Y}]"</c> (text out, policy-safe — no <c>info:</c>/<c>xc:</c>
+    /// pseudo-coders). Both command shapes were verified to run under our policy and produce a
+    /// transparent region.
+    /// </summary>
+    public async Task<byte[]> RemoveBackgroundAsync(byte[] input, BackgroundRemoveOptions options, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        // Validate the seed lands inside the image BEFORE spawning the work invocation, so an
+        // out-of-range click fails fast and clearly rather than producing a confusing magick error.
+        var info = await GetInfoAsync(input, ct);
+        if (options.SeedX < 0 || options.SeedY < 0 ||
+            options.SeedX >= info.Width || options.SeedY >= info.Height)
+        {
+            throw new ArgumentException(
+                $"Seed ({options.SeedX},{options.SeedY}) is outside the image bounds {info.Width}x{info.Height}",
+                nameof(options));
+        }
+
+        // Clamp tolerance into the documented 0-100 percent range; magick's -fuzz takes a percentage.
+        var fuzzPct = Math.Clamp(options.Tolerance, 0, 100);
+
+        var workDir = CreateWorkDir();
+        try
+        {
+            var inputPath = Path.Combine(workDir, "in.png");
+            var outputPath = Path.Combine(workDir, "out.png"); // always PNG -- needs an alpha channel
+            await File.WriteAllBytesAsync(inputPath, input, ct);
+
+            // Sample the seed pixel's colour as text (e.g. "srgba(255,255,255,1)"). identify
+            // reads PNG and writes to stdout -- allowed by policy. We quote it as a single arg
+            // when we hand it back to magick because it contains parentheses and commas.
+            var seedResult = await InvokeMagickAsync(
+                $"identify -format \"%[pixel:p{{{options.SeedX},{options.SeedY}}}]\" \"{inputPath}\"", ct);
+            var seedColor = seedResult.StandardOutput.Trim();
+            if (seedColor.Length == 0)
+                throw new ImagingException("Could not sample the seed pixel colour");
+
+            // -alpha set guarantees an alpha channel exists; -fill none is the replacement
+            // colour (fully transparent) for the floodfill operator.
+            string args = options.Contiguous
+                // Contiguous: flood the connected region matching the seed colour starting at the seed.
+                ? $"{LimitFlags} \"{inputPath}\" -alpha set -fuzz {fuzzPct}% -fill none -floodfill +{options.SeedX}+{options.SeedY} \"{seedColor}\" \"{outputPath}\""
+                // Non-contiguous: make EVERY pixel matching the seed colour transparent (disjoint regions included).
+                : $"{LimitFlags} \"{inputPath}\" -alpha set -fuzz {fuzzPct}% -transparent \"{seedColor}\" \"{outputPath}\"";
+
+            await InvokeMagickAsync(args, ct);
+
+            return await File.ReadAllBytesAsync(outputPath, ct);
+        }
+        finally
+        {
+            try { Directory.Delete(workDir, recursive: true); } catch { /* best-effort cleanup */ }
+        }
+    }
 
     /// <summary>
     /// Rasterizes an SVG to a raster image. The SVG is rendered IN-PROCESS with Svg.Skia
