@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Home page reverted to the menu-sections layout** — a hero plus one card per module (sub-pages as pill links) and a Settings card, driven by the module registry. The discovery-dashboard home (scan buttons + live "Discovered Android/Cameras" panels) is removed. Device and camera **scanning is unchanged** — it remains in Settings → Android Devices / Cameras and the setup Wizard.
+
 ## [1.2.0] - 2026-06-11
 
 ### Added
