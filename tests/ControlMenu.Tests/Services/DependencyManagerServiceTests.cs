@@ -446,6 +446,88 @@ public class DependencyManagerServiceTests : IDisposable
     // NOTE: CheckDependency_WsScrcpyWeb_ManagedMode_SkipsExternalBranch removed in Task 1 —
     // WsScrcpyService is now always External; the Managed-mode branch no longer exists.
     // Task 5 will add a replacement test covering the always-external HTTP-ping path.
+
+    [Fact]
+    public async Task DownloadAndInstallAsync_AdbKillServer_ResolvesViaDependencyPathResolver_NotBareName()
+    {
+        // Local-Dependencies-Only regression guard. The adb update path stops the running ADB
+        // server before swapping the binary. That kill-server MUST resolve adb to its local path,
+        // never invoke a bare "adb" off PATH. Drives the full download -> extract -> verify -> swap
+        // pipeline (otherwise uncovered) far enough to reach the kill-server call.
+        var exeLeaf = OperatingSystem.IsWindows() ? "adb.exe" : "adb";
+        byte[] zipBytes;
+        using (var ms = new MemoryStream())
+        {
+            using (var zip = new System.IO.Compression.ZipArchive(
+                ms, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+            {
+                var entry = zip.CreateEntry($"platform-tools/{exeLeaf}");
+                await using var es = entry.Open();
+                es.WriteByte(0);
+            }
+            zipBytes = ms.ToArray();
+        }
+
+        var installDir = Path.Combine(_tempRoot, "adb-install-target");
+        var module = new FakeModule("android-devices", "Android",
+        [
+            new ModuleDependency
+            {
+                Name = "adb",
+                ExecutableName = "adb",
+                VersionCommand = "adb --version",
+                VersionPattern = @"Android Debug Bridge version ([\d.]+)",
+                SourceType = UpdateSourceType.GitHub,
+                GitHubRepo = "example/adb",
+                InstallPath = installDir
+            }
+        ]);
+
+        var depId = Guid.NewGuid();
+        using (var setupDb = _dbFactory.CreateDbContext())
+        {
+            setupDb.Dependencies.Add(new Dependency
+            {
+                Id = depId,
+                ModuleId = "android-devices",
+                Name = "adb",
+                SourceType = UpdateSourceType.GitHub,
+                Status = DependencyStatus.UpToDate,
+                InstalledVersion = "35.0.0"
+            });
+            await setupDb.SaveChangesAsync();
+        }
+
+        // Download serves our in-memory zip on the "dependency-updates" client.
+        _mockHttpFactory.Setup(f => f.CreateClient("dependency-updates"))
+            .Returns(new HttpClient(new MockBinaryHttpHandler(zipBytes)));
+
+        // Post-extract verify (adb --version) on the freshly extracted binary succeeds.
+        _mockExecutor.Setup(e => e.ExecuteAsync(
+                It.Is<string>(s => Path.GetFileNameWithoutExtension(s) == "adb"),
+                "--version", null, default))
+            .ReturnsAsync(new CommandResult(0, "Android Debug Bridge version 36.0.0", "", false));
+
+        // Resolver maps (android-devices, adb) to a distinct local path; kill-server must use it.
+        const string resolvedAdb = "/cm/local/platform-tools/adb.exe";
+        _mockResolver.Setup(r => r.ResolveAsync("android-devices", "adb", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(resolvedAdb);
+        _mockExecutor.Setup(e => e.ExecuteAsync(resolvedAdb, "kill-server", null, default))
+            .ReturnsAsync(new CommandResult(0, "", "", false));
+
+        var service = CreateService(module);
+        var asset = new AssetMatch("adb.zip", "https://example.com/adb.zip", zipBytes.Length, AutoSelected: true);
+        await service.DownloadAndInstallAsync(depId, asset);
+
+        _mockExecutor.Verify(
+            e => e.ExecuteAsync(resolvedAdb, "kill-server", null, default),
+            Times.Once,
+            "adb kill-server must run via the resolved local path.");
+        _mockExecutor.Verify(
+            e => e.ExecuteAsync("adb", "kill-server", It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "DependencyManagerService must NOT kill-server via bare 'adb' — local-deps rule.");
+    }
 }
 
 // Test helpers at bottom of file
@@ -480,4 +562,14 @@ internal class ThrowingHttpHandler : HttpMessageHandler
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
         => Task.FromException<HttpResponseMessage>(new HttpRequestException("connection refused"));
+}
+
+internal class MockBinaryHttpHandler(byte[] payload) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+        => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(payload)
+        });
 }

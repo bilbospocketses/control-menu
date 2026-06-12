@@ -158,4 +158,37 @@ public class JellyfinServiceTests
             if (Directory.Exists(backupDir)) Directory.Delete(backupDir);
         }
     }
+
+    [Fact]
+    public async Task UpdateDateCreatedAsync_ResolvesViaDependencyPathResolver_NotBareName()
+    {
+        // Local-Dependencies-Only regression guard (mirrors AdbService_ResolvesViaDependencyPathResolver_NotBareName):
+        // sqlite3 must be invoked at the resolved local path, never as a bare "sqlite3" off PATH.
+        var localExecutor = new Mock<ICommandExecutor>();
+        var localConfig = new Mock<IConfigurationService>();
+        var localResolver = new Mock<IDependencyPathResolver>();
+        var localDirectoryResolver = new Mock<IJellyfinDirectoryResolver>();
+
+        localConfig.Setup(c => c.GetSettingAsync("jellyfin-db-path", null))
+            .ReturnsAsync("D:/DockerData/jellyfin/config/data/jellyfin.db");
+        localResolver.Setup(r => r.ResolveAsync("jellyfin", "sqlite3", It.IsAny<CancellationToken>()))
+            .ReturnsAsync("/cm/local/sqlite3.exe");
+        localExecutor.Setup(e => e.ExecuteAsync("/cm/local/sqlite3.exe",
+                It.Is<string>(s => s.Contains("UPDATE BaseItems SET DateCreated=PremiereDate")),
+                null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CommandResult(0, "", "", false));
+
+        var service = new JellyfinService(localExecutor.Object, localConfig.Object,
+            _mockHttpFactory.Object, localResolver.Object, localDirectoryResolver.Object);
+        var result = await service.UpdateDateCreatedAsync();
+
+        Assert.True(result);
+        localExecutor.Verify(
+            e => e.ExecuteAsync("sqlite3", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "JellyfinService must NOT call the executor with bare 'sqlite3' — local-deps rule.");
+        localExecutor.Verify(
+            e => e.ExecuteAsync("/cm/local/sqlite3.exe", It.IsAny<string>(), null, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
 }
