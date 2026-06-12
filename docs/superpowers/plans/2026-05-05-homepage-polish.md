@@ -1,5 +1,7 @@
 # Homepage Polish Implementation Plan
 
+> **SUPERSEDED (2026-06-12):** Implemented, then reverted. See `docs/superpowers/plans/2026-06-12-home-menu-sections-restore.md`. Kept for history.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the current Home module-card grid with a discovery-first dashboard: scan-action header, live Discovered sections (Android + Cameras) embedding the existing shared panels, and a compact 6-tile module-nav row.

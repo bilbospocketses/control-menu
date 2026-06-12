@@ -1,5 +1,7 @@
 # Homepage polish — Dashboard-first redesign
 
+> **SUPERSEDED (2026-06-12):** The dashboard-first home page described here was reverted to the menu-sections layout. See `docs/superpowers/specs/2026-06-12-home-menu-sections-restore-design.md`. Kept for history.
+
 **Date:** 2026-05-05
 **Status:** Approved (brainstorm complete; awaiting plan)
 **Brainstorm artifacts:** `.superpowers/brainstorm/740-1778015012/content/` (current-home.html, structure-options.html, dashboard-v1.html, dashboard-final.html)

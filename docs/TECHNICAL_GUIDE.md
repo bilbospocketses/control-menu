@@ -78,8 +78,7 @@ src/ControlMenu/
   Components/
     Layout/                 # MainLayout, Sidebar, TopBar
     Pages/                  # Home, Settings, Setup Wizard
-      Home.razor            # Discovery-dashboard composition (HomeSections children)
-      HomeSections/         # HomeScanBand, HomeDiscoveredAndroid, HomeDiscoveredCameras, HomeModuleTiles
+      Home.razor            # Menu-sections page (hero + per-module cards + Settings card)
       Settings/             # SettingsPage, tabs: General, Devices, Cameras, Jellyfin, Dependencies
       Setup/                # Wizard steps: Welcome, Android Devices, Cameras, Jellyfin, Email, Dependencies, Done
     Shared/                 # ScrcpyMirror, Scanner/DiscoveredPanel, Cameras/DiscoveredCamerasPanel
