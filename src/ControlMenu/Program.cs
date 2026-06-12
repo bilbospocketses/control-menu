@@ -118,6 +118,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<WsScrcpyService>()
 builder.Services.AddSingleton<INetworkScanService, NetworkScanService>();
 builder.Services.AddScoped<IScanLifecycleHandler, ScanLifecycleHandler>();
 builder.Services.AddScoped<IDeviceQuickScanService, DeviceQuickScanService>();
+builder.Services.AddScoped<IDeviceRegistrationService, DeviceRegistrationService>();
 builder.Services.AddScoped<SubnetDetectionClient>();
 
 // Jellyfin module services

@@ -9,6 +9,7 @@
 @inject IDeviceQuickScanService QuickScan
 @inject IConfigurationService Config
 @inject IScanLifecycleHandler Handler
+@inject IDeviceRegistrationService DeviceRegistration
 @inject IntervalChangeSignal IntervalSignal
 @implements IDisposable
 
@@ -378,17 +379,22 @@
         await ShowMessage($"Scan complete. {string.Join("; ", parts)}.");
     }
 
-    // Called when a DiscoveredPanelRow fires its OnAdd after the user clicks
-    // the row's inline Add button. Unpacks the payload into _formDevice/_formPin
-    // and delegates to the existing SaveDevice path — which handles MAC
-    // normalization, AddDeviceAsync persistence, PIN secret-storage, and the
-    // "drop added MAC from Handler.Discovered" filter.
+    // Inline-add from a DiscoveredPanelRow. Delegates the shared registration body
+    // (MAC normalize, persist, optional PIN secret, drop the claimed row from
+    // Handler.Discovered) to IDeviceRegistrationService — the manual Add/Edit form
+    // keeps its own SaveDevice path.
     private async Task HandleInlineAdd(InlineAddPayload payload)
     {
-        _formDevice = payload.Device;
-        _formPin = payload.Pin;
-        _isEditing = false;
-        await SaveDevice();
+        try
+        {
+            var saved = await DeviceRegistration.RegisterDiscoveredAsync(payload);
+            await LoadDevices();
+            await ShowMessage($"Device {saved.Name} added successfully.");
+        }
+        catch (Exception ex)
+        {
+            await ShowMessage($"Add failed: {ex.Message}", isError: true);
+        }
     }
 
     private static string GetStatusClass(ControlMenu.Data.Entities.Device device)
