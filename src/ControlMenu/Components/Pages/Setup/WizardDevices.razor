@@ -6,8 +6,7 @@
 @using ControlMenu.Services.Network
 @inject IDeviceService DeviceService
 @inject IDeviceChangeNotifier DeviceChangeNotifier
-@inject INetworkDiscoveryService NetworkDiscovery
-@inject IAdbService AdbService
+@inject IDeviceQuickScanService QuickScan
 @inject IDeviceRegistrationService DeviceRegistration
 @inject IScanLifecycleHandler Handler
 @implements IDisposable
@@ -113,102 +112,21 @@
         _message = null;
         StateHasChanged();
 
-        // 1. Query mDNS — each hit gives us IP + advertised ADB port + service name.
-        var mdnsResults = await AdbService.ScanMdnsAsync();
+        // Delegates the shared mDNS + ARP + merge pipeline (incl. the registered-device dedup
+        // that drops carried-over ghosts) to IDeviceQuickScanService — the same service the
+        // Settings/Home Quick Scan uses, so the wizard can't drift from it (Item 39).
+        var registeredCount = _devices.Count;
+        var result = await QuickScan.RunMdnsAndMergeAsync(_devices);
 
-        // 2. Build IP→MAC map from ARP. If any mDNS IPs aren't in ARP yet, ping them
-        //    in parallel to force the OS to resolve them, then re-read ARP.
-        var arpMap = await BuildArpMapAsync();
-        var missing = mdnsResults.Where(m => !arpMap.ContainsKey(m.IpAddress)).Select(m => m.IpAddress).ToList();
-        if (missing.Count > 0)
-        {
-            await Task.WhenAll(missing.Select(ip => NetworkDiscovery.PingAsync(ip)));
-            arpMap = await BuildArpMapAsync();
-        }
-
-        // 3. Walk the mDNS hits. Registered devices: update IP/port in-place in the DB.
-        //    Unregistered devices: merge into the panel (preserving non-mDNS entries and respecting dismissed).
-        var devicesByMac = _devices.ToDictionary(d => d.MacAddress, d => d, StringComparer.OrdinalIgnoreCase);
-
-        var merged = new List<DiscoveredDevice>(Handler.Discovered);
-        var mergedKeys = new HashSet<string>(
-            merged.Select(d => ScanMergeHelper.AddressKey(d.Ip, d.Port)),
-            StringComparer.OrdinalIgnoreCase);
-
-        var coveredRegistered = new HashSet<Guid>();
-        int updated = 0;
-        int portUpdated = 0;
-        int newOnes = 0;
-        foreach (var m in mdnsResults)
-        {
-            var mac = arpMap.TryGetValue(m.IpAddress, out var x) ? x : null;
-            if (mac is not null && devicesByMac.TryGetValue(mac, out var registered))
-            {
-                await DeviceService.UpdateLastSeenAsync(registered.Id, m.IpAddress);
-                if (registered.AdbPort != m.Port)
-                {
-                    registered.AdbPort = m.Port;
-                    await DeviceService.UpdateDeviceAsync(registered);
-                    portUpdated++;
-                }
-                coveredRegistered.Add(registered.Id);
-                updated++;
-                continue;
-            }
-
-            var key = ScanMergeHelper.AddressKey(m.IpAddress, m.Port);
-
-            if (Handler.DismissedAddresses.Contains(key))
-                continue;
-
-            if (mergedKeys.Contains(key))
-                continue;
-
-            merged.Add(new DiscoveredDevice(m.ServiceName, m.IpAddress, m.Port, mac, Source: "mdns"));
-            mergedKeys.Add(key);
-            newOnes++;
-        }
-
-        // 4. For registered devices not seen via mDNS, fall back to ARP-only IP refresh.
-        foreach (var device in _devices.Where(d => !coveredRegistered.Contains(d.Id)))
-        {
-            var ip = await NetworkDiscovery.ResolveIpFromMacAsync(device.MacAddress);
-            if (ip is not null)
-            {
-                await DeviceService.UpdateLastSeenAsync(device.Id, ip);
-                updated++;
-            }
-        }
-
-        // Drop carried-over Discovered rows whose device is now registered (Item 20 — without
-        // this, a device registered after a prior scan resurfaces as a ghost on re-scan).
-        var registeredMacs = devicesByMac.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var registeredIps = _devices
-            .Where(d => !string.IsNullOrEmpty(d.LastKnownIp))
-            .Select(d => d.LastKnownIp!)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        merged = merged
-            .Where(d => !ScanMergeHelper.MatchesRegistered(d, registeredMacs, arpMap, registeredIps))
-            .ToList();
-
-        Handler.ReplaceDiscovered(merged);
         await LoadDevices();
         _scanning = false;
 
-        var parts = new List<string> { $"{updated} of {_devices.Count} registered device(s) found" };
-        if (portUpdated > 0) parts.Add($"{portUpdated} ADB port(s) updated from mDNS");
-        if (newOnes > 0) parts.Add($"{newOnes} new device(s) on network");
+        var parts = new List<string> { $"{result.RegisteredFound} of {registeredCount} registered device(s) found" };
+        if (result.PortsUpdated > 0) parts.Add($"{result.PortsUpdated} ADB port(s) updated from mDNS");
+        if (result.NewOnNetwork > 0) parts.Add($"{result.NewOnNetwork} new device(s) on network");
         _message = $"Scan complete. {string.Join("; ", parts)}.";
         _messageIsError = false;
         StateHasChanged();
-    }
-
-    private async Task<Dictionary<string, string>> BuildArpMapAsync()
-    {
-        var entries = await NetworkDiscovery.GetArpTableAsync();
-        return entries
-            .GroupBy(e => e.IpAddress)
-            .ToDictionary(g => g.Key, g => g.First().MacAddress, StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task HandleInlineAdd(InlineAddPayload payload)
