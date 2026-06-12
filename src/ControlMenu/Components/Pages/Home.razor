@@ -1,6 +1,8 @@
 @page "/"
 @using ControlMenu.Modules
 @using ControlMenu.Services
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <PageTitle>Control Menu</PageTitle>
 
@@ -13,8 +15,10 @@ else
     <div class="home-container">
         <div class="hero">
             <img src="/icon-512.png" alt="Control Menu" class="hero-icon" />
-            <h1>Control Menu</h1>
-            <p class="hero-subtitle">Manage your Android devices, media server, and utilities from one place.</p>
+            <div class="hero-text">
+                <h1>Control Menu</h1>
+                <p class="hero-subtitle">Manage your Android devices, media server, and utilities from one place.</p>
+            </div>
         </div>
 
         @if (ModuleDiscovery.Modules.Count == 0)
@@ -36,7 +40,7 @@ else
                         .ToList();
                     if (entries.Count > 0)
                     {
-                        <div class="module-card">
+                        <div class="module-card" style="--cm-tile-span:@HomeTileLayout.InitialSpan(entries.Count)">
                             <div class="module-header">
                                 @if (ModuleImageMap.TryGetValue(module.Id, out var imagePath))
                                 {
@@ -75,7 +79,7 @@ else
                     }
                 }
 
-                <div class="module-card">
+                <div class="module-card" style="--cm-tile-span:@HomeTileLayout.InitialSpan(5)">
                     <div class="module-header">
                         <i class="bi bi-gear module-icon-bi"></i>
                         <h3>Settings</h3>
@@ -132,5 +136,35 @@ else
         var flag = await Config.GetSettingAsync("setup-completed");
         if (flag != "true")
             _setupDone = false;
+    }
+
+    private int? _resizeToken;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_setupDone)
+            return;
+
+        // Re-run on every render so JS-measured spans survive Blazor re-renders
+        // (a re-render would otherwise reset --cm-tile-span to the server seed).
+        await JS.InvokeVoidAsync("controlMenu.layoutHomeTiles");
+
+        if (firstRender)
+            _resizeToken = await JS.InvokeAsync<int>("controlMenu.subscribeHomeTilesResize");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_resizeToken is int token)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("controlMenu.unsubscribeHomeTilesResize", token);
+            }
+            catch
+            {
+                // Circuit may already be torn down on disposal; ignore.
+            }
+        }
     }
 }
