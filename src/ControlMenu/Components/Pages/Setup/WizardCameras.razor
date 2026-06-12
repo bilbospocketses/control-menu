@@ -14,7 +14,7 @@
     <p>Scan your network to discover ONVIF-enabled IP cameras and add each one with a click. <strong>Non-ONVIF cameras (older or basic RTSP-only models) can be added later from <a href="/settings/cameras">Settings › Cameras</a>.</strong></p>
 
     <div class="toolbar" style="margin-bottom:1rem;">
-        <button class="btn btn-primary" @onclick="StartScan" disabled="@_scanInProgress">
+        <button class="btn btn-secondary" @onclick="StartScan" disabled="@_scanInProgress">
             <i class="bi bi-broadcast"></i> @(_scanInProgress ? "Scanning..." : "Scan Network")
         </button>
     </div>
