@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-11
+
 ### Added
 
 - **Imaging Tools — a new top-level module with six image utilities**, each backed by a bundled CLI engine (no managed-imaging-library bloat). New sidebar section at SortOrder 6 (after Cameras):
