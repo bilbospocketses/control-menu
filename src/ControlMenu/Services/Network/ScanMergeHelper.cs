@@ -44,4 +44,22 @@ public static class ScanMergeHelper
         return result;
     }
 
+    /// <summary>
+    /// True if a discovered entry corresponds to an already-registered device — matched by its
+    /// own MAC, by its IP's ARP-resolved MAC, or by its IP equalling a registered device's
+    /// last-known IP. Used to drop carry-over Discovered rows once their device is registered so a
+    /// re-scan doesn't resurface them as ghosts. The MAC and IP sets must compare case-insensitively.
+    /// </summary>
+    public static bool MatchesRegistered(
+        DiscoveredDevice device,
+        IReadOnlySet<string> registeredMacs,
+        IReadOnlyDictionary<string, string> arpMap,
+        IReadOnlySet<string> registeredIps)
+    {
+        if (device.Mac is not null && registeredMacs.Contains(device.Mac))
+            return true;
+        if (arpMap.TryGetValue(device.Ip, out var mac) && registeredMacs.Contains(mac))
+            return true;
+        return registeredIps.Contains(device.Ip);
+    }
 }

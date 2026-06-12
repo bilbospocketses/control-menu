@@ -100,6 +100,18 @@ public sealed class DeviceQuickScanService : IDeviceQuickScanService
             }
         }
 
+        // 5. Drop any carried-over Discovered rows whose device is now registered. The seed list
+        //    (_handler.Discovered) is never re-checked against the registered set as we merge, so
+        //    without this a device registered after a prior scan resurfaces as a ghost here.
+        var registeredMacs = devicesByMac.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var registeredIps = registered
+            .Where(d => !string.IsNullOrEmpty(d.LastKnownIp))
+            .Select(d => d.LastKnownIp!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        merged = merged
+            .Where(d => !ScanMergeHelper.MatchesRegistered(d, registeredMacs, arpMap, registeredIps))
+            .ToList();
+
         _handler.ReplaceDiscovered(merged);
 
         return new DeviceQuickScanResult(updated, portUpdated, newOnes);

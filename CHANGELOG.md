@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Local-Dependencies-Only audit follow-ups (internal, no behavior change).** Consolidated the duplicated Windows `.exe`-suffix logic into one `InstallPathResolver.WithExecutableSuffix` helper (previously copy-pasted in `DependencyPathResolver` and three places in `DependencyManagerService`); tightened `DependencyPathResolver`'s constructor parameter to `IReadOnlyList<IToolModule>` to match `DependencyManagerService`; and added Local-Deps regression tests asserting `JellyfinService` (sqlite3) and `DependencyManagerService` (adb `kill-server` during an update) invoke their binary at the resolved local path, never a bare name. ws-scrcpy-web's former `node` resolution is now external-only, so no equivalent test applies there.
 - **Extracted `IDeviceRegistrationService` to de-triplicate the Discovered-panel inline-add (internal, no behavior change).** The "add this discovered device" body — normalize MAC, persist, store the optional PIN secret, then drop the now-claimed row from the scan handler's Discovered list — was copy-pasted across three components (the Home, Wizard, and Settings device pages). It now lives in one `IDeviceRegistrationService.RegisterDiscoveredAsync`, and the Settings page's inline-add stops piggybacking on its manual Add/Edit form path.
 
+### Fixed
+
+- **Registered devices no longer resurface as ghost rows in the Discovered panel after a re-scan.** The quick-scan merge seeded its result from the previously-discovered list but never re-checked those carried-over rows against the *current* registered set, so a device added after one scan could reappear as an "add me" candidate on the next. The merge now drops any carried-over row whose device is registered — matched by MAC, by its IP's ARP-resolved MAC, or by its IP equalling a registered device's last-known IP — via a shared `ScanMergeHelper.MatchesRegistered` applied in both the Settings/Home quick-scan service and the first-run wizard's scan.
+
 ## [1.1.1] - 2026-06-11
 
 ### Changed
