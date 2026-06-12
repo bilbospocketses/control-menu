@@ -198,6 +198,79 @@ public class DeviceQuickScanServiceTests
         Assert.Contains(_handler.Discovered, d => d.Ip == "10.0.0.2");
     }
 
+    [Fact]
+    public async Task CarryOverDiscovered_ForNowRegisteredDevice_DroppedByMac_OnRescan()
+    {
+        // A device discovered on a prior scan is still sitting in Discovered (e.g. it was added
+        // via the form, whose MAC format differed enough that the add-time filter missed it). On
+        // the next scan it must NOT survive as a ghost now that a matching device is registered.
+        var registered = new Device
+        {
+            Id = Guid.NewGuid(),
+            Name = "phone",
+            MacAddress = "AA:BB:CC:DD:EE:10",
+            ModuleId = "android-devices",
+            AdbPort = 5555,
+            LastKnownIp = "10.0.0.50",
+        };
+        _handler.SeedDiscovered(new DiscoveredDevice("ghost", "10.0.0.50", 5555, "AA:BB:CC:DD:EE:10", "mdns"));
+
+        _adb.Setup(a => a.ScanMdnsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<MdnsAdbDevice>());
+        _net.Setup(n => n.GetArpTableAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<ArpEntry>)new List<ArpEntry>());
+
+        var svc = Create();
+        await svc.RunMdnsAndMergeAsync(new List<Device> { registered });
+
+        Assert.DoesNotContain(_handler.Discovered, d => d.Mac == "AA:BB:CC:DD:EE:10");
+    }
+
+    [Fact]
+    public async Task CarryOverDiscovered_ForNowRegisteredDevice_DroppedByIp_WhenMacUnknown_OnRescan()
+    {
+        // Same scenario, but the carried-over row has no MAC (a TCP-only hit). It must still be
+        // recognized as the registered device via its IP matching the device's last-known IP.
+        var registered = new Device
+        {
+            Id = Guid.NewGuid(),
+            Name = "phone",
+            MacAddress = "AA:BB:CC:DD:EE:11",
+            ModuleId = "android-devices",
+            AdbPort = 5555,
+            LastKnownIp = "10.0.0.51",
+        };
+        _handler.SeedDiscovered(new DiscoveredDevice("ghost", "10.0.0.51", 5555, null, "tcp"));
+
+        _adb.Setup(a => a.ScanMdnsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<MdnsAdbDevice>());
+        _net.Setup(n => n.GetArpTableAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<ArpEntry>)new List<ArpEntry>());
+
+        var svc = Create();
+        await svc.RunMdnsAndMergeAsync(new List<Device> { registered });
+
+        Assert.Empty(_handler.Discovered);
+    }
+
+    [Fact]
+    public async Task CarryOverDiscovered_ForUnregisteredDevice_IsPreserved_OnRescan()
+    {
+        // Guard against over-filtering: a carried-over row whose device is NOT registered must
+        // survive the merge (only registered-device ghosts get dropped).
+        _handler.SeedDiscovered(new DiscoveredDevice("keep", "10.0.0.60", 5555, "AA:BB:CC:DD:EE:60", "mdns"));
+        _adb.Setup(a => a.ScanMdnsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<MdnsAdbDevice>());
+        _net.Setup(n => n.GetArpTableAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((IReadOnlyList<ArpEntry>)new List<ArpEntry>());
+
+        var svc = Create();
+        await svc.RunMdnsAndMergeAsync(new List<Device>());
+
+        Assert.Single(_handler.Discovered);
+        Assert.Equal("10.0.0.60", _handler.Discovered[0].Ip);
+    }
+
     /// <summary>
     /// Minimal in-memory IScanLifecycleHandler stub. The handler interface is
     /// big — we only need Discovered, DismissedAddresses, and ReplaceDiscovered.

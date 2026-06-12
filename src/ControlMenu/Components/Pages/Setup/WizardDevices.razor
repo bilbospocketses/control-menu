@@ -180,6 +180,17 @@
             }
         }
 
+        // Drop carried-over Discovered rows whose device is now registered (Item 20 — without
+        // this, a device registered after a prior scan resurfaces as a ghost on re-scan).
+        var registeredMacs = devicesByMac.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var registeredIps = _devices
+            .Where(d => !string.IsNullOrEmpty(d.LastKnownIp))
+            .Select(d => d.LastKnownIp!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        merged = merged
+            .Where(d => !ScanMergeHelper.MatchesRegistered(d, registeredMacs, arpMap, registeredIps))
+            .ToList();
+
         Handler.ReplaceDiscovered(merged);
         await LoadDevices();
         _scanning = false;
