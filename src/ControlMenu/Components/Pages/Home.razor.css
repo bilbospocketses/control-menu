@@ -4,7 +4,7 @@
     display: flex;
     flex-direction: column;
     padding: 2rem 1.5rem;
-    max-width: 1200px;
+    max-width: 1400px;
     margin: 0 auto;
 }
 
@@ -49,7 +49,7 @@
     --cm-tile-unit: 7.5rem;   /* height of one single-link tile; tunable */
     --cm-tile-gap: 1.5rem;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
     grid-auto-rows: var(--cm-tile-unit);
     gap: var(--cm-tile-gap);
     width: 100%;
