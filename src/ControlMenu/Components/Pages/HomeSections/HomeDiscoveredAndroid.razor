@@ -6,7 +6,7 @@
 @inject IScanLifecycleHandler Handler
 @inject IDeviceChangeNotifier Notifier
 @inject IDeviceService DeviceService
-@inject IConfigurationService Config
+@inject IDeviceRegistrationService DeviceRegistration
 @implements IDisposable
 
 @* Section ALWAYS renders now: cold and post-scan-empty both show the outlined
@@ -51,23 +51,12 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    // Mirrors WizardDevices.HandleInlineAdd: normalize MAC, persist via
-    // AddDeviceAsync, store the optional PIN secret, then drop the matching
-    // row from Handler.Discovered so the user doesn't see it offered twice.
-    // Bubbles OnDeviceAdded so the parent (Home.razor) can refresh status.
+    // Delegates the shared inline-add body (normalize MAC, persist, store optional PIN,
+    // drop the claimed row from Handler.Discovered) to IDeviceRegistrationService, then
+    // refreshes the local list and bubbles OnDeviceAdded so Home.razor updates its status.
     private async Task HandleInlineAdd(InlineAddPayload payload)
     {
-        var device = payload.Device;
-        device.MacAddress = NetworkDiscoveryService.NormalizeMac(device.MacAddress);
-
-        var saved = await DeviceService.AddDeviceAsync(device);
-
-        if (!string.IsNullOrEmpty(payload.Pin))
-            await Config.SetSecretAsync($"device-pin-{saved.Id}", payload.Pin);
-
-        Handler.ReplaceDiscovered(Handler.Discovered
-            .Where(d => !string.Equals(d.Mac, saved.MacAddress, StringComparison.OrdinalIgnoreCase)));
-
+        await DeviceRegistration.RegisterDiscoveredAsync(payload);
         _devices = await DeviceService.GetAllDevicesAsync();
         await OnDeviceAdded.InvokeAsync();
     }

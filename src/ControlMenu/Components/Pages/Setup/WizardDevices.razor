@@ -8,7 +8,7 @@
 @inject IDeviceChangeNotifier DeviceChangeNotifier
 @inject INetworkDiscoveryService NetworkDiscovery
 @inject IAdbService AdbService
-@inject IConfigurationService Config
+@inject IDeviceRegistrationService DeviceRegistration
 @inject IScanLifecycleHandler Handler
 @implements IDisposable
 
@@ -204,17 +204,7 @@
     {
         try
         {
-            var device = payload.Device;
-            device.MacAddress = NetworkDiscoveryService.NormalizeMac(device.MacAddress);
-
-            var saved = await DeviceService.AddDeviceAsync(device);
-
-            if (!string.IsNullOrEmpty(payload.Pin))
-                await Config.SetSecretAsync($"device-pin-{saved.Id}", payload.Pin);
-
-            Handler.ReplaceDiscovered(Handler.Discovered
-                .Where(d => !string.Equals(d.Mac, saved.MacAddress, StringComparison.OrdinalIgnoreCase)));
-
+            var saved = await DeviceRegistration.RegisterDiscoveredAsync(payload);
             _message = $"Added {saved.Name}.";
             _messageIsError = false;
         }

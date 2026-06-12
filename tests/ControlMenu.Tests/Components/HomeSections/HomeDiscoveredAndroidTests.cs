@@ -29,6 +29,7 @@ public class HomeDiscoveredAndroidTests : BunitContext
         Services.AddSingleton(_notifier.Object);
         Services.AddSingleton(_deviceService.Object);
         Services.AddSingleton(_config.Object);
+        Services.AddSingleton(new Mock<IDeviceRegistrationService>().Object);
         // DiscoveredPanelRow injects these — register loose mocks so the
         // populated render path doesn't blow up.
         Services.AddSingleton(new Mock<IAdbService>().Object);

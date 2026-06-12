@@ -43,6 +43,7 @@ public class HomeIntegrationTests : BunitContext
 
         Services.AddSingleton(new Mock<IAdbService>().Object);
         Services.AddSingleton(new Mock<IDeviceQuickScanService>().Object);
+        Services.AddSingleton(new Mock<IDeviceRegistrationService>().Object);
         var cameraScan = new Mock<ICameraScanService>();
         cameraScan.Setup(s => s.Hits).Returns(Array.Empty<CameraScanHit>());
         Services.AddSingleton(cameraScan.Object);
