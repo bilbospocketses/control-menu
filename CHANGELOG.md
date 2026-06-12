@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Home page reverted to the menu-sections layout** — a hero plus one card per module (sub-pages as pill links) and a Settings card, driven by the module registry. The discovery-dashboard home (scan buttons + live "Discovered Android/Cameras" panels) is removed. Device and camera **scanning is unchanged** — it remains in Settings → Android Devices / Cameras and the setup Wizard.
 - **Setup wizard "Scan Network" buttons unified** — the Devices and Cameras steps now use the same button (secondary style + `bi-broadcast` icon). Previously the Devices button used a different style and icon, so the two steps looked inconsistent.
+- **The DI container is now validated by a test (internal, no behavior change).** The app's service registrations are extracted from `Program.cs` into an `AddControlMenuServices` extension so a unit test can build the real container with `ValidateScopes` + `ValidateOnBuild`. This catches the captive-dependency class of bug — a Singleton consuming a scoped service, exactly like the imaging-services regression below — at test time instead of at the first `dotnet run`. `Program.cs` simply calls the extension; startup is unchanged.
 
 ### Fixed
 
