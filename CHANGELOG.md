@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Added `Svg.Skia` 5.0.0** (unifies on the project's existing SkiaSharp 3.119.2 — no version conflict).
 - The Velopack MSI now pre-seeds `magick` + `vtracer` + `potrace` (~25 MB of engines) so the Imaging tools work on first launch with no separate download. New `fetch-magick.ps1` / `fetch-vtracer.ps1` / `fetch-potrace.ps1` seed fetchers (auto-discovered by `stage-seed.ps1`); `_Fetcher.ps1` gains an `Expand-Cm7z` helper for ImageMagick's `.7z` portable.
+- **Local-Dependencies-Only audit follow-ups (internal, no behavior change).** Consolidated the duplicated Windows `.exe`-suffix logic into one `InstallPathResolver.WithExecutableSuffix` helper (previously copy-pasted in `DependencyPathResolver` and three places in `DependencyManagerService`); tightened `DependencyPathResolver`'s constructor parameter to `IReadOnlyList<IToolModule>` to match `DependencyManagerService`; and added Local-Deps regression tests asserting `JellyfinService` (sqlite3) and `DependencyManagerService` (adb `kill-server` during an update) invoke their binary at the resolved local path, never a bare name. ws-scrcpy-web's former `node` resolution is now external-only, so no equivalent test applies there.
 
 ## [1.1.1] - 2026-06-11
 

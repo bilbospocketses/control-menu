@@ -484,9 +484,7 @@ public class DependencyManagerService : IDependencyManagerService
         var customPath = await _config.GetSettingAsync($"dep-path-{dep.Name}");
         var installDir = InstallPathResolver.Resolve(dep.InstallPath, customPath);
 
-        var exeName = dep.ExecutableName;
-        if (OperatingSystem.IsWindows() && !exeName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-            exeName += ".exe";
+        var exeName = InstallPathResolver.WithExecutableSuffix(dep.ExecutableName);
 
         var localExe = Path.Combine(installDir, exeName);
         if (!File.Exists(localExe))
@@ -754,8 +752,7 @@ public class DependencyManagerService : IDependencyManagerService
 
     private static string? FindExecutable(string dir, string exeName)
     {
-        var exe = OperatingSystem.IsWindows() && !exeName.EndsWith(".exe")
-            ? exeName + ".exe" : exeName;
+        var exe = InstallPathResolver.WithExecutableSuffix(exeName);
         return Directory.EnumerateFiles(dir, exe, SearchOption.AllDirectories).FirstOrDefault();
     }
 
@@ -767,8 +764,7 @@ public class DependencyManagerService : IDependencyManagerService
 
     private static IEnumerable<string> GetManagedFiles(ModuleDependency dep)
     {
-        var exe = OperatingSystem.IsWindows() && !dep.ExecutableName.EndsWith(".exe")
-            ? dep.ExecutableName + ".exe" : dep.ExecutableName;
+        var exe = InstallPathResolver.WithExecutableSuffix(dep.ExecutableName);
         return [exe, .. dep.RelatedFiles];
     }
 }

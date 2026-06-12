@@ -13,6 +13,20 @@ internal static class InstallPathResolver
             : Path.Combine(depsRoot, storedOverride);
     }
 
+    /// <summary>
+    /// On Windows, appends a ".exe" suffix to a bare executable name when it lacks one
+    /// (case-insensitive); on other platforms returns the name unchanged. Single source
+    /// of truth for the suffix logic previously duplicated across DependencyPathResolver
+    /// and DependencyManagerService.
+    /// </summary>
+    public static string WithExecutableSuffix(string executableName)
+    {
+        if (OperatingSystem.IsWindows()
+            && !executableName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            return executableName + ".exe";
+        return executableName;
+    }
+
     public static string Encode(string absolutePath, string defaultInstallPath)
     {
         var depsRoot = Path.GetDirectoryName(defaultInstallPath);

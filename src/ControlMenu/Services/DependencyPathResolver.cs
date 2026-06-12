@@ -7,9 +7,9 @@ public class DependencyPathResolver : IDependencyPathResolver
     private readonly IReadOnlyList<IToolModule> _modules;
     private readonly IConfigurationService _config;
 
-    public DependencyPathResolver(IEnumerable<IToolModule> modules, IConfigurationService config)
+    public DependencyPathResolver(IReadOnlyList<IToolModule> modules, IConfigurationService config)
     {
-        _modules = modules.ToList();
+        _modules = modules;
         _config = config;
     }
 
@@ -30,9 +30,7 @@ public class DependencyPathResolver : IDependencyPathResolver
         var customPath = await _config.GetSettingAsync($"dep-path-{name}");
         var installDir = InstallPathResolver.Resolve(dep.InstallPath, customPath);
 
-        var exeName = dep.ExecutableName;
-        if (OperatingSystem.IsWindows() && !exeName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-            exeName += ".exe";
+        var exeName = InstallPathResolver.WithExecutableSuffix(dep.ExecutableName);
 
         var exePath = Path.Combine(installDir, exeName);
         if (!File.Exists(exePath))
