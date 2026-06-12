@@ -129,13 +129,16 @@ builder.Services.AddScoped<IBackgroundJobService, BackgroundJobService>();
 // Utilities module services
 builder.Services.AddSingleton<IFileUnblockService, FileUnblockService>();
 
-// Imaging Tools module services (magick-backed)
-builder.Services.AddSingleton<ControlMenu.Modules.Imaging.Services.IImageService,
-                              ControlMenu.Modules.Imaging.Services.ImageService>();
+// Imaging Tools module services (magick-backed). Scoped, NOT singleton: both depend on the
+// scoped IDependencyPathResolver (-> scoped IConfigurationService) and are stateless per-call
+// CLI wrappers consumed by scoped Blazor pages. Registering them singleton was a captive-
+// dependency bug that aborts Dev startup via ValidateOnBuild.
+builder.Services.AddScoped<ControlMenu.Modules.Imaging.Services.IImageService,
+                           ControlMenu.Modules.Imaging.Services.ImageService>();
 // Tracing service (raster -> SVG: vtracer color + potrace monochrome). Separate from
 // IImageService because it drives the vtracer/potrace bundled binaries, not just magick.
-builder.Services.AddSingleton<ControlMenu.Modules.Imaging.Services.ITracingService,
-                              ControlMenu.Modules.Imaging.Services.TracingService>();
+builder.Services.AddScoped<ControlMenu.Modules.Imaging.Services.ITracingService,
+                           ControlMenu.Modules.Imaging.Services.TracingService>();
 
 // Cameras module services
 builder.Services.AddSingleton<ICameraChangeNotifier, CameraChangeNotifier>();

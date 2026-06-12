@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Home page reverted to the menu-sections layout** — a hero plus one card per module (sub-pages as pill links) and a Settings card, driven by the module registry. The discovery-dashboard home (scan buttons + live "Discovered Android/Cameras" panels) is removed. Device and camera **scanning is unchanged** — it remains in Settings → Android Devices / Cameras and the setup Wizard.
+- **Setup wizard "Scan Network" buttons unified** — the Devices and Cameras steps now use the same button (secondary style + `bi-broadcast` icon). Previously the Devices button used a different style and icon, so the two steps looked inconsistent.
+
+### Fixed
+
+- **Imaging services no longer abort Development startup** — `IImageService` and `ITracingService` are now registered Scoped instead of Singleton. They depend on the scoped `IDependencyPathResolver`, so the Singleton registration was a captive dependency that failed `ValidateOnBuild` on `dotnet run`. Tests and the packaged app never surfaced it (neither runs Development scope validation).
 
 ## [1.2.0] - 2026-06-11
 
