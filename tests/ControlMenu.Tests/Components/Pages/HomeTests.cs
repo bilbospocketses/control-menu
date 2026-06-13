@@ -18,6 +18,9 @@ public class HomeTests : BunitContext
         Services.AddSingleton(_config.Object);
         // Home.razor injects IServiceProvider to evaluate NavEntry.IsVisible predicates.
         Services.AddSingleton<IServiceProvider>(sp => sp);
+        // Home.razor calls window.controlMenu.layoutHomeTiles / subscribeHomeTilesResize
+        // from OnAfterRenderAsync; loose mode lets those unconfigured calls return default.
+        JSInterop.Mode = JSRuntimeMode.Loose;
     }
 
     private static IToolModule MakeModule(string id, string name, params NavEntry[] entries)
@@ -160,5 +163,23 @@ public class HomeTests : BunitContext
         var cut = Render<ControlMenu.Components.Pages.Home>();
 
         Assert.Empty(cut.FindAll(".home-container"));
+    }
+
+    [Fact]
+    public void ModuleCard_SeedsInitialTileSpan()
+    {
+        RegisterDiscovery(MakeModule("imaging", "Imaging Tools",
+            new NavEntry("Icon Converter", "/imaging/icon-converter", null, 0),
+            new NavEntry("Format Converter", "/imaging/format-converter", null, 1),
+            new NavEntry("Image Resize", "/imaging/image-resize", null, 2),
+            new NavEntry("SVG Rasterize", "/imaging/svg-rasterize", null, 3),
+            new NavEntry("Magic Wand", "/imaging/magic-wand", null, 4),
+            new NavEntry("Tracing", "/imaging/tracing", null, 5)));
+
+        var cut = Render<ControlMenu.Components.Pages.Home>();
+
+        var card = cut.FindAll(".module-card")
+            .First(c => c.QuerySelector("h3")!.TextContent == "Imaging Tools");
+        Assert.Contains("--cm-tile-span:2", card.GetAttribute("style"));
     }
 }
