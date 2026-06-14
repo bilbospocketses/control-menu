@@ -72,7 +72,7 @@
             <tbody>
                 @foreach (var cam in _cameras)
                 {
-                    <tr>
+                    <tr @key="cam.Id">
                         <td><span class="status-dot @GetStatusClass(cam)"></span></td>
                         <td>@(cam.CameraNumber?.ToString() ?? "—")</td>
                         <td>@cam.Name</td>

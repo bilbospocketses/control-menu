@@ -95,6 +95,7 @@ public class ConfigurationService : IConfigurationService
     {
         using var db = await _dbFactory.CreateDbContextAsync();
         return await db.Settings
+            .AsNoTracking()
             .Where(s => s.ModuleId == moduleId)
             .ToListAsync();
     }
@@ -103,6 +104,7 @@ public class ConfigurationService : IConfigurationService
     {
         using var db = await _dbFactory.CreateDbContextAsync();
         return await db.Settings
+            .AsNoTracking()
             .FirstOrDefaultAsync(s => s.Key == key && s.ModuleId == moduleId);
     }
 }

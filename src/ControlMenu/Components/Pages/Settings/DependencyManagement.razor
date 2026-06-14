@@ -51,7 +51,7 @@
                 {
                     var isConfigurable = DepManager.IsConfigurable(dep.Name, dep.ModuleId);
                     var isExternallyConfigured = IsExternallyConfigured(dep.Name);
-                    <tr>
+                    <tr @key="(dep.ModuleId, dep.Name)">
                         <td><strong>@dep.Name</strong></td>
                         <td>@dep.ModuleId</td>
                         <td><code>@FormatVersion(dep.Name, dep.InstalledVersion)</code></td>
