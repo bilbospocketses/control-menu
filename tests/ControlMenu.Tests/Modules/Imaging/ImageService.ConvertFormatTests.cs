@@ -102,6 +102,24 @@ public class ImageServiceConvertFormatTests
             $"Expected low-quality JPEG ({low.Length} B) to be smaller than high-quality ({high.Length} B)");
     }
 
+    [Theory]
+    // A crafted target format that tries to smuggle a magick operator through the out.<ext> path
+    // (e.g. -write/-read or another coder) must be rejected by the allowlist BEFORE magick runs.
+    [InlineData("png\" -write evil")]   // quote-break + extra operator
+    [InlineData("png -write evil.gif")] // space-separated extra tokens
+    [InlineData("exr")]                 // a real magick coder, but not on our output allowlist
+    [InlineData("svg")]                 // deliberately excluded (SVG never leaves magick as output)
+    [InlineData("xc")]                  // pseudo-coder
+    public async Task ConvertFormatAsync_RejectsDisallowedTargetFormat(string badFormat)
+    {
+        // The allowlist gate runs in-memory before any process spawn or file write, so this does
+        // NOT need magick installed -- it asserts the injection-closing validation directly.
+        var png = TestImages.CreatePng(32, 32);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _fx.Service.ConvertFormatAsync(png, badFormat));
+    }
+
     /// <summary>
     /// AVIF is served by the libheif delegate. Whether THIS portable Q8 build can ENCODE AVIF
     /// depends on libheif having an AV1 encoder compiled in. We do not assert it works — we

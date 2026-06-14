@@ -29,7 +29,10 @@ public class TracingService : ITracingService
     private const string PotraceName = "potrace";
 
     // Per-call resource caps for the magick normalize step -- defense in depth alongside policy.xml.
-    private const string MagickLimitFlags = "-limit memory 512MB -limit area 16384x16384 -limit map 1GB";
+    // Discrete argv tokens so each lands verbatim via ProcessStartInfo.ArgumentList; spread into
+    // every magick call with [..MagickLimitFlags, ...].
+    private static readonly string[] MagickLimitFlags =
+        ["-limit", "memory", "512MB", "-limit", "area", "16384x16384", "-limit", "map", "1GB"];
 
     private readonly ICommandExecutor _executor;
     private readonly IDependencyPathResolver _resolver;
@@ -66,20 +69,23 @@ public class TracingService : ITracingService
             var svgPath = Path.Combine(workDir, "out.svg");
             await File.WriteAllBytesAsync(rawPath, input, ct);
 
-            await InvokeMagickAsync($"{MagickLimitFlags} \"{rawPath}\" \"{pngPath}\"", ct);
+            await InvokeMagickAsync([..MagickLimitFlags, rawPath, pngPath], ct);
 
             // colormode is constrained to the two values vtracer accepts; everything else maps
-            // 1:1 to a verified vtracer flag. Numbers are invariant-culture so a non-US locale
-            // never emits a comma vtracer would reject.
+            // 1:1 to a verified vtracer flag. Each flag and its value is a discrete argv token.
+            // Numbers are invariant-culture so a non-US locale never emits a comma vtracer rejects.
             var colorMode = NormalizeColorMode(options.ColorMode);
-            var args =
-                $"--input \"{pngPath}\" --output \"{svgPath}\" " +
-                $"--colormode {colorMode} " +
-                $"--hierarchical {NormalizeHierarchical(options.Hierarchical)} " +
-                $"--mode {NormalizeMode(options.Mode)} " +
-                $"--filter_speckle {options.FilterSpeckle.ToString(CultureInfo.InvariantCulture)} " +
-                $"--color_precision {options.ColorPrecision.ToString(CultureInfo.InvariantCulture)} " +
-                $"--path_precision {options.PathPrecision.ToString(CultureInfo.InvariantCulture)}";
+            string[] args =
+            [
+                "--input", pngPath,
+                "--output", svgPath,
+                "--colormode", colorMode,
+                "--hierarchical", NormalizeHierarchical(options.Hierarchical),
+                "--mode", NormalizeMode(options.Mode),
+                "--filter_speckle", options.FilterSpeckle.ToString(CultureInfo.InvariantCulture),
+                "--color_precision", options.ColorPrecision.ToString(CultureInfo.InvariantCulture),
+                "--path_precision", options.PathPrecision.ToString(CultureInfo.InvariantCulture),
+            ];
 
             await InvokeTracerAsync(VtracerName, args, ct);
 
@@ -114,17 +120,20 @@ public class TracingService : ITracingService
             var pct = (Math.Clamp(options.Threshold, 0.0, 1.0) * 100.0)
                 .ToString("0.###", CultureInfo.InvariantCulture);
             await InvokeMagickAsync(
-                $"{MagickLimitFlags} \"{rawPath}\" -colorspace Gray -threshold {pct}% \"{bmpPath}\"", ct);
+                [..MagickLimitFlags, rawPath, "-colorspace", "Gray", "-threshold", $"{pct}%", bmpPath], ct);
 
             // Step 2: potrace traces the BMP to SVG. --longcurve only appears when curve
             // optimization is disabled; --invert only when requested. Numbers invariant-culture.
-            var args =
-                "--svg " +
-                $"--turdsize {options.TurdSize.ToString(CultureInfo.InvariantCulture)} " +
-                $"--alphamax {options.AlphaMax.ToString("0.###", CultureInfo.InvariantCulture)} " +
-                (options.OptimizeCurve ? string.Empty : "--longcurve ") +
-                (options.Invert ? "--invert " : string.Empty) +
-                $"--output \"{svgPath}\" \"{bmpPath}\"";
+            // Each flag/value is a discrete argv token; conditional flags are appended in order.
+            List<string> args =
+            [
+                "--svg",
+                "--turdsize", options.TurdSize.ToString(CultureInfo.InvariantCulture),
+                "--alphamax", options.AlphaMax.ToString("0.###", CultureInfo.InvariantCulture),
+            ];
+            if (!options.OptimizeCurve) args.Add("--longcurve");
+            if (options.Invert) args.Add("--invert");
+            args.AddRange(["--output", svgPath, bmpPath]);
 
             await InvokeTracerAsync(PotraceName, args, ct);
 
@@ -160,9 +169,10 @@ public class TracingService : ITracingService
 
     /// <summary>
     /// Invoke the bundled magick.exe (resolved per Local-Dependencies-Only). Used only as the
-    /// format normalizer feeding the tracers. Throws <see cref="ImagingException"/> on non-zero exit.
+    /// format normalizer feeding the tracers. Args are passed as discrete ArgumentList elements
+    /// (verbatim, no re-parsing). Throws <see cref="ImagingException"/> on non-zero exit.
     /// </summary>
-    private async Task<CommandResult> InvokeMagickAsync(string args, CancellationToken ct)
+    private async Task<CommandResult> InvokeMagickAsync(IReadOnlyList<string> args, CancellationToken ct)
     {
         var result = await _executor.ExecuteResolvedAsync(_resolver, ModuleId, MagickName, args, cancellationToken: ct);
         if (result.ExitCode != 0)
@@ -178,8 +188,9 @@ public class TracingService : ITracingService
     /// Throws <see cref="ImagingException"/> on non-zero exit. Note: vtracer prints
     /// "Conversion successful." to stdout and potrace is silent on success, so a clean exit
     /// code is the success signal; stderr is logged but not treated as failure on its own.
+    /// Args are passed as discrete ArgumentList elements (verbatim, no re-parsing).
     /// </summary>
-    private async Task<CommandResult> InvokeTracerAsync(string name, string args, CancellationToken ct)
+    private async Task<CommandResult> InvokeTracerAsync(string name, IReadOnlyList<string> args, CancellationToken ct)
     {
         var result = await _executor.ExecuteResolvedAsync(_resolver, ModuleId, name, args, cancellationToken: ct);
         if (result.ExitCode != 0)

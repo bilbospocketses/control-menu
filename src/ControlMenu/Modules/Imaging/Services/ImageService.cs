@@ -1,3 +1,4 @@
+using System.Globalization;
 using ControlMenu.Common.Paths;
 using ControlMenu.Modules.Imaging.Services.Options;
 using ControlMenu.Services;
@@ -12,8 +13,20 @@ public class ImageService : IImageService
     private const string ModuleId = "imaging";
     private const string MagickName = "magick";
 
-    // Per-call resource caps -- defense in depth alongside policy.xml.
-    private const string LimitFlags = "-limit memory 512MB -limit area 16384x16384 -limit map 1GB";
+    // Per-call resource caps -- defense in depth alongside policy.xml. Each flag/value is a
+    // DISCRETE argv token so it lands verbatim through ProcessStartInfo.ArgumentList; spread
+    // into every magick call with [..LimitFlags, ...].
+    private static readonly string[] LimitFlags =
+        ["-limit", "memory", "512MB", "-limit", "area", "16384x16384", "-limit", "map", "1GB"];
+
+    // Container formats we permit as the magick OUTPUT extension. magick selects the encoder
+    // from the out.<ext> name, so an unvalidated target format could smuggle magick operators
+    // through the output path -- this fixed set closes that. Compared case-insensitively after
+    // TrimStart('.').ToLowerInvariant().
+    private static readonly HashSet<string> AllowedOutputFormats = new(StringComparer.Ordinal)
+    {
+        "png", "jpg", "jpeg", "webp", "avif", "tiff", "bmp", "gif", "ico"
+    };
 
     private readonly ICommandExecutor _executor;
     private readonly IDependencyPathResolver _resolver;
@@ -36,6 +49,7 @@ public class ImageService : IImageService
         var ext = (targetFormat ?? string.Empty).Trim().TrimStart('.').ToLowerInvariant();
         if (ext.Length == 0)
             throw new ArgumentException("Target format is required", nameof(targetFormat));
+        EnsureAllowedOutputFormat(ext, nameof(targetFormat));
 
         var quality = (options ?? new ConvertFormatOptions()).Quality;
 
@@ -49,7 +63,7 @@ public class ImageService : IImageService
             // -quality applies to lossy encoders (JPG/WebP/AVIF); lossless coders ignore it
             // harmlessly. magick infers the target format from the out.<ext> name.
             await InvokeMagickAsync(
-                $"{LimitFlags} \"{inputPath}\" -quality {quality} \"{outputPath}\"", ct);
+                [..LimitFlags, inputPath, "-quality", quality.ToString(CultureInfo.InvariantCulture), outputPath], ct);
 
             return await File.ReadAllBytesAsync(outputPath, ct);
         }
@@ -69,6 +83,10 @@ public class ImageService : IImageService
 
         // A resize must NOT transcode: detect the input format and re-encode to the same one.
         var info = await GetInfoAsync(input, ct);
+        // ext derives from magick's own %m report (not caller input), so it carries no injection
+        // risk and ArgumentList already neutralizes the out.<ext> path — no allowlist gate here, so
+        // a resize preserves any format magick can read (EXR/PSD/etc.). The caller-supplied-format
+        // path (ConvertFormatAsync) is where the allowlist matters.
         var ext = info.Format.ToLowerInvariant();
 
         var workDir = CreateWorkDir();
@@ -79,7 +97,7 @@ public class ImageService : IImageService
             await File.WriteAllBytesAsync(inputPath, input, ct);
 
             await InvokeMagickAsync(
-                $"{LimitFlags} \"{inputPath}\" -resize {geometry} \"{outputPath}\"", ct);
+                [..LimitFlags, inputPath, "-resize", geometry, outputPath], ct);
 
             return await File.ReadAllBytesAsync(outputPath, ct);
         }
@@ -146,7 +164,7 @@ public class ImageService : IImageService
             await File.WriteAllBytesAsync(inputPath, input, ct);
 
             await InvokeMagickAsync(
-                $"{LimitFlags} \"{inputPath}\" -define icon:auto-resize={csv} \"{outputPath}\"", ct);
+                [..LimitFlags, inputPath, "-define", $"icon:auto-resize={csv}", outputPath], ct);
 
             return await File.ReadAllBytesAsync(outputPath, ct);
         }
@@ -198,21 +216,31 @@ public class ImageService : IImageService
             await File.WriteAllBytesAsync(inputPath, input, ct);
 
             // Sample the seed pixel's colour as text (e.g. "srgba(255,255,255,1)"). identify
-            // reads PNG and writes to stdout -- allowed by policy. We quote it as a single arg
-            // when we hand it back to magick because it contains parentheses and commas.
+            // reads PNG and writes to stdout -- allowed by policy. The %[pixel:...] expression is
+            // a single argv token (ArgumentList quotes it verbatim), as is the seed colour later.
             var seedResult = await InvokeMagickAsync(
-                $"identify -format \"%[pixel:p{{{options.SeedX},{options.SeedY}}}]\" \"{inputPath}\"", ct);
+                ["identify", "-format", $"%[pixel:p{{{options.SeedX},{options.SeedY}}}]", inputPath], ct);
             var seedColor = seedResult.StandardOutput.Trim();
             if (seedColor.Length == 0)
                 throw new ImagingException("Could not sample the seed pixel colour");
 
             // -alpha set guarantees an alpha channel exists; -fill none is the replacement
-            // colour (fully transparent) for the floodfill operator.
-            string args = options.Contiguous
+            // colour (fully transparent) for the floodfill operator. Each flag/value is a discrete
+            // token; the seed colour (parentheses+commas) is one ArgumentList element.
+            var fuzz = $"{fuzzPct.ToString(CultureInfo.InvariantCulture)}%";
+            List<string> args = [..LimitFlags, inputPath, "-alpha", "set", "-fuzz", fuzz];
+            if (options.Contiguous)
+            {
                 // Contiguous: flood the connected region matching the seed colour starting at the seed.
-                ? $"{LimitFlags} \"{inputPath}\" -alpha set -fuzz {fuzzPct}% -fill none -floodfill +{options.SeedX}+{options.SeedY} \"{seedColor}\" \"{outputPath}\""
+                args.AddRange(["-fill", "none",
+                    "-floodfill", $"+{options.SeedX}+{options.SeedY}", seedColor]);
+            }
+            else
+            {
                 // Non-contiguous: make EVERY pixel matching the seed colour transparent (disjoint regions included).
-                : $"{LimitFlags} \"{inputPath}\" -alpha set -fuzz {fuzzPct}% -transparent \"{seedColor}\" \"{outputPath}\"";
+                args.AddRange(["-transparent", seedColor]);
+            }
+            args.Add(outputPath);
 
             await InvokeMagickAsync(args, ct);
 
@@ -361,8 +389,9 @@ public class ImageService : IImageService
             var inputPath = Path.Combine(workDir, "input");
             await File.WriteAllBytesAsync(inputPath, input, ct);
 
-            // %w=width %h=height %m=format code (e.g. PNG) %A=alpha/matte state.
-            var result = await InvokeMagickAsync($"identify -format \"%w %h %m %A\" \"{inputPath}\"", ct);
+            // %w=width %h=height %m=format code (e.g. PNG) %A=alpha/matte state. The whole format
+            // template is one argv token (it was a single quoted argument before).
+            var result = await InvokeMagickAsync(["identify", "-format", "%w %h %m %A", inputPath], ct);
 
             var parts = result.StandardOutput.Trim().Split(' ');
             if (parts.Length < 4)
@@ -396,12 +425,26 @@ public class ImageService : IImageService
     }
 
     /// <summary>
-    /// Invoke the bundled magick.exe (resolved via IDependencyPathResolver per the
-    /// Local-Dependencies-Only rule) with the given args. magick reads our hardened
-    /// policy.xml from its own directory, so no environment overrides are needed.
-    /// Throws <see cref="ImagingException"/> on non-zero exit.
+    /// Validates that <paramref name="ext"/> (already normalized to a bare, lower-cased extension)
+    /// is one of the container formats we permit as the magick OUTPUT selector. magick derives the
+    /// encoder from the out.&lt;ext&gt; name, so an unconstrained value could inject magick operators
+    /// through the output path -- this is the gate that closes that.
     /// </summary>
-    private async Task<CommandResult> InvokeMagickAsync(string args, CancellationToken ct)
+    private static void EnsureAllowedOutputFormat(string ext, string paramName)
+    {
+        if (!AllowedOutputFormats.Contains(ext))
+            throw new ArgumentException($"Unsupported output format: '{ext}'", paramName);
+    }
+
+    /// <summary>
+    /// Invoke the bundled magick.exe (resolved via IDependencyPathResolver per the
+    /// Local-Dependencies-Only rule) with the given structured argument list -- each element is
+    /// passed verbatim via ProcessStartInfo.ArgumentList, so a value containing spaces or quotes
+    /// can never be re-parsed into extra arguments. magick reads our hardened policy.xml from its
+    /// own directory, so no environment overrides are needed. Throws <see cref="ImagingException"/>
+    /// on non-zero exit.
+    /// </summary>
+    private async Task<CommandResult> InvokeMagickAsync(IReadOnlyList<string> args, CancellationToken ct)
     {
         var result = await _executor.ExecuteResolvedAsync(_resolver, ModuleId, MagickName, args, cancellationToken: ct);
 
