@@ -159,8 +159,10 @@ public class JellyfinService : IJellyfinService
         if (apiKey is null) throw new InvalidOperationException("Jellyfin API key not configured");
 
         var client = _httpFactory.CreateClient();
-        var url = $"{baseUrl}/emby/Persons?api_key={apiKey}";
-        var json = await client.GetStringAsync(url, ct);
+        // API key goes in a header, never the URL query string (query strings land in proxy/access
+        // logs and request traces).
+        client.DefaultRequestHeaders.Add("X-Emby-Token", apiKey);
+        var json = await client.GetStringAsync($"{baseUrl}/emby/Persons", ct);
 
         var persons = new List<JellyfinPerson>();
         using var doc = System.Text.Json.JsonDocument.Parse(json);
@@ -205,7 +207,8 @@ public class JellyfinService : IJellyfinService
         if (apiConfig.UserId is null) return;
 
         var client = _httpFactory.CreateClient();
-        var url = $"{apiConfig.BaseUrl}/Users/{apiConfig.UserId}/Items/{personId}?api_key={apiConfig.ApiKey}";
+        client.DefaultRequestHeaders.Add("X-Emby-Token", apiConfig.ApiKey);
+        var url = $"{apiConfig.BaseUrl}/Users/{Uri.EscapeDataString(apiConfig.UserId)}/Items/{Uri.EscapeDataString(personId)}";
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
         await client.GetAsync(url, timeoutCts.Token);

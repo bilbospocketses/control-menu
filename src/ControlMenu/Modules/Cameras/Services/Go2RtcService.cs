@@ -166,6 +166,48 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         }
     }
 
+    /// <summary>
+    /// Builds a go2rtc stream line with <b>percent-encoded</b> credentials, or returns null with a
+    /// <paramref name="skipReason"/> if the camera should be skipped. Credentials are encoded so a
+    /// password containing @ : / or whitespace can't restructure the RTSP URL or inject a YAML line;
+    /// a host that itself carries whitespace/quotes is rejected. <c>internal</c> for unit tests.
+    /// </summary>
+    internal static string? TryBuildStreamLine(
+        string? rtspStreamUrl, string ipAddress, int port, string username, string password, out string? skipReason)
+    {
+        skipReason = null;
+        string scheme, host, pathAndQuery = string.Empty;
+        int resolvedPort;
+        if (!string.IsNullOrEmpty(rtspStreamUrl))
+        {
+            if (!Uri.TryCreate(rtspStreamUrl, UriKind.Absolute, out var uri))
+            {
+                skipReason = "invalid RtspStreamUrl";
+                return null;
+            }
+            scheme = uri.Scheme;
+            host = uri.Host;
+            resolvedPort = uri.Port;
+            pathAndQuery = uri.PathAndQuery;
+        }
+        else
+        {
+            scheme = "rtsp";
+            host = ipAddress;
+            resolvedPort = port;
+        }
+
+        if (host.AsSpan().IndexOfAny(" \t\r\n\"") >= 0)
+        {
+            skipReason = "invalid host in stream config";
+            return null;
+        }
+
+        var encodedUser = Uri.EscapeDataString(username);
+        var encodedPass = Uri.EscapeDataString(password);
+        return $"{scheme}://{encodedUser}:{encodedPass}@{host}:{resolvedPort}{pathAndQuery}";
+    }
+
     /// <summary>Builds the go2rtc YAML and writes it to disk only if it
     /// differs from what's already there. Returns true if the file was
     /// written (config genuinely changed), false if the new content matched
@@ -188,18 +230,11 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
                 continue;
             }
             var (username, password) = creds.Value;
-
-            // Prefer the resolved RtspStreamUrl (full URL with auth replaced inline);
-            // fall back to bare ip:port for ONVIF cameras whose discovery couldn't probe streams.
-            string streamLine;
-            if (!string.IsNullOrEmpty(cam.RtspStreamUrl))
+            var streamLine = TryBuildStreamLine(cam.RtspStreamUrl, cam.IpAddress, cam.Port, username, password, out var skipReason);
+            if (streamLine is null)
             {
-                var uri = new Uri(cam.RtspStreamUrl);
-                streamLine = $"{uri.Scheme}://{username}:{password}@{uri.Host}:{uri.Port}{uri.PathAndQuery}";
-            }
-            else
-            {
-                streamLine = $"rtsp://{username}:{password}@{cam.IpAddress}:{cam.Port}";
+                _logger.LogWarning("Camera {Name} ({Id}) skipped — {Reason}", cam.Name, cam.Id, skipReason);
+                continue;
             }
 
             sb.AppendLine($"  camera-{cam.Id:N}: {streamLine}");
