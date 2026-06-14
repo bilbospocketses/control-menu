@@ -123,10 +123,27 @@ internal static class Program
             // Phase 2 marker: tray::spawn(is_service_mode) goes here, BEFORE
             // supervisor::run blocking loop. (main.rs:158-196)
 
+            // Kill-on-close Job Object: the supervised child + its grandchildren
+            // (go2rtc/adb/scrcpy) die with the launcher instead of orphaning if it
+            // is killed (Servy stop, Task Manager, MSI uninstall). ReleaseKillOnClose
+            // on the graceful path below lets a Velopack Update.exe grandchild outlive
+            // us during an apply. Mirrors ws-scrcpy-web job_object.rs + main.rs:454-476.
+            using var job = OperatingSystem.IsWindows() ? JobObject.CreateKillOnClose() : null;
+
             // 5. Phase 1 supervisor: directly spawn ControlMenu.exe child.
             //    Phase 3 expands with crash-restart loop and Velopack apply
             //    orchestration. Mirrors main.rs:198-204 stub portion.
-            return ChildSupervisor.Run(paths);
+            var exitCode = ChildSupervisor.Run(paths, job);
+
+            // Graceful exit: clear kill-on-close so the job dissolves WITHOUT killing
+            // a surviving Velopack Update.exe grandchild. Hard-kill paths skip this and
+            // the kernel's kill-on-close still reaps the tree. (main.rs:462-476)
+            if (job is not null && OperatingSystem.IsWindows() && job.ReleaseKillOnClose())
+            {
+                LauncherLogger.Info("job_object: kill-on-close released; grandchildren may survive exit");
+            }
+
+            return exitCode;
         }
         finally
         {

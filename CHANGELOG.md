@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Imaging services no longer abort Development startup** — `IImageService` and `ITracingService` are now registered Scoped instead of Singleton. They depend on the scoped `IDependencyPathResolver`, so the Singleton registration was a captive dependency that failed `ValidateOnBuild` on `dotnet run`. Tests and the packaged app never surfaced it (neither runs Development scope validation).
+- **The launcher no longer orphans the app and its helper processes when it is killed.** `ControlMenuLauncher` now places the supervised `ControlMenu.exe` child — and, by job-membership inheritance, its grandchildren (go2rtc/adb/scrcpy) — into a Windows kill-on-close Job Object, so a hard stop of the launcher (Servy stop, Task Manager, MSI uninstall) reaps the whole tree instead of leaving a headless server holding the Kestrel port and native daemons resident. Graceful exit clears the kill-on-close flag first (`ReleaseKillOnClose`) so a Velopack `Update.exe` grandchild can outlive the launcher during an apply. Ported from ws-scrcpy-web's `job_object.rs`; the prior Phase-1 "CM does not adopt the Job Object pattern" stub is now implemented.
 
 ## [1.2.0] - 2026-06-11
 
