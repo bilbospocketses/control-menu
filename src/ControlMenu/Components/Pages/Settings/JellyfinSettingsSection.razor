@@ -292,32 +292,39 @@
         return $"{label} path saved. Moved {result.MovedCount} files; {result.FailedCount} could not be moved (in use): {string.Join(", ", result.FailedFiles)}. Retry the Save to migrate them.";
     }
 
-    private async void RefreshDirectoryStats()
+    // Sync wrapper kept so the existing fire-and-forget call sites are unchanged; the work runs in
+    // a try/catch'd Task so a directory-IO failure (UnauthorizedAccess, a TOCTOU delete, a bad path)
+    // can never escape as an unobserved async-void exception and tear down the circuit.
+    private void RefreshDirectoryStats() => _ = RefreshDirectoryStatsAsync();
+
+    private async Task RefreshDirectoryStatsAsync()
     {
-        var backupDir = await DirectoryResolver.GetBackupDirectoryAsync();
-        if (Directory.Exists(backupDir))
+        try
         {
-            var files = Directory.GetFiles(backupDir, "*.db");
-            _backupCount = files.Length;
-            _backupSize = files.Sum(f => new FileInfo(f).Length);
+            var backupDir = await DirectoryResolver.GetBackupDirectoryAsync();
+            if (Directory.Exists(backupDir))
+            {
+                var files = Directory.GetFiles(backupDir, "*.db");
+                _backupCount = files.Length;
+                _backupSize = files.Sum(f => { try { return new FileInfo(f).Length; } catch { return 0L; } });
+            }
+            else
+            {
+                _backupCount = 0;
+                _backupSize = 0;
+            }
+
+            var logDir = await DirectoryResolver.GetLogDirectoryAsync();
+            _logCount = Directory.Exists(logDir) ? Directory.GetFiles(logDir, "*.log").Length : 0;
         }
-        else
+        catch
         {
             _backupCount = 0;
             _backupSize = 0;
-        }
-
-        var logDir = await DirectoryResolver.GetLogDirectoryAsync();
-        if (Directory.Exists(logDir))
-        {
-            _logCount = Directory.GetFiles(logDir, "*.log").Length;
-        }
-        else
-        {
             _logCount = 0;
         }
 
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     private void ShowMessage(string msg, bool isError)

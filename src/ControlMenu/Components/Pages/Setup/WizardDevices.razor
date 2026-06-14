@@ -80,10 +80,19 @@
         Handler.OnStateChanged += HandleHandlerStateChanged;
     }
 
-    private async void OnDevicesChanged() => await InvokeAsync(async () =>
+    // void (not async void) so a throw in the change-notifier callback can't surface as an
+    // unobserved exception that drops the circuit; the body is try/catch'd inside InvokeAsync.
+    private void OnDevicesChanged() => _ = InvokeAsync(async () =>
     {
-        await LoadDevices();
-        StateHasChanged();
+        try
+        {
+            await LoadDevices();
+            StateHasChanged();
+        }
+        catch
+        {
+            // Transient device-load failure on a notifier callback: ignore, keep the wizard alive.
+        }
     });
 
     private void HandleHandlerStateChanged()
