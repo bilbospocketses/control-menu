@@ -25,4 +25,23 @@ public static class ResolvedExecutorExtensions
         var path = await resolver.ResolveAsync(moduleId, name, cancellationToken);
         return await executor.ExecuteAsync(path, arguments, workingDirectory, cancellationToken);
     }
+
+    /// <summary>
+    /// Injection-safe variant of <see cref="ExecuteResolvedAsync(ICommandExecutor, IDependencyPathResolver, string, string, string?, string?, CancellationToken)"/>:
+    /// passes each argument as a discrete <c>ArgumentList</c> element so caller- or data-derived
+    /// values (paths, IDs, credentials) can never be split or injected. Prefer this overload for any
+    /// bundled-binary invocation that interpolates a non-constant value.
+    /// </summary>
+    public static async Task<CommandResult> ExecuteResolvedAsync(
+        this ICommandExecutor executor,
+        IDependencyPathResolver resolver,
+        string moduleId,
+        string name,
+        IReadOnlyList<string> argumentList,
+        string? workingDirectory = null,
+        CancellationToken cancellationToken = default)
+    {
+        var path = await resolver.ResolveAsync(moduleId, name, cancellationToken);
+        return await executor.ExecuteAsync(path, argumentList, workingDirectory, cancellationToken);
+    }
 }

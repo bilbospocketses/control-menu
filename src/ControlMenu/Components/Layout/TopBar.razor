@@ -45,7 +45,16 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _updateCount = await DepManager.GetUpdateAvailableCountAsync();
+        try
+        {
+            _updateCount = await DepManager.GetUpdateAvailableCountAsync();
+        }
+        catch
+        {
+            // TopBar renders on every page via MainLayout and the update badge is non-essential:
+            // a failed lookup must degrade to "no badge", never throw out of init and drop the circuit.
+            _updateCount = 0;
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

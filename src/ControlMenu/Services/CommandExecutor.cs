@@ -24,46 +24,30 @@ public class CommandExecutor : ICommandExecutor
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        using var process = new Process();
+        var startInfo = CreateStartInfo(command, workingDirectory);
+        startInfo.Arguments = arguments ?? string.Empty;
+        return await RunAsync(startInfo, cancellationToken);
+    }
 
-        // Anchor working directory at the binary's own location by default (Gotcha 9).
-        // Velopack's swap step renames current\ mid-flight; any child process holding a
-        // working directory under current\ races the rename and can cause the swap to fail.
-        //
-        // When the caller passes an explicit workingDirectory, honour it.
-        // When workingDirectory is null and FileName is an absolute path (all bundled
-        // binaries routed through IDependencyPathResolver), default to the binary's own
-        // directory — which under CM's deps layout is always outside current\.
-        // When FileName is a bare name (PATH-resolved OS builtins: cmd, powershell, arp,
-        // ping, docker), Path.GetDirectoryName returns null and we fall back to
-        // Environment.CurrentDirectory. That is the only remaining cwd-inheritance path,
-        // and it is intentionally limited to OS tools that do not depend on cwd.
-        var resolvedWorkingDirectory = workingDirectory
-            ?? Path.GetDirectoryName(command)
-            ?? string.Empty;
+    public async Task<CommandResult> ExecuteAsync(
+        string command,
+        IReadOnlyList<string> argumentList,
+        string? workingDirectory = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(argumentList);
+        cancellationToken.ThrowIfCancellationRequested();
 
-        process.StartInfo = new ProcessStartInfo
+        var startInfo = CreateStartInfo(command, workingDirectory);
+        // ArgumentList appends each element verbatim with correct OS-level quoting, so a value
+        // containing spaces/quotes can never be re-parsed into extra arguments. This is the
+        // injection-safe path; prefer it for any command whose arguments include caller- or
+        // data-derived values (paths, IDs, credentials, geometry).
+        foreach (var argument in argumentList)
         {
-            FileName = command,
-            Arguments = arguments ?? string.Empty,
-            WorkingDirectory = resolvedWorkingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        process.Start();
-
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-
-        await process.WaitForExitAsync(cancellationToken);
-
-        var stdout = await stdoutTask;
-        var stderr = await stderrTask;
-
-        return new CommandResult(process.ExitCode, stdout, stderr, TimedOut: false);
+            startInfo.ArgumentList.Add(argument);
+        }
+        return await RunAsync(startInfo, cancellationToken);
     }
 
     public async Task<CommandResult> ExecuteAsync(
@@ -90,5 +74,60 @@ public class CommandExecutor : ICommandExecutor
         }
 
         return await ExecuteAsync(command, arguments, definition.WorkingDirectory, cancellationToken);
+    }
+
+    private static ProcessStartInfo CreateStartInfo(string command, string? workingDirectory) => new()
+    {
+        FileName = command,
+        // Anchor working directory at the binary's own location by default (Gotcha 9).
+        // Velopack's swap step renames current\ mid-flight; any child process holding a
+        // working directory under current\ races the rename and can cause the swap to fail.
+        //
+        // When the caller passes an explicit workingDirectory, honour it.
+        // When workingDirectory is null and FileName is an absolute path (all bundled
+        // binaries routed through IDependencyPathResolver), default to the binary's own
+        // directory — which under CM's deps layout is always outside current\.
+        // When FileName is a bare name (PATH-resolved OS builtins: cmd, powershell, arp,
+        // ping, docker), Path.GetDirectoryName returns null and we fall back to
+        // Environment.CurrentDirectory. That is the only remaining cwd-inheritance path,
+        // and it is intentionally limited to OS tools that do not depend on cwd.
+        WorkingDirectory = workingDirectory ?? Path.GetDirectoryName(command) ?? string.Empty,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        UseShellExecute = false,
+        CreateNoWindow = true,
+    };
+
+    private static async Task<CommandResult> RunAsync(ProcessStartInfo startInfo, CancellationToken cancellationToken)
+    {
+        using var process = new Process { StartInfo = startInfo };
+        process.Start();
+
+        try
+        {
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+
+            await process.WaitForExitAsync(cancellationToken);
+
+            return new CommandResult(process.ExitCode, await stdoutTask, await stderrTask, TimedOut: false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancellation / timeout must not orphan the child: kill the whole process tree
+            // before propagating. Best-effort — ignore races where it already exited.
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch
+            {
+                // Already exited or insufficient access — nothing more we can do.
+            }
+            throw;
+        }
     }
 }

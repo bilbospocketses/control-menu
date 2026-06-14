@@ -26,7 +26,7 @@ public static class ChildSupervisor
     /// </summary>
     public const int ExitCodeApplyUpdate = 75;
 
-    public static int Run(IDataPathResolver paths)
+    public static int Run(IDataPathResolver paths, JobObject? job = null)
     {
         var childExe = Path.Combine(paths.GetCurrentDir(), "ControlMenu.exe");
         if (!File.Exists(childExe))
@@ -48,6 +48,17 @@ public static class ChildSupervisor
         {
             using var p = Process.Start(psi)
                 ?? throw new InvalidOperationException("Process.Start returned null");
+
+            // Put the child — and, by job-membership inheritance, its grandchildren
+            // (go2rtc/adb/scrcpy) — into the launcher's kill-on-close job so nothing
+            // orphans if the launcher is killed. Adopt immediately after spawn, before
+            // the child has a chance to spawn its own descendants. Mirrors
+            // ws-scrcpy-web supervisor.rs job_object::adopt(&child).
+            if (job is not null && OperatingSystem.IsWindows() && job.Adopt(p))
+            {
+                LauncherLogger.Info($"job_object: child PID {p.Id} adopted into kill-on-close job");
+            }
+
             LauncherLogger.Info($"child PID: {p.Id}");
             p.WaitForExit();
             var code = p.ExitCode;

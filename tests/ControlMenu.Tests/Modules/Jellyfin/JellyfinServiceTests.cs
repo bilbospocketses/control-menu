@@ -114,15 +114,21 @@ public class JellyfinServiceTests
         _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-db-path", null))
             .ReturnsAsync("D:/DockerData/jellyfin/config/data/jellyfin.db");
 
+        IReadOnlyList<string>? captured = null;
         _mockExecutor.Setup(e => e.ExecuteAsync("sqlite3",
-            It.Is<string>(s => s.Contains("UPDATE BaseItems SET DateCreated=PremiereDate")),
-            null, default))
+                It.IsAny<IReadOnlyList<string>>(), null, default))
+            .Callback<string, IReadOnlyList<string>, string?, CancellationToken>((_, a, _, _) => captured = a)
             .ReturnsAsync(new CommandResult(0, "", "", false));
 
         var service = CreateService();
         var result = await service.UpdateDateCreatedAsync();
 
         Assert.True(result);
+        // dbPath and the SQL statement are passed as discrete, un-concatenated arguments —
+        // a dbPath containing a quote/space can no longer inject extra sqlite3 arguments.
+        Assert.NotNull(captured);
+        Assert.Equal("D:/DockerData/jellyfin/config/data/jellyfin.db", captured![0]);
+        Assert.Contains("UPDATE BaseItems SET DateCreated=PremiereDate", captured[1]);
     }
 
     [Fact]
@@ -174,7 +180,7 @@ public class JellyfinServiceTests
         localResolver.Setup(r => r.ResolveAsync("jellyfin", "sqlite3", It.IsAny<CancellationToken>()))
             .ReturnsAsync("/cm/local/sqlite3.exe");
         localExecutor.Setup(e => e.ExecuteAsync("/cm/local/sqlite3.exe",
-                It.Is<string>(s => s.Contains("UPDATE BaseItems SET DateCreated=PremiereDate")),
+                It.IsAny<IReadOnlyList<string>>(),
                 null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CommandResult(0, "", "", false));
 
@@ -184,11 +190,11 @@ public class JellyfinServiceTests
 
         Assert.True(result);
         localExecutor.Verify(
-            e => e.ExecuteAsync("sqlite3", It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            e => e.ExecuteAsync("sqlite3", It.IsAny<IReadOnlyList<string>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
             Times.Never,
             "JellyfinService must NOT call the executor with bare 'sqlite3' — local-deps rule.");
         localExecutor.Verify(
-            e => e.ExecuteAsync("/cm/local/sqlite3.exe", It.IsAny<string>(), null, It.IsAny<CancellationToken>()),
+            e => e.ExecuteAsync("/cm/local/sqlite3.exe", It.IsAny<IReadOnlyList<string>>(), null, It.IsAny<CancellationToken>()),
             Times.Once);
     }
 }

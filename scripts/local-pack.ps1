@@ -43,10 +43,18 @@ function Resolve-VendoredDotnet {
     $dotnetExe = Join-Path $dotnetDir 'dotnet.exe'
     if (-not (Test-Path $dotnetExe)) {
         Write-Host "Bootstrapping vendored dotnet $dotnetVersion to $dotnetDir..."
-        $installScript = Join-Path $env:TEMP 'dotnet-install-bootstrap.ps1'
-        Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile $installScript
+        # Run the VENDORED dotnet-install.ps1 instead of fetching it from dot.net on every run:
+        # no network, no MITM/tamper surface, reproducible. The bootstrapper is the toolchain that
+        # compiles the shipped binaries, so it gets the same supply-chain discipline as the
+        # SHA-pinned fetch-*.ps1 deps.
+        # Provenance: https://dot.net/v1/dotnet-install.ps1
+        #   SHA-256 6585899aed55ff6ae13dbe1e8c3b878f2d00433520e7efbe250b75db948b7da9, vendored 2026-06-14.
+        #   Re-vendor (and update this hash) when adopting a newer SDK bootstrapper.
+        $installScript = Join-Path $repo 'scripts/dependencies/dotnet-install.ps1'
+        if (-not (Test-Path $installScript)) {
+            throw "vendored dotnet-install.ps1 missing at $installScript"
+        }
         & $installScript -InstallDir $dotnetDir -Version $dotnetVersion
-        Remove-Item $installScript
         if (-not (Test-Path $dotnetExe)) {
             throw "dotnet bootstrap failed: $dotnetExe still absent after install"
         }
@@ -60,7 +68,9 @@ function Resolve-VendoredDotnet {
 # ---------------------------------------------------------------------------
 function Resolve-Vpk {
     $vpkVersion = '1.2.0'
-    $listed = dotnet tool list -g | Select-String -Pattern "^vpk\s+$([regex]::Escape($vpkVersion))\s"
+    $listed = dotnet tool list -g
+    if ($LASTEXITCODE -ne 0) { throw "dotnet tool list failed (exit $LASTEXITCODE)" }
+    $listed = $listed | Select-String -Pattern "^vpk\s+$([regex]::Escape($vpkVersion))\s"
     if (-not $listed) {
         Write-Host "Installing vpk $vpkVersion globally (matches the Velopack NuGet pin)..."
         # Uninstall any older vpk first to avoid version conflict

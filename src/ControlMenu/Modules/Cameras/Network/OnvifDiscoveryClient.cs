@@ -145,10 +145,7 @@ public class OnvifDiscoveryClient : IOnvifDiscoveryClient
         if (probeMatch is null) return null;
 
         var xaddrs = probeMatch.Element(WsdNs + "XAddrs")?.Value ?? "";
-        // XAddrs can be space-separated; pick the first http(s) URL
-        var serviceUrl = xaddrs.Split(new[] { ' ', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-            .FirstOrDefault(s => s.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
-                              || s.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
+        var serviceUrl = ResolveTrustedServiceUrl(sourceIp, xaddrs);
         if (string.IsNullOrEmpty(serviceUrl)) return null;
 
         var scopes = probeMatch.Element(WsdNs + "Scopes")?.Value ?? "";
@@ -159,6 +156,32 @@ public class OnvifDiscoveryClient : IOnvifDiscoveryClient
             FriendlyName = friendlyName,
             Location = location,
         };
+    }
+
+    /// <summary>
+    /// Picks the first http(s) URL from a (possibly space-separated) WS-Discovery <c>XAddrs</c>
+    /// value and forces its host to <paramref name="sourceIp"/> — the device that actually
+    /// answered the probe. The advertised XAddrs host is attacker-controlled (any LAN device can
+    /// answer WS-Discovery and name an arbitrary host), so pinning the host to the responder
+    /// prevents camera credentials from being POSTed to a foreign host (anti-SSRF /
+    /// anti-credential-harvest). The device-advertised scheme, port, and path are preserved; the
+    /// responder IP is independently validated in-subnet by <c>CameraScanService</c>.
+    /// Returns null when no http(s) URL is present.
+    /// </summary>
+    internal static string? ResolveTrustedServiceUrl(string sourceIp, string xaddrs)
+    {
+        var serviceUrl = xaddrs.Split([' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault(s => s.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                              || s.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
+        if (string.IsNullOrEmpty(serviceUrl)) return null;
+
+        if (!Uri.TryCreate(serviceUrl, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return null;
+        }
+
+        return new UriBuilder(uri) { Host = sourceIp }.Uri.ToString();
     }
 
     private static (string? Manufacturer, string? Model, string? FriendlyName, string? Location) ParseScopes(string scopesText)

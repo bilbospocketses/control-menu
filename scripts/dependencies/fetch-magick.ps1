@@ -37,5 +37,15 @@ Copy-CmStage -From $extract -LeafName 'magick'
 # that is needed -- no MAGICK_CONFIGURE_PATH env var required.
 $policySrc = Join-Path $PSScriptRoot '..\..\src\ControlMenu\Modules\Imaging\Resources\magick-policy.xml'
 $policyDst = Join-Path (Get-CmStageRoot) 'magick\policy.xml'
+# The hardened policy is the primary mitigation for ImageMagick's coder CVE class, so fail
+# closed if it is missing or did not land -- never ship magick.exe with the permissive default.
+if (-not (Test-Path -LiteralPath $policySrc)) {
+    throw "Hardened magick-policy.xml missing at $policySrc -- refusing to stage a permissive default policy"
+}
 Copy-Item -LiteralPath $policySrc -Destination $policyDst -Force
-Write-Host "  policy     : staged custom magick-policy.xml -> $policyDst"
+$srcHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $policySrc).Hash
+$dstHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $policyDst).Hash
+if ($srcHash -ne $dstHash) {
+    throw "Staged policy.xml does not match the hardened source (got $dstHash at $policyDst)"
+}
+Write-Host "  policy     : staged + verified hardened magick-policy.xml -> $policyDst"

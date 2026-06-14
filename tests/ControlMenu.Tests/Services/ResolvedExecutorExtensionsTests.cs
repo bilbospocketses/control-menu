@@ -34,4 +34,25 @@ public class ResolvedExecutorExtensionsTests
         await Assert.ThrowsAsync<DependencyNotInstalledException>(() =>
             executor.Object.ExecuteResolvedAsync(resolver.Object, "android-devices", "adb", "devices"));
     }
+
+    [Fact]
+    public async Task ExecuteResolvedAsync_ArgumentList_PassesResolvedPathAndArgsVerbatim()
+    {
+        var executor = new Mock<ICommandExecutor>();
+        var resolver = new Mock<IDependencyPathResolver>();
+        resolver.Setup(r => r.ResolveAsync("jellyfin", "sqlite3", It.IsAny<CancellationToken>()))
+                .ReturnsAsync("C:/cm/dependencies/sqlite3/sqlite3.exe");
+        IReadOnlyList<string>? captured = null;
+        executor.Setup(e => e.ExecuteAsync("C:/cm/dependencies/sqlite3/sqlite3.exe",
+                            It.IsAny<IReadOnlyList<string>>(), null, It.IsAny<CancellationToken>()))
+                .Callback<string, IReadOnlyList<string>, string?, CancellationToken>((_, a, _, _) => captured = a)
+                .ReturnsAsync(new CommandResult(0, "", "", false));
+
+        // A value with a space and a quote must survive as a single element.
+        var args = new[] { "/db path/x.db", "SELECT 1;" };
+        await executor.Object.ExecuteResolvedAsync(resolver.Object, "jellyfin", "sqlite3", args);
+
+        Assert.NotNull(captured);
+        Assert.Equal(args, captured);
+    }
 }

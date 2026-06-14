@@ -115,7 +115,11 @@ public class JellyfinService : IJellyfinService
             return false;
         }
 
-        var result = await _executor.ExecuteResolvedAsync(_resolver, "jellyfin", "sqlite3", $"\"{dbPath}\" \"UPDATE BaseItems SET DateCreated=PremiereDate WHERE PremiereDate IS NOT NULL;\"", null, ct);
+        // Structured args: dbPath and the SQL are discrete ArgumentList elements, so a dbPath
+        // derived from a compose file (ComposeParser) cannot inject extra sqlite3 arguments.
+        var result = await _executor.ExecuteResolvedAsync(_resolver, "jellyfin", "sqlite3",
+            new[] { dbPath, "UPDATE BaseItems SET DateCreated=PremiereDate WHERE PremiereDate IS NOT NULL;" },
+            null, ct);
         if (result.ExitCode == 0)
         {
             logger?.Ok("SQL update applied: DateCreated = PremiereDate");
@@ -155,8 +159,10 @@ public class JellyfinService : IJellyfinService
         if (apiKey is null) throw new InvalidOperationException("Jellyfin API key not configured");
 
         var client = _httpFactory.CreateClient();
-        var url = $"{baseUrl}/emby/Persons?api_key={apiKey}";
-        var json = await client.GetStringAsync(url, ct);
+        // API key goes in a header, never the URL query string (query strings land in proxy/access
+        // logs and request traces).
+        client.DefaultRequestHeaders.Add("X-Emby-Token", apiKey);
+        var json = await client.GetStringAsync($"{baseUrl}/emby/Persons", ct);
 
         var persons = new List<JellyfinPerson>();
         using var doc = System.Text.Json.JsonDocument.Parse(json);
@@ -201,7 +207,8 @@ public class JellyfinService : IJellyfinService
         if (apiConfig.UserId is null) return;
 
         var client = _httpFactory.CreateClient();
-        var url = $"{apiConfig.BaseUrl}/Users/{apiConfig.UserId}/Items/{personId}?api_key={apiConfig.ApiKey}";
+        client.DefaultRequestHeaders.Add("X-Emby-Token", apiConfig.ApiKey);
+        var url = $"{apiConfig.BaseUrl}/Users/{Uri.EscapeDataString(apiConfig.UserId)}/Items/{Uri.EscapeDataString(personId)}";
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
         await client.GetAsync(url, timeoutCts.Token);
