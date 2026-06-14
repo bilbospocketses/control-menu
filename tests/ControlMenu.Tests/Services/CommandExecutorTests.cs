@@ -92,4 +92,40 @@ public class CommandExecutorTests
         var result = await _executor.ExecuteAsync(definition);
         Assert.True(result.TimedOut);
     }
+
+    [Fact]
+    public async Task ExecuteAsync_ArgumentList_SimpleCommand_ReturnsOutput()
+    {
+        var (cmd, args) = OperatingSystem.IsWindows()
+            ? ("cmd", (IReadOnlyList<string>)["/c", "echo", "hello"])
+            : ("echo", (IReadOnlyList<string>)["hello"]);
+        var result = await _executor.ExecuteAsync(cmd, args);
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("hello", result.StandardOutput);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ArgumentList_PassesSpaceContainingArgAsOneToken()
+    {
+        // Boundary proof: a path containing a space is passed as ONE argument.
+        // With the old string overload, "type C:\...\with space.txt" would split
+        // into two tokens and the file would not be found (non-zero exit, no body).
+        var dir = Path.Combine(Path.GetTempPath(), "cm-argv-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var filePath = Path.Combine(dir, "with space.txt");
+        await File.WriteAllTextAsync(filePath, "CONTENT_OK");
+        try
+        {
+            var (cmd, args) = OperatingSystem.IsWindows()
+                ? ("cmd", (IReadOnlyList<string>)["/c", "type", filePath])
+                : ("cat", (IReadOnlyList<string>)[filePath]);
+            var result = await _executor.ExecuteAsync(cmd, args);
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("CONTENT_OK", result.StandardOutput);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }

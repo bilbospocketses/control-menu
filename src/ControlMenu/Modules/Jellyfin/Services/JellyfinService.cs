@@ -115,7 +115,11 @@ public class JellyfinService : IJellyfinService
             return false;
         }
 
-        var result = await _executor.ExecuteResolvedAsync(_resolver, "jellyfin", "sqlite3", $"\"{dbPath}\" \"UPDATE BaseItems SET DateCreated=PremiereDate WHERE PremiereDate IS NOT NULL;\"", null, ct);
+        // Structured args: dbPath and the SQL are discrete ArgumentList elements, so a dbPath
+        // derived from a compose file (ComposeParser) cannot inject extra sqlite3 arguments.
+        var result = await _executor.ExecuteResolvedAsync(_resolver, "jellyfin", "sqlite3",
+            new[] { dbPath, "UPDATE BaseItems SET DateCreated=PremiereDate WHERE PremiereDate IS NOT NULL;" },
+            null, ct);
         if (result.ExitCode == 0)
         {
             logger?.Ok("SQL update applied: DateCreated = PremiereDate");
