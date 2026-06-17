@@ -1,6 +1,6 @@
 # D2 - Runtime Dependency-Update Integrity (A+C Hybrid) - Design
 
-- Status: Approved (design); pending spec review -> writing-plans
+- Status: Approved (design + spec review); per-dep tiers verified 2026-06-17 -> writing-plans
 - Date: 2026-06-17
 - Source: Finding #3 / decision D2 from the 2026-06-14 security/code-review audit
   (ledger: `reference_control_menu_security_review.md`)
@@ -50,28 +50,33 @@ not part of this spec.
 
 In scope - the 6 binaries CM downloads-and-executes at runtime:
 `adb`, `sqlite3`, `magick`, `vtracer`, `go2rtc`, `potrace`.
+Also in scope: adding `.7z` extraction to the runtime updater (magick's asset is
+`.7z`, which `DownloadAndInstallAsync` cannot currently extract - see Components 5).
 
 Out of scope:
 - `ws-scrcpy-web` and `docker` - declared `Manual`/external, never downloaded by `DownloadAndInstallAsync`.
 - The build-time `scripts/dependencies/fetch-*.ps1` seed fetchers - already SHA-pinned.
 - CM's own Velopack self-update (findings #14/#15).
 
-## Grounded per-dependency coverage (probed 2026-06-17)
+## Grounded per-dependency coverage (probed + signature-verified 2026-06-17)
 
 | Dep | T1 pinned hash (we vet) | T2 upstream checksum | T3 Authenticode | Floor for a brand-new version |
 |-----|-------------------------|----------------------|-----------------|-------------------------------|
 | sqlite3 | yes | SHA3-256 on download page (strong) | unlikely | strong |
 | magick  | yes | `.intoto.jsonl` attestation lists per-artifact SHA-256 (strong) | installers signed; portable `.7z` unconfirmed | strong |
-| adb     | yes | only SHA-1 in `repository2-3.xml` (weak/collision-broken) | maybe (Google-signed) - confirm | weak-ish |
-| go2rtc  | yes | NONE (raw binaries only) | none (Go, unsigned) | transport-only |
-| vtracer | yes | NONE (raw archives only) | none (Rust, unsigned) | transport-only |
+| adb     | yes | skipped - only SHA-1 in `repository2-3.xml` (rejected as weak) | **Authenticode, Google LLC EV cert, sha256RSA - VERIFIED** | strong (T3) |
+| go2rtc  | yes | NONE (raw binaries only) | none - **VERIFIED NotSigned** | transport-only |
+| vtracer | yes | NONE (raw archives only) | none - **VERIFIED NotSigned** | transport-only |
 | potrace | yes (pinned 1.16) | n/a | n/a | always T1 |
 
-Key consequence: **the pinned-hash tier (T1) is the backbone.** T2 is strong for
-sqlite and magick, weak for adb (SHA-1), absent for go2rtc and vtracer. For a
-version newer than anything we have pinned, go2rtc and vtracer can only be
-transport-verified - which is exactly the case the Tier-4 confirmation dialog
-exists for.
+Key consequence: **the pinned-hash tier (T1) is the backbone.** Beyond it, sqlite
+and magick have strong T2 checksums; **adb has a strong T3 - its binary is
+Authenticode-signed by Google on an EV cert (sha256RSA), verified 2026-06-17, so
+the legacy SHA-1 in the repo XML is ignored**; go2rtc and vtracer have neither
+checksums nor signatures (verified unsigned). So only **go2rtc and vtracer**, and
+only on a version newer than anything we have pinned, fall through to
+transport-only - which is exactly the case the Tier-4 confirmation dialog exists
+for.
 
 ## Architecture
 
@@ -98,7 +103,8 @@ or executed.
 - **T2 Upstream checksum:** else if the dep declares a `ChecksumSource`, fetch the
   upstream-published digest, compute the matching algorithm, compare.
 - **T3 Authenticode:** else if the dep declares an `ExpectedSigner` and the binary
-  is signed, verify the signature and publisher.
+  is signed, verify the signature and publisher. (Concrete user: **adb**, pinned
+  to `CN=Google LLC` on Google's EV code-signing cert.)
 - **Any tier that runs and mismatches is a hard fail, always** (tampering
   detected). A tier that is unavailable (no pinned hash / checksum source
   unreachable / unsigned) falls through to the next tier.
@@ -110,9 +116,10 @@ or executed.
 ### Stage 4 - Unverifiable: explicit user confirmation
 
 Reached only when transport passed but **no** cryptographic tier could verify
-(unknown version + no upstream checksum + unsigned). The updater surfaces a
-one-click confirmation dialog (content below). Accept -> proceed; decline ->
-abort with a clear status and no state change.
+(unknown version + no upstream checksum + unsigned). In practice this is only
+go2rtc / vtracer on a brand-new version. The updater surfaces a one-click
+confirmation dialog (content below). Accept -> proceed; decline -> abort with a
+clear status and no state change.
 
 ### Insertion point
 
@@ -126,8 +133,8 @@ the integrity gate.
 1. **`ModuleDependency` integrity fields** (new, all optional except hosts):
    - `IReadOnlyDictionary<string,string> KnownHashes` - version -> SHA-256 (T1).
    - `ChecksumSource?` - `{ UrlOrTemplate, Format, Algorithm }` where
-     `Format in { SqliteDownloadPage, InTotoJsonl, AndroidRepoXml, Sha256SumsFile }`
-     and `Algorithm in { Sha256, Sha3_256, Sha1 }` (T2).
+     `Format in { SqliteDownloadPage, InTotoJsonl, Sha256SumsFile }`
+     and `Algorithm in { Sha256, Sha3_256 }` (T2).
    - `string? ExpectedSigner` - Authenticode subject (T3).
    - `string[] AllowedHosts` - permitted final download hosts (Stage 0).
 2. **`IArtifactVerifier` / `ArtifactVerifier`** - new service:
@@ -140,6 +147,19 @@ the integrity gate.
    check), and the redirect-persist path is gated.
 4. **Tier-4 confirmation UI** - a dialog component shown when
    `Tier == Unverified`. See Data Flow for the round-trip.
+5. **`.7z` extraction (SharpCompress, managed).** The updater's extract step
+   (`:300-314`) handles only `.zip`/`.tar.gz`; magick's asset is `.7z`, so magick
+   updates currently fail at `FindExecutable`. Add `.7z` support via the managed
+   **SharpCompress** library (compiled into the app - satisfies
+   Local-Dependencies-Only with no native binary). magick's `.7z` codec is
+   `LZMA2 + BCJ` (verified 2026-06-17; the simple x86 filter, **not** the
+   SharpCompress-unsupported BCJ2). The portable archive extracts flat
+   (`magick.exe` + DLLs + `policy.xml` at the root). Validate extraction against
+   this exact archive in an early unit test; if SharpCompress cannot handle the
+   BCJ filter, fall back to a vendored `7za.exe` resolved via
+   `IDependencyPathResolver` (never PATH). (A vendored 7za would also let finding
+   #17 + the build's system-7-Zip reliance in `_Fetcher.ps1:91-100` collapse onto
+   one binary - noted, not chosen here.)
 
 ## Data flow
 
@@ -153,14 +173,13 @@ download -> temp
                                               decline -> abort
 
 Because the confirmation needs a UI round-trip (Blazor Server), the unverified
-case cannot block server code waiting on the user. Proposed v1 mechanic: a
+case cannot block server code waiting on the user. Agreed v1 mechanic: a
 `bool allowUnverified = false` parameter on `DownloadAndInstallAsync`. First call
 (`false`): if it reaches Tier 4, return a result flagged
 `NeedsUnverifiedConfirmation` carrying tool/version/host/detail; the page shows
 the dialog; on accept it re-invokes with `allowUnverified = true`. (Re-download on
 confirm is acceptable - the artifact is unverified either way and the pipeline
-re-runs.) A two-phase verify/commit with a retained temp handle is a possible
-refinement; exact mechanic is for the implementation plan.
+re-runs.) Exact temp-handling is for the implementation plan.
 
 ## Error handling
 
@@ -201,15 +220,15 @@ Draft copy (final wording to be polished in UI):
 >
 > `[ Cancel ]`  `[ Install anyway ]`
 
-## Per-dependency configuration (initial; confirm exact values at implementation)
+## Per-dependency configuration (initial; confirm exact hosts at implementation)
 
-| Dep | AllowedHosts (final, incl. CDN/mirror) | ChecksumSource | ExpectedSigner |
-|-----|----------------------------------------|----------------|----------------|
-| adb | dl.google.com | AndroidRepoXml (SHA-1; weak - flagged) | Google (confirm) |
+| Dep | AllowedHosts (final, incl. CDN/mirror) | ChecksumSource | ExpectedSigner (T3) |
+|-----|----------------------------------------|----------------|---------------------|
+| adb | dl.google.com | none (SHA-1 rejected as weak) | **CN=Google LLC** (EV; verified) |
 | sqlite3 | sqlite.org | SqliteDownloadPage (SHA3-256) | none |
 | magick | github.com, *.githubusercontent.com | InTotoJsonl (SHA-256) | if signed; confirm at impl |
-| vtracer | github.com, *.githubusercontent.com | none | none -> Tier 4 |
-| go2rtc | github.com, *.githubusercontent.com | none | none -> Tier 4 |
+| vtracer | github.com, *.githubusercontent.com | none | none (verified unsigned) -> Tier 4 |
+| go2rtc | github.com, *.githubusercontent.com | none | none (verified unsigned) -> Tier 4 |
 | potrace | potrace.sourceforge.net (+ SF mirror, see below) | none (pinned) | none |
 
 ## Testing strategy (TDD)
@@ -219,10 +238,12 @@ Draft copy (final wording to be polished in UI):
   - T1 pinned: exact match passes; one flipped byte hard-fails; unknown version -> falls through.
   - T2 sqlite SHA3-256: parse page + match; mismatch hard-fails.
   - T2 magick in-toto: extract artifact SHA-256 + match.
-  - T2 adb SHA-1: parse XML + match (test documents the weak-algorithm caveat).
-  - T3: signed+expected passes; signed+wrong-signer hard-fails; unsigned -> falls through.
-  - Tier 4: unknown + no checksum + unsigned -> `Unverified`.
+  - T3 adb Authenticode: valid Google-signed passes; wrong/absent signer hard-fails; unsigned -> falls through.
+  - Tier 4: unknown + no checksum + unsigned -> `Unverified` (go2rtc/vtracer shape).
 - Transport: off-allowlist final host rejected; non-HTTPS rejected; off-allowlist redirect rejected.
+- `.7z` extraction: SharpCompress extracts the exact magick `LZMA2+BCJ` archive to
+  the expected flat layout (magick.exe + DLLs + policy.xml); a corrupt `.7z` fails
+  cleanly. (This test is the go/no-go for SharpCompress vs. the vendored-7za fallback.)
 - `DownloadAndInstallAsync` integration: tampered artifact never extracted;
   declined confirmation aborts cleanly with no state change; verified path installs.
 
@@ -237,13 +258,12 @@ a PR. Future consistency option (not in this spec): have the build-time
 
 ## Open observations / assumptions
 
-1. **magick `.7z` runtime extraction gap.** `DownloadAndInstallAsync` only
-   extracts `.zip` and `.tar.gz` (`:300-314`); ImageMagick's CM asset is a `.7z`
-   (`AssetPattern` in `ImagingModule.cs`). The generic runtime updater therefore
-   cannot currently extract a magick update (it would fail at `FindExecutable`).
-   This pre-dates D2 and is out of scope here, but it means magick's runtime
-   auto-update may be inert today. Flagged for a separate item; the verifier still
-   runs before any extract regardless.
+1. **magick `.7z` runtime extraction - now in scope.** `DownloadAndInstallAsync`
+   extracts only `.zip`/`.tar.gz` (`:300-314`); magick's asset is `.7z`, so
+   magick's runtime auto-update is inert today (fails at `FindExecutable`).
+   Resolved in this design by adding managed SharpCompress `.7z` support
+   (Components 5); codec verified `LZMA2+BCJ`. The build-time `.7z` PATH reliance
+   (finding #17) remains separate.
 2. **GitHub asset redirects.** Release-asset downloads redirect `github.com` ->
    `*.githubusercontent.com`. The transport gate must allow redirects to an
    allowlisted CDN host, not forbid cross-host redirects outright. Confirm the
@@ -253,14 +273,15 @@ a PR. Future consistency option (not in this spec): have the build-time
    a mirror redirect is acceptable for it - host-pin is strict only on the
    unverified Tier-4 path. Confirm potrace's actual redirect behavior at
    implementation.
-4. **adb SHA-1 weakness.** adb's only machine-readable upstream checksum is SHA-1,
-   which is collision-broken. T2 for adb defeats casual corruption/tampering but
-   is not strong against a determined attacker; the pinned-hash tier (T1) remains
-   the strong guarantee for adb.
+4. **adb resolved.** Verified 2026-06-17: adb's only repo-XML checksum is SHA-1
+   (legacy, ignored), but `adb.exe` is Authenticode-signed by Google on an EV cert
+   (sha256RSA, Status Valid). adb therefore uses T3, not the weak SHA-1 and not
+   Tier-4. go2rtc and vtracer were verified `NotSigned`.
 
 ## Out of scope / future
 
 - CM's own Velopack update signing (#14/#15).
-- The CI `.7z` extractor PATH hardening (#17) and runtime `.7z` extraction (obs. 1).
+- The CI/build `.7z` extractor PATH hardening (#17) - related but separate
+  (runtime `.7z` extraction is now in scope via Components 5).
 - Full SLSA provenance verification of the magick in-toto attestation (v1 only
   extracts the artifact SHA-256 from it; full chain verification is future work).
