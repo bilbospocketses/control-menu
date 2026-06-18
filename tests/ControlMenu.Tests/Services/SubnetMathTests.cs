@@ -79,6 +79,17 @@ public class SubnetMathTests
         Assert.Equal(new[] { "192.168.1.5" }, hosts);
     }
 
+    [Theory]
+    [InlineData("0.0.0.0/0")]
+    [InlineData("10.0.0.0/8")]
+    [InlineData("172.16.0.0/15")]
+    public void Enumerate_RejectsSubnetsLargerThanSlash16(string subnet)
+    {
+        // Tripwire against a future caller bypassing SubnetParser (which caps at /16) — the old
+        // code would have hung trying to materialize the block.
+        Assert.Throws<ArgumentOutOfRangeException>(() => SubnetMath.Enumerate(S(subnet)).ToList());
+    }
+
     [Fact]
     public void Enumerate_Range_IsInclusive()
     {

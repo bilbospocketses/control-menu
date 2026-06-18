@@ -75,6 +75,12 @@ public static class SubnetMath
         if (slash >= 0)
         {
             var prefix = int.Parse(n[(slash + 1)..]);
+            // Tripwire, not reachable via SubnetParser (it rejects prefixes < 16). Enumerating a
+            // shorter prefix would try to materialize millions-to-billions of addresses; fail loudly
+            // rather than hang if a future caller hands us an unvalidated subnet.
+            if (prefix < 16)
+                throw new ArgumentOutOfRangeException(nameof(subnet),
+                    $"Refusing to enumerate /{prefix} ({n}); subnets must be /16 or longer (≤65,534 hosts).");
             var baseNet = IpToInt(n[..slash]) & MaskFor(prefix);
 
             if (prefix >= 31)

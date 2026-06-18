@@ -101,12 +101,14 @@ public class CameraScanService : ICameraScanService
         sw.Stop();
         if (_cts.Token.IsCancellationRequested)
         {
-            Phase = ScanPhase.Idle;
+            lock (_scanLock) Phase = ScanPhase.Idle;
             Emit(new CameraScanCancelledEvent());
             return;
         }
 
-        Phase = ScanPhase.Complete;
+        // Terminal phase writes go through _scanLock too, so the next StartScanAsync's guarded read
+        // has a happens-before edge with them (the lock release publishes the write).
+        lock (_scanLock) Phase = ScanPhase.Complete;
         var onvifCount = Hits.Count(h => h.IsOnvif);
         var rtspCount = Hits.Count(h => !h.IsOnvif);
         _logger.LogInformation(
