@@ -210,6 +210,126 @@ public class DownloadAndInstallIntegrationTests : IDisposable
         Assert.NotNull(result.ConfirmVersion);
         Assert.NotNull(result.ConfirmHost);
     }
+
+    [Fact]
+    public async Task TransportGate_DisallowedRedirectHost_FailsAndSkipsExtractAndRedirectPersist()
+    {
+        // Covers Imp2 (transport gate) + Imp3 (redirect-persist guard) in one test.
+        // The download is redirected to an evil host not in AllowedHosts. Expect:
+        //   • result.Outcome == Failed (transport gate blocks it)
+        //   • extractor never called
+        //   • entity.DownloadUrl unchanged (redirect-persist skipped for disallowed host)
+
+        var allowedHost = "dl.google.com";
+        var originalUrl = "https://example.com/fake-tool.zip";
+        var redirectedUrl = "https://evil.example/fake-tool.zip";
+
+        var (depId, module) = await SeedDependencyWithAllowedHostAsync(
+            allowedHost: allowedHost,
+            downloadUrl: originalUrl);
+
+        var zipBytes = BuildZip();
+        // Handler simulates a redirect: sets RequestUri to the evil host on the response.
+        _mockHttpFactory.Setup(f => f.CreateClient("dependency-updates"))
+            .Returns(new HttpClient(new RedirectingHttpHandler(zipBytes, new Uri(redirectedUrl))));
+
+        var fakeVerifier = new Mock<IArtifactVerifier>();
+        var service = CreateService(fakeVerifier.Object, module);
+        var asset = new AssetMatch("fake-tool.zip", originalUrl, zipBytes.Length, AutoSelected: true);
+
+        // Act
+        var result = await service.DownloadAndInstallAsync(depId, asset, allowUnverified: false);
+
+        // Assert: transport gate blocked
+        Assert.False(result.Success);
+        Assert.Equal(UpdateOutcome.Failed, result.Outcome);
+        Assert.False(_extractorSpy.Called, "Extractor must NOT be called when transport gate blocks the download.");
+        Assert.Contains("evil.example", result.ErrorMessage ?? "", StringComparison.OrdinalIgnoreCase);
+
+        // Assert: redirect not persisted for the disallowed host
+        using var db = _dbFactory.CreateDbContext();
+        var entity = await db.Dependencies.FindAsync(depId);
+        Assert.Equal(originalUrl, entity!.DownloadUrl);
+
+        // Verifier must NOT have been called (gate fires before integrity check)
+        fakeVerifier.Verify(
+            v => v.VerifyAsync(It.IsAny<string>(), It.IsAny<ModuleDependency>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "Verifier must not run when transport gate blocks the download.");
+    }
+
+    [Fact]
+    public async Task VerifiedArtifact_PinnedHash_DoesExtract()
+    {
+        // Happy-path: a verifier that returns Verified=true (PinnedHash tier) must NOT be
+        // blocked by the gate. Assert SpyArchiveExtractor.Called == true.
+        var (depId, module) = await SeedDependencyAsync(latestKnownVersion: "2.0.0");
+
+        var zipBytes = BuildZip();
+        _mockHttpFactory.Setup(f => f.CreateClient("dependency-updates"))
+            .Returns(new HttpClient(new MockBinaryHttpHandler(zipBytes)));
+
+        // Verified at PinnedHash tier → both gates pass, extraction proceeds.
+        var verifiedVerifier = new Mock<IArtifactVerifier>();
+        verifiedVerifier
+            .Setup(v => v.VerifyAsync(It.IsAny<string>(), It.IsAny<ModuleDependency>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new VerificationResult(true, VerificationTier.PinnedHash, "SHA-256", "pinned match"));
+
+        var service = CreateService(verifiedVerifier.Object, module);
+        var asset = new AssetMatch("fake-tool.zip", "https://example.com/fake-tool.zip", zipBytes.Length, AutoSelected: true);
+
+        // Act — pipeline continues past the gate; it will eventually fail at FindExecutable
+        // (no real binary in the spy-created dir) but that's after extraction.
+        await service.DownloadAndInstallAsync(depId, asset, allowUnverified: true);
+
+        // Assert: extractor WAS called (gate did not block a verified artifact)
+        Assert.True(_extractorSpy.Called, "Extractor MUST be called when artifact is cryptographically verified.");
+    }
+
+    // ---------------------------------------------------------------------------
+    // Additional helpers for new tests
+    // ---------------------------------------------------------------------------
+
+    private async Task<(Guid DepId, FakeModule Module)> SeedDependencyWithAllowedHostAsync(
+        string allowedHost,
+        string downloadUrl,
+        string moduleId = "test-module",
+        string name = "fake-tool")
+    {
+        var installDir = Path.Combine(_tempRoot, $"{name}-install-allowhost");
+        Directory.CreateDirectory(installDir);
+
+        var depId = Guid.NewGuid();
+        using var db = _dbFactory.CreateDbContext();
+        db.Dependencies.Add(new Dependency
+        {
+            Id = depId,
+            ModuleId = moduleId,
+            Name = name,
+            SourceType = UpdateSourceType.DirectUrl,
+            Status = DependencyStatus.UpdateAvailable,
+            InstalledVersion = "1.0.0",
+            LatestKnownVersion = "2.0.0",
+            DownloadUrl = downloadUrl
+        });
+        await db.SaveChangesAsync();
+
+        var module = new FakeModule(moduleId, "Test",
+        [
+            new ModuleDependency
+            {
+                Name = name,
+                ExecutableName = name,
+                VersionCommand = $"{name} --version",
+                VersionPattern = @"([\d.]+)",
+                SourceType = UpdateSourceType.DirectUrl,
+                InstallPath = installDir,
+                AllowedHosts = [allowedHost]
+            }
+        ]);
+
+        return (depId, module);
+    }
 }
 
 /// <summary>Spy implementation of IArchiveExtractor: records whether Extract was called.</summary>
@@ -222,5 +342,26 @@ internal sealed class SpyArchiveExtractor : IArchiveExtractor
         Called = true;
         // Create the destDir so callers that check for it don't crash.
         Directory.CreateDirectory(destDir);
+    }
+}
+
+/// <summary>
+/// HTTP handler that simulates a redirect: serves the payload at success status but sets
+/// <c>RequestMessage.RequestUri</c> on the response to <paramref name="finalUri"/>, so
+/// the code under test sees the "redirected" final URI.
+/// </summary>
+internal sealed class RedirectingHttpHandler(byte[] payload, Uri finalUri) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        // Mutate the request URI to simulate following a redirect to a different host.
+        request.RequestUri = finalUri;
+        var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = new ByteArrayContent(payload),
+            RequestMessage = request
+        };
+        return Task.FromResult(response);
     }
 }

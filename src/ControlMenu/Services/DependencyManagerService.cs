@@ -796,17 +796,32 @@ public class DependencyManagerService : IDependencyManagerService
     /// <summary>
     /// Resolves the version string of the update being installed WITHOUT executing the
     /// downloaded binary (the whole point of the integrity check is to verify before running).
-    /// Prefers the version embedded in the asset filename, then falls back to
-    /// <see cref="Dependency.LatestKnownVersion"/> recorded during the preceding check.
+    ///
+    /// The returned string is the lookup key for <see cref="ModuleDependency.KnownHashes"/>, so
+    /// Task 8 KnownHashes entries MUST use the same normalization:
+    ///   • GitHub source: GitHub tag with 'v' prefix stripped (e.g. "36.0.0"), matches
+    ///     <see cref="CheckGitHubVersionAsync"/> which stores TrimStart('v') in LatestKnownVersion.
+    ///   • DirectUrl source: version-check URL pattern result as-is.
+    ///
+    /// Priority:
+    ///   1. entity.LatestKnownVersion — authoritative; set by CheckDependencyAsync from the source.
+    ///   2. Version regex from the asset filename — fallback when no prior check has run.
+    ///   3. entity.InstalledVersion — last resort; this is the OLD version, so the KnownHashes
+    ///      lookup will almost certainly miss, and the verifier falls through to Unverified
+    ///      (correct fail-closed behavior — no hash → not pinned-verified).
     /// </summary>
     private static string ResolveTargetVersion(Dependency entity, AssetMatch asset)
     {
-        // Many release filenames encode the version: "adb-36.0.0-windows.zip"
+        // Prefer the authoritative version recorded during CheckDependencyAsync.
+        if (entity.LatestKnownVersion is not null)
+            return entity.LatestKnownVersion;
+
+        // Fallback: parse the version from the asset filename (e.g., "adb-36.0.0-windows.zip").
         var versionInName = Regex.Match(asset.FileName, @"(\d+\.\d+[\.\d]*)");
         if (versionInName.Success)
             return versionInName.Groups[1].Value;
 
-        // Fall back to the latest-known-version stored during CheckDependencyAsync
-        return entity.LatestKnownVersion ?? entity.InstalledVersion ?? "unknown";
+        // Last resort: the installed (old) version — will fail-closed to Unverified for a new version.
+        return entity.InstalledVersion ?? "unknown";
     }
 }
