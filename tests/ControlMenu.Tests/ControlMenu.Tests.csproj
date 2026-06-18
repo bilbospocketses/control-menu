@@ -27,4 +27,8 @@
     <ProjectReference Include="..\..\src\ControlMenu\ControlMenu.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Fixtures/**/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
