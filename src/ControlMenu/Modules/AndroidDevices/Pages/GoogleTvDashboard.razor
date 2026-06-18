@@ -5,6 +5,7 @@
 @using ControlMenu.Services
 @implements IDisposable
 @using ControlMenu.Modules.AndroidDevices.Services
+@using Microsoft.Extensions.DependencyInjection
 
 <PageTitle>Google TV - @(_device?.Name ?? "Select Device")</PageTitle>
 
@@ -178,6 +179,7 @@ else
     [Inject] private IDeviceChangeNotifier DeviceChangeNotifier { get; set; } = default!;
     [Inject] private IConfigurationService Config { get; set; } = default!;
     [Inject] private IScrcpyProbeService ProbeService { get; set; } = default!;
+    [Inject] private IServiceScopeFactory ScopeFactory { get; set; } = default!;
     private DeviceTypePresenceWatcher? _presenceWatcher;
     private Device? _device;
     private ScrcpySettings? _scrcpySettings;
@@ -201,9 +203,9 @@ else
     {
         _presenceWatcher = new DeviceTypePresenceWatcher(
             DeviceType.GoogleTV,
-            DeviceService,
+            ScopeFactory,
             DeviceChangeNotifier,
-            Nav,
+            () => InvokeAsync(() => Nav.NavigateTo("/android/devices", replace: true)),
             () => InvokeAsync(StateHasChanged));
 
         if (await _presenceWatcher.EnsurePresentOrRedirectAsync())

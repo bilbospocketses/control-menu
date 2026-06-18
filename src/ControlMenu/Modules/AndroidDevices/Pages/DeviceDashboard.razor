@@ -3,6 +3,7 @@
 @using ControlMenu.Data.Enums
 @using ControlMenu.Services
 @using ControlMenu.Modules.AndroidDevices.Services
+@using Microsoft.Extensions.DependencyInjection
 @implements IDisposable
 
 @*
@@ -112,6 +113,7 @@ else
     [Inject] private NavigationManager Nav { get; set; } = default!;
     [Inject] private IDeviceChangeNotifier DeviceChangeNotifier { get; set; } = default!;
     [Inject] private IScrcpyProbeService ProbeService { get; set; } = default!;
+    [Inject] private IServiceScopeFactory ScopeFactory { get; set; } = default!;
     private DeviceTypePresenceWatcher? _presenceWatcher;
     private Device? _device;
     private ScrcpySettings? _scrcpySettings;
@@ -135,9 +137,9 @@ else
     {
         _presenceWatcher = new DeviceTypePresenceWatcher(
             DeviceType,
-            DeviceService,
+            ScopeFactory,
             DeviceChangeNotifier,
-            Nav,
+            () => InvokeAsync(() => Nav.NavigateTo("/android/devices", replace: true)),
             () => InvokeAsync(StateHasChanged));
 
         if (await _presenceWatcher.EnsurePresentOrRedirectAsync())
