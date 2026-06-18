@@ -1,7 +1,5 @@
 using System.Net.Sockets;
-using System.Security.Cryptography;
 using System.Text;
-using System.Text.RegularExpressions;
 
 namespace ControlMenu.Modules.Cameras.Network;
 
@@ -59,7 +57,7 @@ public class RtspProbeClient : IRtspProbeClient
                 if (challenge is not null)
                 {
                     var (user, password) = SplitUserInfo(uri.UserInfo);
-                    var authorization = BuildDigestAuthorization(challenge, user, password, "DESCRIBE", requestUri);
+                    var authorization = DigestAuthHelper.BuildDigest(challenge, user, password, "DESCRIBE", requestUri);
                     var authedResponse = await SendDescribeAsync(stream, requestUri, cseq: 2, authorization, cts.Token);
                     result = ParseRtspResponse(authedResponse);
                 }
@@ -142,64 +140,10 @@ public class RtspProbeClient : IRtspProbeClient
             if (!line.StartsWith("WWW-Authenticate:", StringComparison.OrdinalIgnoreCase)) continue;
             var value = line["WWW-Authenticate:".Length..].Trim();
             if (value.StartsWith("Digest", StringComparison.OrdinalIgnoreCase))
-                return ParseAuthParams(value["Digest".Length..]);
+                return DigestAuthHelper.ParseChallengeParams(value["Digest".Length..]);
         }
         return null;
     }
-
-    private static Dictionary<string, string> ParseAuthParams(string s)
-    {
-        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (Match m in Regex.Matches(s, "(\\w+)\\s*=\\s*(?:\"([^\"]*)\"|([^,]*))"))
-            dict[m.Groups[1].Value] = m.Groups[2].Success ? m.Groups[2].Value : m.Groups[3].Value.Trim();
-        return dict;
-    }
-
-    /// <summary>
-    /// Builds an RFC 2617 Digest <c>Authorization</c> value. MD5 is mandated by the HTTP/RTSP
-    /// Digest wire format (not used for confidentiality here) — the same protocol constraint as
-    /// the WS-Security SHA-1 digest in <see cref="OnvifClient"/>.
-    /// </summary>
-    private static string BuildDigestAuthorization(
-        IReadOnlyDictionary<string, string> challenge, string user, string password, string method, string digestUri)
-    {
-        var realm = challenge.GetValueOrDefault("realm", "");
-        var nonce = challenge.GetValueOrDefault("nonce", "");
-        var opaque = challenge.GetValueOrDefault("opaque");
-        var qopRaw = challenge.GetValueOrDefault("qop");
-        var algorithm = challenge.GetValueOrDefault("algorithm");
-
-        var ha1 = Md5Hex($"{user}:{realm}:{password}");
-        var ha2 = Md5Hex($"{method}:{digestUri}");
-
-        var sb = new StringBuilder("Digest ")
-            .Append($"username=\"{user}\", realm=\"{realm}\", nonce=\"{nonce}\", uri=\"{digestUri}\"");
-
-        // qop may be a list (e.g. "auth,auth-int"); we implement "auth".
-        var useQop = qopRaw is not null &&
-            qopRaw.Split(',').Any(q => q.Trim().Equals("auth", StringComparison.OrdinalIgnoreCase));
-
-        string response;
-        if (useQop)
-        {
-            const string nc = "00000001";
-            var cnonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(8)).ToLowerInvariant();
-            response = Md5Hex($"{ha1}:{nonce}:{nc}:{cnonce}:auth:{ha2}");
-            sb.Append($", qop=auth, nc={nc}, cnonce=\"{cnonce}\"");
-        }
-        else
-        {
-            response = Md5Hex($"{ha1}:{nonce}:{ha2}");
-        }
-
-        sb.Append($", response=\"{response}\"");
-        if (!string.IsNullOrEmpty(algorithm)) sb.Append($", algorithm={algorithm}");
-        if (!string.IsNullOrEmpty(opaque)) sb.Append($", opaque=\"{opaque}\"");
-        return sb.ToString();
-    }
-
-    private static string Md5Hex(string s) =>
-        Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(s))).ToLowerInvariant();
 
     /// <summary>Splits and percent-decodes <c>user:password</c> userinfo from the RTSP URL.</summary>
     private static (string User, string Password) SplitUserInfo(string userInfo)
