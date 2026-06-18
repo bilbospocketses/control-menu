@@ -82,7 +82,16 @@
 
     private async Task FocusIframe()
     {
-        await JS.InvokeVoidAsync("HTMLElement.prototype.focus.call", _iframeRef);
+        try
+        {
+            await _iframeRef.FocusAsync();
+        }
+        catch
+        {
+            // Focus is a best-effort UX nicety; a focus-interop failure must never fault the
+            // circuit. net10 dropped the old "HTMLElement.prototype.focus.call" interop
+            // identifier, whose JSException terminated the SignalR circuit (Item 44).
+        }
     }
 
     private async Task OpenMirrorWindow()
