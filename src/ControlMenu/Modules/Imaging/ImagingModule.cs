@@ -29,7 +29,20 @@ public class ImagingModule : IToolModule
             // imagemagick.org/archive .zip path is gone). Q8-x64 is the smallest
             // full-feature portable. e.g. ImageMagick-7.1.2-25-portable-Q8-x64.7z
             AssetPattern = @"ImageMagick-[\d.]+-\d+-portable-Q8-x64\.7z",
-            InstallPath = Path.Combine(DepsRoot, "magick")
+            InstallPath = Path.Combine(DepsRoot, "magick"),
+            // T1: KnownHashes populated by scripts/update-dependency-hashes.ps1 (Task 10).
+            // Keys MUST match DependencyManagerService.ResolveTargetVersion output:
+            // GitHub deps strip the leading "v" from the tag (e.g. "7.1.2-25").
+            KnownHashes = new Dictionary<string, string>
+            {
+                // populate with the current pinned magick SHA-256 via scripts/update-dependency-hashes.ps1
+            },
+            // T2: in-toto JSONL provenance published alongside each ImageMagick release.
+            AllowedHosts = ["github.com", "*.githubusercontent.com"],
+            Checksum = new ControlMenu.Services.Verification.ChecksumSource(
+                "https://github.com/ImageMagick/ImageMagick/releases/download/{version}/ImageMagick-{version}.intoto.jsonl",
+                ControlMenu.Services.Verification.ChecksumFormat.InTotoJsonl,
+                ControlMenu.Services.Verification.ChecksumAlgorithm.Sha256)
         },
         // vtracer: color raster -> SVG tracer (Phase G "Tracing"). GitHub source.
         // Release tags carry NO "v" prefix (0.6.4). The Windows zip extracts
@@ -46,7 +59,16 @@ public class ImagingModule : IToolModule
             GitHubRepo = "visioncortex/vtracer",
             ProjectHomeUrl = "https://github.com/visioncortex/vtracer",
             AssetPattern = @"vtracer-x86_64-pc-windows-msvc\.zip",
-            InstallPath = Path.Combine(DepsRoot, "vtracer")
+            InstallPath = Path.Combine(DepsRoot, "vtracer"),
+            // T1: KnownHashes populated by scripts/update-dependency-hashes.ps1 (Task 10).
+            // Keys MUST match DependencyManagerService.ResolveTargetVersion output:
+            // GitHub deps strip the leading "v" from the tag (tags have no "v" here; stored as-is, e.g. "0.6.4").
+            KnownHashes = new Dictionary<string, string>
+            {
+                // populate with the current pinned vtracer SHA-256 via scripts/update-dependency-hashes.ps1
+            },
+            // Tier 4: verified unsigned; no Checksum (T2), no ExpectedSigner (T3).
+            AllowedHosts = ["github.com", "*.githubusercontent.com"]
         },
         // potrace: B&W raster -> SVG tracer (Phase G "Tracing"). DirectUrl from
         // upstream SourceForge (no GitHub mirror). potrace 1.16 is stable/pinned,
@@ -62,7 +84,16 @@ public class ImagingModule : IToolModule
             SourceType = UpdateSourceType.DirectUrl,
             ProjectHomeUrl = "https://potrace.sourceforge.net/",
             DownloadUrl = "https://potrace.sourceforge.net/download/1.16/potrace-1.16.win64.zip",
-            InstallPath = Path.Combine(DepsRoot, "potrace")
+            InstallPath = Path.Combine(DepsRoot, "potrace"),
+            // T1: KnownHashes populated by scripts/update-dependency-hashes.ps1 (Task 10).
+            // Keys MUST match DependencyManagerService.ResolveTargetVersion output:
+            // DirectUrl pinned deps use the version parsed from VersionCheckPattern (e.g. "1.16").
+            KnownHashes = new Dictionary<string, string>
+            {
+                // populate with the current pinned potrace SHA-256 via scripts/update-dependency-hashes.ps1
+            },
+            // SourceForge redirects to mirror CDN; hash pin (T1) covers the redirect.
+            AllowedHosts = ["potrace.sourceforge.net", "*.dl.sourceforge.net"]
         }
     ];
 

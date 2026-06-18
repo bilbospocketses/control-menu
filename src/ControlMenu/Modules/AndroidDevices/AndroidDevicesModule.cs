@@ -30,7 +30,17 @@ public class AndroidDevicesModule : IToolModule
             DownloadUrlTemplate = OperatingSystem.IsWindows()
                 ? "https://dl.google.com/android/repository/platform-tools_r{version}-win.zip"
                 : "https://dl.google.com/android/repository/platform-tools_r{version}-linux.zip",
-            InstallPath = Path.Combine(DepsRoot, "platform-tools")
+            InstallPath = Path.Combine(DepsRoot, "platform-tools"),
+            // T1: KnownHashes populated by scripts/update-dependency-hashes.ps1 (Task 10).
+            // Keys MUST match DependencyManagerService.ResolveTargetVersion output:
+            // DirectUrl deps use the version-check format (major.minor.micro, no "v" prefix).
+            KnownHashes = new Dictionary<string, string>
+            {
+                // populate with the current pinned platform-tools SHA-256 via scripts/update-dependency-hashes.ps1
+            },
+            // T3: Authenticode signer pin. No T2 checksum — Google's only upstream hash is weak SHA-1, deliberately omitted.
+            AllowedHosts = ["dl.google.com"],
+            ExpectedSigner = "CN=Google LLC"
         },
         // node was a CM dependency when Managed-mode spawned the ws-scrcpy-web
         // node process. External-mode-only refactor removed all process-spawn
