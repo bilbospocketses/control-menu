@@ -62,7 +62,22 @@ public sealed class ArtifactVerifier(IAuthenticodeInspector authenticode, HttpCl
             }
         }
 
-        // T3 added in Task 5. For now, fall through.
+        // T3 - Authenticode signer pin
+        if (dep.ExpectedSigner is { } expectedSigner)
+        {
+            var info = _authenticode.Inspect(filePath);
+            if (info.IsSigned)
+            {
+                var ok = info.IsTrusted
+                    && string.Equals(info.SubjectCn, expectedSigner, StringComparison.OrdinalIgnoreCase);
+                return ok
+                    ? new VerificationResult(true, VerificationTier.Authenticode, "Authenticode", $"signed by {info.SubjectCn}")
+                    : new VerificationResult(false, VerificationTier.Authenticode, "Authenticode",
+                        $"signature check failed (trusted={info.IsTrusted}, subject={info.SubjectCn})");
+            }
+            // unsigned -> fall through
+        }
+
         return new VerificationResult(false, VerificationTier.Unverified, null,
             "no cryptographic tier available");
     }
