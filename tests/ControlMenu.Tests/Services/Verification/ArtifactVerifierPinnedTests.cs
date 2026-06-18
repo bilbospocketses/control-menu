@@ -23,30 +23,42 @@ public class ArtifactVerifierPinnedTests
     {
         var bytes = "payload-v1"u8.ToArray();
         var file = WriteTemp(bytes);
-        var dep = DepWithHashes(("1.0", Sha256Hex(bytes)));
-        var r = await _verifier.VerifyAsync(file, dep, "1.0", default);
-        Assert.True(r.Verified);
-        Assert.Equal(VerificationTier.PinnedHash, r.Tier);
+        try
+        {
+            var dep = DepWithHashes(("1.0", Sha256Hex(bytes)));
+            var r = await _verifier.VerifyAsync(file, dep, "1.0", default);
+            Assert.True(r.Verified);
+            Assert.Equal(VerificationTier.PinnedHash, r.Tier);
+        }
+        finally { File.Delete(file); }
     }
 
     [Fact]
     public async Task PinnedHash_Mismatch_HardFail()
     {
         var file = WriteTemp("tampered"u8.ToArray());
-        var dep = DepWithHashes(("1.0", Sha256Hex("original"u8.ToArray())));
-        var r = await _verifier.VerifyAsync(file, dep, "1.0", default);
-        Assert.False(r.Verified);
-        Assert.Equal(VerificationTier.PinnedHash, r.Tier); // mismatch is attributed to the tier that ran
+        try
+        {
+            var dep = DepWithHashes(("1.0", Sha256Hex("original"u8.ToArray())));
+            var r = await _verifier.VerifyAsync(file, dep, "1.0", default);
+            Assert.False(r.Verified);
+            Assert.Equal(VerificationTier.PinnedHash, r.Tier); // mismatch is attributed to the tier that ran
+        }
+        finally { File.Delete(file); }
     }
 
     [Fact]
     public async Task NoTierAvailable_Unverified()
     {
         var file = WriteTemp("anything"u8.ToArray());
-        var dep = DepWithHashes(); // no known hash for "9.9", no checksum, no signer
-        var r = await _verifier.VerifyAsync(file, dep, "9.9", default);
-        Assert.False(r.Verified);
-        Assert.Equal(VerificationTier.Unverified, r.Tier);
+        try
+        {
+            var dep = DepWithHashes(); // no known hash for "9.9", no checksum, no signer
+            var r = await _verifier.VerifyAsync(file, dep, "9.9", default);
+            Assert.False(r.Verified);
+            Assert.Equal(VerificationTier.Unverified, r.Tier);
+        }
+        finally { File.Delete(file); }
     }
 
     private static ModuleDependency DepWithHashes(params (string v, string h)[] hashes) =>

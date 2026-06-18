@@ -37,9 +37,10 @@ public sealed class ArtifactVerifier(IAuthenticodeInspector authenticode, HttpCl
                 {
                     var url = src.UrlOrTemplate.Replace("{version}", version);
                     var payload = await _http.GetStringAsync(url, ct);
-                    var assetName = Path.GetFileName(new Uri(url).AbsolutePath);
-                    var expectedHash = UpstreamChecksum.ExtractExpectedHash(src.Format, payload, assetName)
-                                   ?? UpstreamChecksum.ExtractExpectedHash(src.Format, payload, Path.GetFileName(filePath));
+                    // Use the artifact filename (the temp file is named after the asset) as the
+                    // lookup key. The checksum-source URL's basename is a manifest/page name,
+                    // NOT the artifact name, and never matches in-toto subjects or sums entries.
+                    var expectedHash = UpstreamChecksum.ExtractExpectedHash(src.Format, payload, Path.GetFileName(filePath));
                     if (expectedHash is not null)
                     {
                         var actual = await HashHexAsync(filePath, src.Algorithm, ct);

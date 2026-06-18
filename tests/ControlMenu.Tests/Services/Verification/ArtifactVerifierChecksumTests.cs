@@ -49,8 +49,9 @@ public class ArtifactVerifierChecksumTests
         var bytes = "payload"u8.ToArray();
         var sha256 = Sha256Hex(bytes);
 
-        // The in-toto subject name matches the asset filename — verifier's fallback path
-        // (Path.GetFileName(filePath)) resolves it because we write the temp file with that name.
+        // Artifact filename and checksum-URL basename deliberately DIFFER.
+        // The in-toto subject matches the artifact name; the URL basename is the manifest name.
+        // This proves the verifier uses Path.GetFileName(filePath), not the URL basename.
         var assetName = "mylib-1.0.0.7z";
         var jsonl = $"{{\"_type\":\"https://in-toto.io/Statement/v1\",\"subject\":[{{\"name\":\"{assetName}\",\"digest\":{{\"sha256\":\"{sha256}\"}}}}],\"predicateType\":\"https://slsa.dev/provenance/v1\",\"predicate\":{{}}}}";
 
@@ -59,7 +60,9 @@ public class ArtifactVerifierChecksumTests
         File.WriteAllBytes(file, bytes);
         try
         {
-            var url = $"https://example.com/provenance/{assetName}.intoto.jsonl";
+            // URL basename is "foo.intoto.jsonl" — intentionally NOT assetName.
+            // If the verifier used the URL basename for the lookup, the subject match would fail.
+            var url = "https://example.com/provenance/foo.intoto.jsonl";
             var src = new ChecksumSource(url, ChecksumFormat.InTotoJsonl, ChecksumAlgorithm.Sha256);
 
             var verifier = new ArtifactVerifier(new NullAuthenticodeInspector2(), FakeHttp(jsonl));
@@ -84,7 +87,8 @@ public class ArtifactVerifierChecksumTests
         File.WriteAllBytes(file, bytes);
         try
         {
-            var url = $"https://example.com/provenance/{assetName}.intoto.jsonl";
+            // URL basename differs from artifact name — lookup must still resolve via artifact name.
+            var url = "https://example.com/provenance/foo-mismatch.intoto.jsonl";
             var src = new ChecksumSource(url, ChecksumFormat.InTotoJsonl, ChecksumAlgorithm.Sha256);
 
             var verifier = new ArtifactVerifier(new NullAuthenticodeInspector2(), FakeHttp(jsonl));

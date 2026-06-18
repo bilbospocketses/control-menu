@@ -24,27 +24,42 @@ public class ArtifactVerifierAuthenticodeTests
     [Fact]
     public async Task ValidGoogleSignature_Verified()
     {
-        var v = new ArtifactVerifier(new FakeInspector(new(true, true, "CN=Google LLC")), new HttpClient());
-        var r = await v.VerifyAsync(TempFile(), AdbDep(), "37.0.0", default);
-        Assert.True(r.Verified);
-        Assert.Equal(VerificationTier.Authenticode, r.Tier);
+        var file = TempFile();
+        try
+        {
+            var v = new ArtifactVerifier(new FakeInspector(new(true, true, "CN=Google LLC")), new HttpClient());
+            var r = await v.VerifyAsync(file, AdbDep(), "37.0.0", default);
+            Assert.True(r.Verified);
+            Assert.Equal(VerificationTier.Authenticode, r.Tier);
+        }
+        finally { File.Delete(file); }
     }
 
     [Fact]
     public async Task WrongSigner_HardFail()
     {
-        var v = new ArtifactVerifier(new FakeInspector(new(true, true, "CN=Evil Corp")), new HttpClient());
-        var r = await v.VerifyAsync(TempFile(), AdbDep(), "37.0.0", default);
-        Assert.False(r.Verified);
-        Assert.Equal(VerificationTier.Authenticode, r.Tier);
+        var file = TempFile();
+        try
+        {
+            var v = new ArtifactVerifier(new FakeInspector(new(true, true, "CN=Evil Corp")), new HttpClient());
+            var r = await v.VerifyAsync(file, AdbDep(), "37.0.0", default);
+            Assert.False(r.Verified);
+            Assert.Equal(VerificationTier.Authenticode, r.Tier);
+        }
+        finally { File.Delete(file); }
     }
 
     [Fact]
     public async Task Unsigned_FallsThroughToUnverified()
     {
-        var v = new ArtifactVerifier(new FakeInspector(new(false, false, null)), new HttpClient());
-        var r = await v.VerifyAsync(TempFile(), AdbDep(), "37.0.0", default);
-        Assert.Equal(VerificationTier.Unverified, r.Tier);
+        var file = TempFile();
+        try
+        {
+            var v = new ArtifactVerifier(new FakeInspector(new(false, false, null)), new HttpClient());
+            var r = await v.VerifyAsync(file, AdbDep(), "37.0.0", default);
+            Assert.Equal(VerificationTier.Unverified, r.Tier);
+        }
+        finally { File.Delete(file); }
     }
 
     // IsTrustedResult — offline-tolerant revocation policy (no cert/network needed).

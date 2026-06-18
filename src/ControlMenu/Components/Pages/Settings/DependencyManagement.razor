@@ -309,15 +309,17 @@
         _updatingId = _updateTargetId;
         StateHasChanged();
 
-        var asset = await DepManager.ResolveDownloadAssetAsync(_updateTargetId);
-        if (asset is null)
+        // Reuse the already-resolved asset from ConfirmDownload — do NOT re-resolve.
+        // Re-resolving risks installing a different (potentially newer) asset than the one
+        // shown in the dialog the user just accepted.
+        if (_resolvedAsset is null)
         {
             _updatingId = null;
             ShowSaveMessage($"Could not resolve download for {target.ConfirmTool}", isError: true);
             return;
         }
 
-        var result = await DepManager.DownloadAndInstallAsync(_updateTargetId, asset, allowUnverified: true);
+        var result = await DepManager.DownloadAndInstallAsync(_updateTargetId, _resolvedAsset!, allowUnverified: true);
 
         _updatingId = null;
         ShowSaveMessage(
