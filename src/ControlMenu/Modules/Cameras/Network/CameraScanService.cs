@@ -152,7 +152,7 @@ public class CameraScanService : ICameraScanService
         ICameraService cameraService,
         CancellationToken ct)
     {
-        var allIps = subnets.SelectMany(EnumerateAddresses).Distinct().ToList();
+        var allIps = subnets.SelectMany(SubnetMath.Enumerate).Distinct().ToList();
         using var sem = new SemaphoreSlim(TcpConcurrency);
         var tasks = allIps.Select(async ip =>
         {
@@ -234,44 +234,7 @@ public class CameraScanService : ICameraScanService
     }
 
     private static bool IsInAnySubnet(string ip, IReadOnlyList<ParsedSubnet> subnets) =>
-        IPAddress.TryParse(ip, out var addr) && subnets.Any(s => SubnetContains(s, addr));
-
-    private static bool SubnetContains(ParsedSubnet subnet, IPAddress addr) =>
-        EnumerateAddresses(subnet).Any(a => a.Equals(addr));
-
-    private static IEnumerable<IPAddress> EnumerateAddresses(ParsedSubnet subnet)
-    {
-        var n = subnet.Normalized;
-        if (n.Contains('/'))
-        {
-            var parts = n.Split('/');
-            var baseIp = IPAddress.Parse(parts[0]).GetAddressBytes();
-            var prefix = int.Parse(parts[1]);
-            var hostBits = 32 - prefix;
-            var count = 1u << hostBits;
-            var network = (uint)(baseIp[0] << 24 | baseIp[1] << 16 | baseIp[2] << 8 | baseIp[3]);
-            network &= uint.MaxValue << hostBits;
-            for (uint i = 1; i < count - 1; i++) // skip network + broadcast
-            {
-                var v = network + i;
-                yield return new IPAddress(new[] { (byte)(v >> 24), (byte)(v >> 16), (byte)(v >> 8), (byte)v });
-            }
-        }
-        else if (n.Contains('-'))
-        {
-            var parts = n.Split('-');
-            var startBytes = IPAddress.Parse(parts[0]).GetAddressBytes();
-            var endBytes = IPAddress.Parse(parts[1]).GetAddressBytes();
-            var start = (uint)(startBytes[0] << 24 | startBytes[1] << 16 | startBytes[2] << 8 | startBytes[3]);
-            var end = (uint)(endBytes[0] << 24 | endBytes[1] << 16 | endBytes[2] << 8 | endBytes[3]);
-            for (var i = start; i <= end; i++)
-                yield return new IPAddress(new[] { (byte)(i >> 24), (byte)(i >> 16), (byte)(i >> 8), (byte)i });
-        }
-        else
-        {
-            yield return IPAddress.Parse(n);
-        }
-    }
+        IPAddress.TryParse(ip, out var addr) && subnets.Any(s => SubnetMath.Contains(s, addr));
 
     private sealed class Subscription : IDisposable
     {

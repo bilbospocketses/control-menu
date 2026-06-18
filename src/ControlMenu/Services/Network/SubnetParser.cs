@@ -41,11 +41,11 @@ public static class SubnetParser
                         "If you need to cover more than that, add multiple /16 entries " +
                         $"(one per subnet) using the 'add subnet' button. {CHEAT}");
 
-        uint ipInt = IpToInt(ipPart);
+        uint ipInt = SubnetMath.IpToInt(ipPart);
         int maskBits = 32 - prefix;
         uint netmask = maskBits == 32 ? 0u : (0xFFFFFFFFu << maskBits);
         uint networkInt = ipInt & netmask;
-        string normalizedIp = IntToIp(networkInt);
+        string normalizedIp = SubnetMath.IntToIp(networkInt);
         string normalized = $"{normalizedIp}/{prefix}";
 
         int hostCount = prefix switch
@@ -75,8 +75,8 @@ public static class SubnetParser
         }
         else return Fail($"Invalid end of range \"{endStr}\". {CHEAT}");
 
-        uint startInt = IpToInt(startStr);
-        uint endInt = IpToInt(endIp);
+        uint startInt = SubnetMath.IpToInt(startStr);
+        uint endInt = SubnetMath.IpToInt(endIp);
         if (startInt > endInt)
             return Fail($"Range start must be ≤ end (got {startStr} > {endIp}). {CHEAT}");
 
@@ -93,7 +93,7 @@ public static class SubnetParser
         int hostCount = scanEnd >= scanStart ? (int)(scanEnd - scanStart + 1) : 0;
 
         return ParseResult<ParsedSubnet>.Ok(
-            new ParsedSubnet(input, $"{IntToIp(startInt)}-{IntToIp(endInt)}", hostCount));
+            new ParsedSubnet(input, $"{SubnetMath.IntToIp(startInt)}-{SubnetMath.IntToIp(endInt)}", hostCount));
     }
 
     private static ParseResult<ParsedSubnet> Unrecognized() =>
@@ -114,13 +114,4 @@ public static class SubnetParser
         }
         return true;
     }
-
-    private static uint IpToInt(string ip)
-    {
-        var parts = ip.Split('.').Select(int.Parse).ToArray();
-        return (uint)((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]);
-    }
-
-    private static string IntToIp(uint n) =>
-        $"{(n >> 24) & 0xFF}.{(n >> 16) & 0xFF}.{(n >> 8) & 0xFF}.{n & 0xFF}";
 }
