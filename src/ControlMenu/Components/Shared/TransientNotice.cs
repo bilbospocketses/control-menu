@@ -40,10 +40,12 @@ public sealed class TransientNotice : IDisposable
         }, token, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
     }
 
-    /// <summary>Clears the message immediately and cancels any pending auto-dismiss.</summary>
+    /// <summary>Clears the message immediately and cancels/disposes any pending auto-dismiss.</summary>
     public void Clear()
     {
         _cts?.Cancel();
+        _cts?.Dispose();
+        _cts = null;
         Message = null;
         CssClass = "";
         Icon = "";
