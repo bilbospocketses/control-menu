@@ -520,7 +520,7 @@ public class DependencyManagerServiceTests : IDisposable
         const string resolvedAdb = "/cm/local/platform-tools/adb.exe";
         _mockResolver.Setup(r => r.ResolveAsync("android-devices", "adb", It.IsAny<CancellationToken>()))
             .ReturnsAsync(resolvedAdb);
-        _mockExecutor.Setup(e => e.ExecuteAsync(resolvedAdb, "kill-server", null, default))
+        _mockExecutor.Setup(e => e.ExecuteAsync(resolvedAdb, "kill-server", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new CommandResult(0, "", "", false));
 
         var service = CreateService(module);
@@ -528,7 +528,7 @@ public class DependencyManagerServiceTests : IDisposable
         await service.DownloadAndInstallAsync(depId, asset);
 
         _mockExecutor.Verify(
-            e => e.ExecuteAsync(resolvedAdb, "kill-server", null, default),
+            e => e.ExecuteAsync(resolvedAdb, "kill-server", null, It.IsAny<CancellationToken>()),
             Times.Once,
             "adb kill-server must run via the resolved local path.");
         _mockExecutor.Verify(
