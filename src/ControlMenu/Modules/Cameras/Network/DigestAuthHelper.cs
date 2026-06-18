@@ -31,6 +31,10 @@ internal static class DigestAuthHelper
         var qopRaw = challenge.GetValueOrDefault("qop");
         var algorithm = challenge.GetValueOrDefault("algorithm");
 
+        // Plain-MD5 HA1 only. `algorithm=MD5-sess` (which folds nonce+cnonce into HA1) is
+        // deliberately not implemented — IP cameras use plain MD5 or omit the algorithm entirely,
+        // and we'd rather fail closed than ship an untested crypto path. The advertised algorithm
+        // is echoed back below for servers that require it.
         var ha1 = Md5Hex($"{user}:{realm}:{password}");
         var ha2 = Md5Hex($"{method}:{digestUri}");
 

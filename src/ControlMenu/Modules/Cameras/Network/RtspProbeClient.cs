@@ -58,6 +58,9 @@ public class RtspProbeClient : IRtspProbeClient
                 {
                     var (user, password) = SplitUserInfo(uri.UserInfo);
                     var authorization = DigestAuthHelper.BuildDigest(challenge, user, password, "DESCRIBE", requestUri);
+                    // Reuse the open connection for the authenticated retry — the RTSP convention
+                    // is to keep the socket open across a 401. A server that closes it instead makes
+                    // the write/read throw, which the outer catch turns into a graceful probe failure.
                     var authedResponse = await SendDescribeAsync(stream, requestUri, cseq: 2, authorization, cts.Token);
                     result = ParseRtspResponse(authedResponse);
                 }
