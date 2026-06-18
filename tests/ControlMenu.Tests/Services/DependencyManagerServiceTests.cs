@@ -4,6 +4,8 @@ using ControlMenu.Data.Enums;
 using ControlMenu.Modules;
 using ControlMenu.Modules.Cameras.Services;
 using ControlMenu.Services;
+using ControlMenu.Services.Archive;
+using ControlMenu.Services.Verification;
 using ControlMenu.Tests.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -64,12 +66,18 @@ public class DependencyManagerServiceTests : IDisposable
         return (installDir, localExe);
     }
 
+    // Default: always-verified stub so existing unit tests aren't affected by the integrity gate.
+    private static readonly IArtifactVerifier _alwaysVerifiedVerifier =
+        new StubArtifactVerifier(new VerificationResult(true, VerificationTier.PinnedHash, "SHA-256", "stub — always verified"));
+    private static readonly IArchiveExtractor _realExtractor = new ArchiveExtractor();
+
     private DependencyManagerService CreateService(params IToolModule[] modules)
     {
         return new DependencyManagerService(
             _dbFactory, modules, _mockExecutor.Object, _mockHttpFactory.Object,
             _mockConfig.Object, _wsScrcpy, _mockGo2Rtc.Object, _mockResolver.Object,
-            NullLogger<DependencyManagerService>.Instance);
+            NullLogger<DependencyManagerService>.Instance,
+            _alwaysVerifiedVerifier, _realExtractor);
     }
 
     [Fact]
@@ -572,4 +580,17 @@ internal class MockBinaryHttpHandler(byte[] payload) : HttpMessageHandler
         {
             Content = new ByteArrayContent(payload)
         });
+}
+
+/// <summary>
+/// Stub verifier that always returns a fixed result, used so existing download/install
+/// tests are not derailed by the integrity gate.
+/// </summary>
+internal class StubArtifactVerifier(ControlMenu.Services.Verification.VerificationResult result)
+    : ControlMenu.Services.Verification.IArtifactVerifier
+{
+    public Task<ControlMenu.Services.Verification.VerificationResult> VerifyAsync(
+        string filePath, ControlMenu.Modules.ModuleDependency dep,
+        string version, CancellationToken ct)
+        => Task.FromResult(result);
 }

@@ -10,8 +10,10 @@ using ControlMenu.Modules.Cameras.Services;
 using ControlMenu.Modules.Jellyfin.Services;
 using ControlMenu.Modules.Utilities.Services;
 using ControlMenu.Services;
+using ControlMenu.Services.Archive;
 using ControlMenu.Services.Network;
 using ControlMenu.Services.Startup;
+using ControlMenu.Services.Verification;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -145,6 +147,11 @@ public static class ServiceCollectionExtensions
             c.DefaultRequestHeaders.UserAgent.ParseAdd("ControlMenu"));
         services.AddHttpClient("dependency-updates", c =>
             c.DefaultRequestHeaders.UserAgent.ParseAdd("ControlMenu"));
+        services.AddSingleton<IArchiveExtractor, ArchiveExtractor>();
+        services.AddSingleton<IAuthenticodeInspector, WindowsAuthenticodeInspector>();
+        services.AddScoped<IArtifactVerifier>(sp => new ArtifactVerifier(
+            sp.GetRequiredService<IAuthenticodeInspector>(),
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient("dependency-updates")));
         services.AddScoped<IDependencyManagerService>(sp =>
         {
             var dbFactory = sp.GetRequiredService<IDbContextFactory<AppDbContext>>();
@@ -156,7 +163,9 @@ public static class ServiceCollectionExtensions
             var go2Rtc = sp.GetRequiredService<IGo2RtcService>();
             var resolver = sp.GetRequiredService<IDependencyPathResolver>();
             var logger = sp.GetRequiredService<ILogger<DependencyManagerService>>();
-            return new DependencyManagerService(dbFactory, modules, executor, httpFactory, config, wsScrcpy, go2Rtc, resolver, logger);
+            var verifier = sp.GetRequiredService<IArtifactVerifier>();
+            var extractor = sp.GetRequiredService<IArchiveExtractor>();
+            return new DependencyManagerService(dbFactory, modules, executor, httpFactory, config, wsScrcpy, go2Rtc, resolver, logger, verifier, extractor);
         });
         services.AddHostedService<DependencyCheckHostedService>();
         services.AddHostedService<ObsoleteSettingsCleanupService>();

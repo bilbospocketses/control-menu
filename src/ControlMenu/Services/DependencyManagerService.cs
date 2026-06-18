@@ -4,6 +4,8 @@ using ControlMenu.Data.Entities;
 using ControlMenu.Data.Enums;
 using ControlMenu.Modules;
 using ControlMenu.Modules.Cameras.Services;
+using ControlMenu.Services.Archive;
+using ControlMenu.Services.Verification;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -20,6 +22,8 @@ public class DependencyManagerService : IDependencyManagerService
     private readonly IGo2RtcService _go2Rtc;
     private readonly IDependencyPathResolver _resolver;
     private readonly ILogger<DependencyManagerService> _logger;
+    private readonly IArtifactVerifier _verifier;
+    private readonly IArchiveExtractor _extractor;
 
     public DependencyManagerService(
         IDbContextFactory<AppDbContext> dbFactory,
@@ -30,7 +34,9 @@ public class DependencyManagerService : IDependencyManagerService
         WsScrcpyService wsScrcpy,
         IGo2RtcService go2Rtc,
         IDependencyPathResolver resolver,
-        ILogger<DependencyManagerService> logger)
+        ILogger<DependencyManagerService> logger,
+        IArtifactVerifier verifier,
+        IArchiveExtractor extractor)
     {
         _dbFactory = dbFactory;
         _modules = modules;
@@ -41,6 +47,8 @@ public class DependencyManagerService : IDependencyManagerService
         _go2Rtc = go2Rtc;
         _resolver = resolver;
         _logger = logger;
+        _verifier = verifier;
+        _extractor = extractor;
     }
 
     public async Task SyncDependenciesAsync()
@@ -246,7 +254,7 @@ public class DependencyManagerService : IDependencyManagerService
         return null;
     }
 
-    public async Task<UpdateResult> DownloadAndInstallAsync(Guid dependencyId, AssetMatch asset)
+    public async Task<UpdateResult> DownloadAndInstallAsync(Guid dependencyId, AssetMatch asset, bool allowUnverified = false)
     {
         using var db = await _dbFactory.CreateDbContextAsync();
         var entity = await db.Dependencies.FindAsync(dependencyId);
@@ -275,11 +283,15 @@ public class DependencyManagerService : IDependencyManagerService
                 HttpCompletionOption.ResponseHeadersRead);
 
             // Check if we were redirected (HttpClient follows redirects automatically)
-            if (response.RequestMessage?.RequestUri?.ToString() is string finalUrl
-                && finalUrl != asset.DownloadUrl)
+            var finalUri = response.RequestMessage?.RequestUri ?? new Uri(asset.DownloadUrl);
+            if (finalUri.ToString() != asset.DownloadUrl)
             {
-                entity.DownloadUrl = finalUrl;
-                urlAction = StaleUrlAction.Redirected;
+                // Only persist the redirected URL when the final host is allowlisted (or unconstrained).
+                if (moduleDep.AllowedHosts.Length == 0 || TransportGuard.IsAllowedFinalUri(finalUri, moduleDep.AllowedHosts))
+                {
+                    entity.DownloadUrl = finalUri.ToString();
+                    urlAction = StaleUrlAction.Redirected;
+                }
             }
 
             if (!response.IsSuccessStatusCode)
@@ -297,21 +309,33 @@ public class DependencyManagerService : IDependencyManagerService
                 await response.Content.CopyToAsync(fs);
             }
 
-            // 2. Extract
+            // 2a. Transport: validate the FINAL host (after any redirect) against the allowlist.
+            if (moduleDep.AllowedHosts.Length > 0 && !TransportGuard.IsAllowedFinalUri(finalUri, moduleDep.AllowedHosts))
+            {
+                return new UpdateResult(false, null,
+                    $"Blocked: download host not allowed ({finalUri.Host})", StaleUrlAction.Invalid,
+                    UpdateOutcome.Failed);
+            }
+
+            // 2b. Integrity: verify BEFORE extract/run.
+            var targetVersion = ResolveTargetVersion(entity, asset);
+            var verification = await _verifier.VerifyAsync(tempFile, moduleDep, targetVersion, default);
+            if (verification.Tier != VerificationTier.Unverified && !verification.Verified)
+            {
+                return new UpdateResult(false, null,
+                    $"Integrity check failed: {verification.Detail}", urlAction, UpdateOutcome.Failed);
+            }
+            if (verification.Tier == VerificationTier.Unverified && !allowUnverified)
+            {
+                return new UpdateResult(false, null,
+                    "Update could not be cryptographically verified", urlAction,
+                    UpdateOutcome.NeedsUnverifiedConfirmation,
+                    ConfirmTool: entity.Name, ConfirmVersion: targetVersion, ConfirmHost: finalUri.Host);
+            }
+
+            // 2c. Extract
             var extractDir = Path.Combine(tempDir, "extracted");
-            if (tempFile.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-            {
-                System.IO.Compression.ZipFile.ExtractToDirectory(tempFile, extractDir);
-            }
-            else if (tempFile.EndsWith(".tar.gz", StringComparison.OrdinalIgnoreCase))
-            {
-                Directory.CreateDirectory(extractDir);
-                await using var fileStream = File.OpenRead(tempFile);
-                await using var gzipStream = new System.IO.Compression.GZipStream(
-                    fileStream, System.IO.Compression.CompressionMode.Decompress);
-                await System.Formats.Tar.TarFile.ExtractToDirectoryAsync(
-                    gzipStream, extractDir, overwriteFiles: true);
-            }
+            _extractor.Extract(tempFile, extractDir);
 
             // 3. Verify — find the executable in extracted dir and run version command
             var newExe = FindExecutable(extractDir, moduleDep.ExecutableName);
@@ -324,7 +348,8 @@ public class DependencyManagerService : IDependencyManagerService
             var verifyResult = await _executor.ExecuteAsync(newExe, verifyArgs);
             if (verifyResult.ExitCode != 0)
                 return new UpdateResult(false, null,
-                    $"New binary verification failed: {verifyResult.StandardError}", urlAction);
+                    $"New binary verification failed: {verifyResult.StandardError}", urlAction,
+                    UpdateOutcome.Failed);
 
             var newVersion = ExtractVersion(verifyResult.StandardOutput, moduleDep.VersionPattern);
 
@@ -384,7 +409,7 @@ public class DependencyManagerService : IDependencyManagerService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to install update for {Name}", entity.Name);
-            return new UpdateResult(false, null, ex.Message, urlAction);
+            return new UpdateResult(false, null, ex.Message, urlAction, UpdateOutcome.Failed);
         }
         finally
         {
@@ -766,5 +791,22 @@ public class DependencyManagerService : IDependencyManagerService
     {
         var exe = InstallPathResolver.WithExecutableSuffix(dep.ExecutableName);
         return [exe, .. dep.RelatedFiles];
+    }
+
+    /// <summary>
+    /// Resolves the version string of the update being installed WITHOUT executing the
+    /// downloaded binary (the whole point of the integrity check is to verify before running).
+    /// Prefers the version embedded in the asset filename, then falls back to
+    /// <see cref="Dependency.LatestKnownVersion"/> recorded during the preceding check.
+    /// </summary>
+    private static string ResolveTargetVersion(Dependency entity, AssetMatch asset)
+    {
+        // Many release filenames encode the version: "adb-36.0.0-windows.zip"
+        var versionInName = Regex.Match(asset.FileName, @"(\d+\.\d+[\.\d]*)");
+        if (versionInName.Success)
+            return versionInName.Groups[1].Value;
+
+        // Fall back to the latest-known-version stored during CheckDependencyAsync
+        return entity.LatestKnownVersion ?? entity.InstalledVersion ?? "unknown";
     }
 }

@@ -4,6 +4,8 @@ using ControlMenu.Data.Enums;
 using ControlMenu.Modules;
 using ControlMenu.Modules.Cameras.Services;
 using ControlMenu.Services;
+using ControlMenu.Services.Archive;
+using ControlMenu.Services.Verification;
 using ControlMenu.Tests.Data;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -38,12 +40,18 @@ public class DependencyScanTests : IDisposable
 
     public void Dispose() => _dbFactory.Dispose();
 
+    // Stub verifier: scan tests don't exercise downloads, so verification is irrelevant.
+    private static readonly IArtifactVerifier _stubVerifier =
+        new StubScanVerifier(new VerificationResult(true, VerificationTier.PinnedHash, "SHA-256", "stub"));
+    private static readonly IArchiveExtractor _stubExtractor = new ArchiveExtractor();
+
     private DependencyManagerService CreateService(params IToolModule[] modules)
     {
         return new DependencyManagerService(
             _dbFactory, modules, _mockExecutor.Object, _mockHttpFactory.Object,
             _mockConfig.Object, _wsScrcpy, _mockGo2Rtc.Object, _mockResolver.Object,
-            NullLogger<DependencyManagerService>.Instance);
+            NullLogger<DependencyManagerService>.Instance,
+            _stubVerifier, _stubExtractor);
     }
 
     [Fact]
@@ -170,4 +178,13 @@ internal class FakeScanModule(string id, string displayName, ModuleDependency[] 
     public IEnumerable<ConfigRequirement> ConfigRequirements => [];
     public IEnumerable<NavEntry> GetNavEntries() => [];
     public IEnumerable<BackgroundJobDefinition> GetBackgroundJobs() => [];
+}
+
+internal class StubScanVerifier(ControlMenu.Services.Verification.VerificationResult result)
+    : ControlMenu.Services.Verification.IArtifactVerifier
+{
+    public Task<ControlMenu.Services.Verification.VerificationResult> VerifyAsync(
+        string filePath, ControlMenu.Modules.ModuleDependency dep,
+        string version, CancellationToken ct)
+        => Task.FromResult(result);
 }
