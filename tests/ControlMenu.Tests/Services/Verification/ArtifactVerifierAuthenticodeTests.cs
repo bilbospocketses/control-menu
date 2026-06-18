@@ -47,6 +47,20 @@ public class ArtifactVerifierAuthenticodeTests
         Assert.Equal(VerificationTier.Unverified, r.Tier);
     }
 
+    // IsTrustedResult — offline-tolerant revocation policy (no cert/network needed).
+    [Theory]
+    [InlineData(0,                       true,  "S_OK")]
+    [InlineData(unchecked((int)0x800B010E), true,  "CERT_E_REVOCATION_FAILURE")]
+    [InlineData(unchecked((int)0x80092013), true,  "CRYPT_E_REVOCATION_OFFLINE")]
+    [InlineData(unchecked((int)0x800B010C), false, "CERT_E_REVOKED")]
+    [InlineData(unchecked((int)0x80096010), false, "TRUST_E_BAD_DIGEST")]
+    [InlineData(unchecked((int)0x80004005), false, "E_FAIL (arbitrary non-zero)")]
+    public void IsTrustedResult_PolicyTable(int hr, bool expected, string label)
+    {
+        _ = label; // for test name readability only
+        Assert.Equal(expected, WindowsAuthenticodeInspector.IsTrustedResult(hr));
+    }
+
     // Empirical coverage of the real WindowsAuthenticodeInspector P/Invoke path.
     [Fact]
     public void RealInspector_UnsignedFile_IsSignedFalse()

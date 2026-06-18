@@ -23,26 +23,37 @@ public sealed class WindowsAuthenticodeInspector : IAuthenticodeInspector
             using var cert = new X509Certificate2(X509Certificate.CreateFromSignedFile(filePath));
 #pragma warning restore SYSLIB0057
             signed = true;
-            subjectCn = cert.Subject; // full subject; compared with StartsWith/Equals on "CN=..."
+            // Use structural parse via GetNameInfo — handles RFC-2253 escaped commas in Subject.
+            // Reconstruct "CN=<leafCN>" to match the ExpectedSigner pin format ("CN=Google LLC").
+            var leafCn = cert.GetNameInfo(X509NameType.SimpleName, forIssuer: false);
+            subjectCn = string.IsNullOrEmpty(leafCn) ? null : "CN=" + leafCn;
         }
         catch { return new AuthenticodeInfo(false, false, null); }
 
+        // WinVerifyTrust opens the file independently by path; two reads are acceptable because the
+        // target is a controlled just-downloaded temp artifact (path is stable between these calls).
         var trusted = WinVerifyTrustValid(filePath);
-        // Normalise: callers compare against "CN=Google LLC", so surface the CN= component.
-        var cn = ExtractCn(subjectCn);
-        return new AuthenticodeInfo(signed, trusted, cn);
+        return new AuthenticodeInfo(signed, trusted, subjectCn);
     }
 
-    private static string? ExtractCn(string? subject)
-    {
-        if (subject is null) return null;
-        foreach (var part in subject.Split(','))
-        {
-            var p = part.Trim();
-            if (p.StartsWith("CN=", StringComparison.OrdinalIgnoreCase)) return p;
-        }
-        return subject;
-    }
+    // Revocation policy (user decision 2026-06-17):
+    //   - Revocation IS checked (WTD_REVOKE_WHOLECHAIN + WTD_REVOCATION_CHECK_CHAIN).
+    //   - A definitively revoked cert (CERT_E_REVOKED) -> untrusted; hard fail.
+    //   - If revocation status cannot be determined (offline/unreachable):
+    //     CERT_E_REVOCATION_FAILURE or CRYPT_E_REVOCATION_OFFLINE -> treated as trusted-modulo-revocation
+    //     so legitimate offline updates still work.
+    //   - Any other non-zero HRESULT (e.g. tampered digest) -> untrusted.
+    private const int S_OK = 0;
+    private const int CERT_E_REVOCATION_FAILURE  = unchecked((int)0x800B010E); // revocation status unknown
+    private const int CRYPT_E_REVOCATION_OFFLINE = unchecked((int)0x80092013); // responder offline
+    private const int CERT_E_REVOKED             = unchecked((int)0x800B010C); // definitively revoked
+
+    /// <summary>
+    /// Maps a WinVerifyTrust HRESULT to the trusted/untrusted decision using the offline-tolerant policy.
+    /// Exposed as internal for unit testing without requiring a cert or network.
+    /// </summary>
+    internal static bool IsTrustedResult(int hr) =>
+        hr == S_OK || hr == CERT_E_REVOCATION_FAILURE || hr == CRYPT_E_REVOCATION_OFFLINE;
 
     [SupportedOSPlatform("windows")]
     private static bool WinVerifyTrustValid(string filePath)
@@ -60,15 +71,15 @@ public sealed class WindowsAuthenticodeInspector : IAuthenticodeInspector
             var data = new WINTRUST_DATA
             {
                 cbStruct = (uint)Marshal.SizeOf<WINTRUST_DATA>(),
-                dwUIChoice = 2,            // WTD_UI_NONE
-                fdwRevocationChecks = 0,   // WTD_REVOKE_NONE
-                dwUnionChoice = 1,         // WTD_CHOICE_FILE
+                dwUIChoice = 2,                // WTD_UI_NONE
+                fdwRevocationChecks = 1,       // WTD_REVOKE_WHOLECHAIN
+                dwUnionChoice = 1,             // WTD_CHOICE_FILE
                 pFile = pFile,
                 dwStateAction = 0,
-                dwProvFlags = 0x10         // WTD_SAFER_FLAG
+                dwProvFlags = 0x10 | 0x40      // WTD_SAFER_FLAG | WTD_REVOCATION_CHECK_CHAIN
             };
             int hr = WinVerifyTrust(IntPtr.Zero, ref actionId, ref data);
-            return hr == 0; // 0 == trusted
+            return IsTrustedResult(hr);
         }
         finally { Marshal.FreeHGlobal(pFile); }
     }
