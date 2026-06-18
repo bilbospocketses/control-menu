@@ -142,28 +142,28 @@ else
             () => InvokeAsync(() => Nav.NavigateTo("/android/devices", replace: true)),
             () => InvokeAsync(StateHasChanged));
 
-        if (await _presenceWatcher.EnsurePresentOrRedirectAsync())
-            return;
+        try
+        {
+            if (await _presenceWatcher.EnsurePresentOrRedirectAsync())
+                return;
 
-        if (DeviceId.HasValue)
-        {
-            _device = await DeviceService.GetDeviceAsync(DeviceId.Value);
-        }
-        else
-        {
-            var devices = await DeviceService.GetAllDevicesAsync();
-            _device = devices.FirstOrDefault(d => d.Type == DeviceType && d.ModuleId == "android-devices");
-        }
+            if (DeviceId.HasValue)
+            {
+                _device = await DeviceService.GetDeviceAsync(DeviceId.Value);
+            }
+            else
+            {
+                var devices = await DeviceService.GetAllDevicesAsync();
+                _device = devices.FirstOrDefault(d => d.Type == DeviceType && d.ModuleId == "android-devices");
+            }
 
-        if (_device is not null)
-        {
-            _pin = await Config.GetSecretAsync($"device-pin-{_device.Id}");
-            _hasPin = !string.IsNullOrEmpty(_pin);
-        }
+            if (_device is not null)
+            {
+                _pin = await Config.GetSecretAsync($"device-pin-{_device.Id}");
+                _hasPin = !string.IsNullOrEmpty(_pin);
+            }
 
-        if (_device?.LastKnownIp is not null)
-        {
-            try
+            if (_device?.LastKnownIp is not null)
             {
                 _connected = await AdbService.ConnectAsync(_device.LastKnownIp, _device.AdbPort);
 
@@ -188,16 +188,16 @@ else
                     _ = ProbeAndStartAsync();
                 }
             }
-            catch
+            else
             {
-                // A device/adb/probe failure during init must degrade gracefully — never let it
-                // propagate as an unhandled circuit exception and tear down the circuit (#10-rem).
-                _connected = false;
                 _mirrorLoading = false;
             }
         }
-        else
+        catch
         {
+            // Any failure during init — presence query, device load, adb connect, settings/probe —
+            // must degrade gracefully and never propagate as an unhandled circuit exception (#9-rem/#10-rem).
+            _connected = false;
             _mirrorLoading = false;
         }
     }
@@ -253,11 +253,12 @@ else
     private Task UnlockDevice()
     {
         if (_device is null || string.IsNullOrEmpty(Ip) || string.IsNullOrEmpty(_pin)) return Task.CompletedTask;
+        var pin = _pin;
         return DashboardGuard.RunAsync(
             b => _busy = b,
             async () =>
             {
-                await AdbService.UnlockWithPinAsync(Ip, Port, _pin);
+                await AdbService.UnlockWithPinAsync(Ip, Port, pin);
                 Notice.Show($"{Noun} unlocked.", "status-success", "bi-unlock");
             },
             () => Notice.Show($"Failed to unlock {Noun}.", "status-warning", "bi-exclamation-triangle"));

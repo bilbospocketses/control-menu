@@ -55,4 +55,30 @@ public class GoogleTvDashboardTests : BunitContext
 
         Assert.Contains("Disconnected", cut.Markup);
     }
+
+    [Fact]
+    public void Power_check_action_when_it_throws_shows_error_notice_and_does_not_tear_down_circuit()
+    {
+        var device = new Device
+        {
+            Id = Guid.NewGuid(),
+            Type = DeviceType.GoogleTV,
+            ModuleId = "android-devices",
+            Name = "Living Room TV",
+            MacAddress = "",
+            LastKnownIp = null,
+            AdbPort = 5555,
+        };
+        _devices.Setup(s => s.GetAllDevicesAsync()).ReturnsAsync(new[] { device });
+        _adb.Setup(a => a.GetPowerStateAsync(It.IsAny<string>(), It.IsAny<int>()))
+            .ThrowsAsync(new InvalidOperationException("adb down"));
+
+        var cut = Render<GoogleTvDashboard>();
+
+        var check = cut.FindAll("button").First(b => b.TextContent.Trim() == "Check");
+        var ex = Record.Exception(() => check.Click());
+
+        Assert.Null(ex);                                            // guard swallowed the throw; circuit intact
+        Assert.Contains("Failed to read power status.", cut.Markup); // and surfaced the error notice
+    }
 }

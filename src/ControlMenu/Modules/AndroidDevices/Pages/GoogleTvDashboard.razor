@@ -208,23 +208,23 @@ else
             () => InvokeAsync(() => Nav.NavigateTo("/android/devices", replace: true)),
             () => InvokeAsync(StateHasChanged));
 
-        if (await _presenceWatcher.EnsurePresentOrRedirectAsync())
-            return;
+        try
+        {
+            if (await _presenceWatcher.EnsurePresentOrRedirectAsync())
+                return;
 
-        if (DeviceId.HasValue)
-        {
-            _device = await DeviceService.GetDeviceAsync(DeviceId.Value);
-        }
-        else
-        {
-            // Default to first Google TV device
-            var devices = await DeviceService.GetAllDevicesAsync();
-            _device = devices.FirstOrDefault(d => d.Type == DeviceType.GoogleTV && d.ModuleId == "android-devices");
-        }
+            if (DeviceId.HasValue)
+            {
+                _device = await DeviceService.GetDeviceAsync(DeviceId.Value);
+            }
+            else
+            {
+                // Default to first Google TV device
+                var devices = await DeviceService.GetAllDevicesAsync();
+                _device = devices.FirstOrDefault(d => d.Type == DeviceType.GoogleTV && d.ModuleId == "android-devices");
+            }
 
-        if (_device?.LastKnownIp is not null)
-        {
-            try
+            if (_device?.LastKnownIp is not null)
             {
                 await ConnectToDevice();
 
@@ -238,16 +238,16 @@ else
                     _ = ProbeAndStartAsync();
                 }
             }
-            catch
+            else
             {
-                // A device/adb/probe failure during init must degrade gracefully — never let it
-                // propagate as an unhandled circuit exception and tear down the circuit (#10-rem).
-                _connected = false;
                 _mirrorLoading = false;
             }
         }
-        else
+        catch
         {
+            // Any failure during init — presence query, device load, adb connect, settings/probe —
+            // must degrade gracefully and never propagate as an unhandled circuit exception (#9-rem/#10-rem).
+            _connected = false;
             _mirrorLoading = false;
         }
     }

@@ -19,7 +19,10 @@ public sealed class DeviceTypePresenceWatcher : IDisposable
     private readonly IDeviceChangeNotifier _notifier;
     private readonly Func<Task> _onRedirectAsync;
     private readonly Func<Task>? _onInvalidateAsync;
-    private bool _redirected;
+    // Read on the renderer (EnsurePresentOrRedirectAsync) and written on the notifier's background
+    // thread (OnDevicesChangedAsync); volatile for cross-thread visibility. Worst case is a benign
+    // extra presence check / idempotent redirect.
+    private volatile bool _redirected;
 
     public DeviceTypePresenceWatcher(
         DeviceType type,
@@ -47,6 +50,9 @@ public sealed class DeviceTypePresenceWatcher : IDisposable
         return false;
     }
 
+    // async void is forced by the Action-typed Changed event. OnDevicesChangedAsync owns the
+    // try/catch as its first real work, so nothing can escape this handler and tear down the
+    // circuit / crash the process.
     private async void OnDevicesChanged() => await OnDevicesChangedAsync();
 
     internal async Task OnDevicesChangedAsync()
