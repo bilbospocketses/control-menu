@@ -31,12 +31,12 @@ public class AndroidDevicesModule : IToolModule
                 ? "https://dl.google.com/android/repository/platform-tools_r{version}-win.zip"
                 : "https://dl.google.com/android/repository/platform-tools_r{version}-linux.zip",
             InstallPath = Path.Combine(DepsRoot, "platform-tools"),
-            // T1: KnownHashes populated by scripts/update-dependency-hashes.ps1 (Task 10).
-            // Keys MUST match DependencyManagerService.ResolveTargetVersion output:
+            // T1: KnownHashes keyed by DependencyManagerService.ResolveTargetVersion output.
             // DirectUrl deps use the version-check format (major.minor.micro, no "v" prefix).
+            // Pinned 2026-06-18; refresh via scripts/update-dependency-hashes.ps1.
             KnownHashes = new Dictionary<string, string>
             {
-                // populate with the current pinned platform-tools SHA-256 via scripts/update-dependency-hashes.ps1
+                ["37.0.0"] = "4fe305812db074cea32903a489d061eb4454cbc90a49e8fea677f4b7af764918"
             },
             // T3: Authenticode signer pin. No T2 checksum — Google's only upstream hash is weak SHA-1, deliberately omitted.
             AllowedHosts = ["dl.google.com"],

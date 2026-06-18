@@ -39,12 +39,12 @@ public class JellyfinModule : IToolModule
             VersionCheckPattern = @"version\s+(\d+\.\d+\.\d+)",
             ProjectHomeUrl = "https://www.sqlite.org/download.html",
             InstallPath = Path.Combine(DepsRoot, "sqlite3"),
-            // T1: KnownHashes populated by scripts/update-dependency-hashes.ps1 (Task 10).
-            // Keys MUST match DependencyManagerService.ResolveTargetVersion output:
+            // T1: KnownHashes keyed by DependencyManagerService.ResolveTargetVersion output.
             // DirectUrl deps use the version-check format (major.minor.patch, no "v" prefix).
+            // Pinned 2026-06-18; refresh via scripts/update-dependency-hashes.ps1.
             KnownHashes = new Dictionary<string, string>
             {
-                // populate with the current pinned sqlite3 SHA-256 via scripts/update-dependency-hashes.ps1
+                ["3.53.2"] = "2eb7602bbe05895f4f530d8f3c4af244dcd8697d14b858778ccd4abe297a836d"
             },
             // T2: upstream SHA3-256 published on the sqlite download page.
             AllowedHosts = ["sqlite.org"],

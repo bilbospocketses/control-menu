@@ -30,12 +30,12 @@ public class ImagingModule : IToolModule
             // full-feature portable. e.g. ImageMagick-7.1.2-25-portable-Q8-x64.7z
             AssetPattern = @"ImageMagick-[\d.]+-\d+-portable-Q8-x64\.7z",
             InstallPath = Path.Combine(DepsRoot, "magick"),
-            // T1: KnownHashes populated by scripts/update-dependency-hashes.ps1 (Task 10).
-            // Keys MUST match DependencyManagerService.ResolveTargetVersion output:
+            // T1: KnownHashes keyed by DependencyManagerService.ResolveTargetVersion output.
             // GitHub deps strip the leading "v" from the tag (e.g. "7.1.2-25").
+            // Pinned 2026-06-18; refresh via scripts/update-dependency-hashes.ps1.
             KnownHashes = new Dictionary<string, string>
             {
-                // populate with the current pinned magick SHA-256 via scripts/update-dependency-hashes.ps1
+                ["7.1.2-25"] = "ff7c559f51bad365e3662f004aaed0e18c937d110f6e01183363602c07246e40"
             },
             // T2: in-toto JSONL provenance published alongside each ImageMagick release.
             AllowedHosts = ["github.com", "*.githubusercontent.com"],
@@ -60,12 +60,12 @@ public class ImagingModule : IToolModule
             ProjectHomeUrl = "https://github.com/visioncortex/vtracer",
             AssetPattern = @"vtracer-x86_64-pc-windows-msvc\.zip",
             InstallPath = Path.Combine(DepsRoot, "vtracer"),
-            // T1: KnownHashes populated by scripts/update-dependency-hashes.ps1 (Task 10).
-            // Keys MUST match DependencyManagerService.ResolveTargetVersion output:
-            // GitHub deps strip the leading "v" from the tag (tags have no "v" here; stored as-is, e.g. "0.6.4").
+            // T1: KnownHashes keyed by DependencyManagerService.ResolveTargetVersion output.
+            // GitHub deps: tags have no "v" prefix here; stored as-is (e.g. "0.6.4").
+            // Pinned 2026-06-18; refresh via scripts/update-dependency-hashes.ps1.
             KnownHashes = new Dictionary<string, string>
             {
-                // populate with the current pinned vtracer SHA-256 via scripts/update-dependency-hashes.ps1
+                ["0.6.4"] = "6b5bc17a6b017129ee40461df254f65d16f3b494c001a8541d41861066b716bf"
             },
             // Tier 4: verified unsigned; no Checksum (T2), no ExpectedSigner (T3).
             AllowedHosts = ["github.com", "*.githubusercontent.com"]
@@ -85,12 +85,12 @@ public class ImagingModule : IToolModule
             ProjectHomeUrl = "https://potrace.sourceforge.net/",
             DownloadUrl = "https://potrace.sourceforge.net/download/1.16/potrace-1.16.win64.zip",
             InstallPath = Path.Combine(DepsRoot, "potrace"),
-            // T1: KnownHashes populated by scripts/update-dependency-hashes.ps1 (Task 10).
-            // Keys MUST match DependencyManagerService.ResolveTargetVersion output:
+            // T1: KnownHashes keyed by DependencyManagerService.ResolveTargetVersion output.
             // DirectUrl pinned deps use the version parsed from VersionCheckPattern (e.g. "1.16").
+            // Pinned 2026-06-18; refresh via scripts/update-dependency-hashes.ps1.
             KnownHashes = new Dictionary<string, string>
             {
-                // populate with the current pinned potrace SHA-256 via scripts/update-dependency-hashes.ps1
+                ["1.16"] = "63699f9885b5ed053977fd94452a7bdbb77ee62b77bf28a3f17b2f14b9b9c65d"
             },
             // SourceForge redirects to mirror CDN; hash pin (T1) covers the redirect.
             AllowedHosts = ["potrace.sourceforge.net", "*.dl.sourceforge.net"]
