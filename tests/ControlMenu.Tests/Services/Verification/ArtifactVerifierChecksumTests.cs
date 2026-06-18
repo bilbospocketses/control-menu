@@ -57,15 +57,18 @@ public class ArtifactVerifierChecksumTests
         // Write artifact file named after the asset so Path.GetFileName(filePath) == assetName.
         var file = Path.Combine(Path.GetTempPath(), assetName);
         File.WriteAllBytes(file, bytes);
+        try
+        {
+            var url = $"https://example.com/provenance/{assetName}.intoto.jsonl";
+            var src = new ChecksumSource(url, ChecksumFormat.InTotoJsonl, ChecksumAlgorithm.Sha256);
 
-        var url = $"https://example.com/provenance/{assetName}.intoto.jsonl";
-        var src = new ChecksumSource(url, ChecksumFormat.InTotoJsonl, ChecksumAlgorithm.Sha256);
+            var verifier = new ArtifactVerifier(new NullAuthenticodeInspector2(), FakeHttp(jsonl));
+            var r = await verifier.VerifyAsync(file, DepWithChecksum(src), "1.0.0", default);
 
-        var verifier = new ArtifactVerifier(new NullAuthenticodeInspector2(), FakeHttp(jsonl));
-        var r = await verifier.VerifyAsync(file, DepWithChecksum(src), "1.0.0", default);
-
-        Assert.True(r.Verified);
-        Assert.Equal(VerificationTier.UpstreamChecksum, r.Tier);
+            Assert.True(r.Verified);
+            Assert.Equal(VerificationTier.UpstreamChecksum, r.Tier);
+        }
+        finally { File.Delete(file); }
     }
 
     [Fact]
@@ -79,46 +82,101 @@ public class ArtifactVerifierChecksumTests
 
         var file = Path.Combine(Path.GetTempPath(), assetName);
         File.WriteAllBytes(file, bytes);
+        try
+        {
+            var url = $"https://example.com/provenance/{assetName}.intoto.jsonl";
+            var src = new ChecksumSource(url, ChecksumFormat.InTotoJsonl, ChecksumAlgorithm.Sha256);
 
-        var url = $"https://example.com/provenance/{assetName}.intoto.jsonl";
-        var src = new ChecksumSource(url, ChecksumFormat.InTotoJsonl, ChecksumAlgorithm.Sha256);
+            var verifier = new ArtifactVerifier(new NullAuthenticodeInspector2(), FakeHttp(jsonl));
+            var r = await verifier.VerifyAsync(file, DepWithChecksum(src), "1.0.0", default);
 
-        var verifier = new ArtifactVerifier(new NullAuthenticodeInspector2(), FakeHttp(jsonl));
-        var r = await verifier.VerifyAsync(file, DepWithChecksum(src), "1.0.0", default);
-
-        // A found-but-mismatched checksum is a hard fail — must NOT fall through to Unverified.
-        Assert.False(r.Verified);
-        Assert.Equal(VerificationTier.UpstreamChecksum, r.Tier);
+            // A found-but-mismatched checksum is a hard fail — must NOT fall through to Unverified.
+            Assert.False(r.Verified);
+            Assert.Equal(VerificationTier.UpstreamChecksum, r.Tier);
+        }
+        finally { File.Delete(file); }
     }
 
     [Fact]
     public async Task T2_NetworkError_FallsThrough_ToUnverified()
     {
         var file = WriteTemp("payload"u8.ToArray());
-        var src = new ChecksumSource("https://example.com/checksums.jsonl", ChecksumFormat.InTotoJsonl, ChecksumAlgorithm.Sha256);
+        try
+        {
+            var src = new ChecksumSource("https://example.com/checksums.jsonl", ChecksumFormat.InTotoJsonl, ChecksumAlgorithm.Sha256);
 
-        var verifier = new ArtifactVerifier(new NullAuthenticodeInspector2(), FakeHttp(null!));
-        var r = await verifier.VerifyAsync(file, DepWithChecksum(src), "1.0.0", default);
+            var verifier = new ArtifactVerifier(new NullAuthenticodeInspector2(), FakeHttp(null!));
+            var r = await verifier.VerifyAsync(file, DepWithChecksum(src), "1.0.0", default);
 
-        // Network error must fall through; T3/Unverified is the next result (no T3 yet → Unverified).
-        Assert.Equal(VerificationTier.Unverified, r.Tier);
+            // Network error must fall through; T3/Unverified is the next result (no T3 yet → Unverified).
+            Assert.Equal(VerificationTier.Unverified, r.Tier);
+        }
+        finally { File.Delete(file); }
     }
 
     [Fact]
     public async Task T2_NoChecksumConfigured_FallsThrough_ToUnverified()
     {
         var file = WriteTemp("payload"u8.ToArray());
-        var dep = new ModuleDependency
+        try
         {
-            Name = "t", ExecutableName = "t", VersionCommand = "t", VersionPattern = "(.+)"
-            // no Checksum, no AllowedHosts
-        };
+            var dep = new ModuleDependency
+            {
+                Name = "t", ExecutableName = "t", VersionCommand = "t", VersionPattern = "(.+)"
+                // no Checksum, no AllowedHosts
+            };
 
-        var verifier = new ArtifactVerifier(new NullAuthenticodeInspector2(), new HttpClient());
-        var r = await verifier.VerifyAsync(file, dep, "1.0.0", default);
+            var verifier = new ArtifactVerifier(new NullAuthenticodeInspector2(), new HttpClient());
+            var r = await verifier.VerifyAsync(file, dep, "1.0.0", default);
 
-        Assert.False(r.Verified);
-        Assert.Equal(VerificationTier.Unverified, r.Tier);
+            Assert.False(r.Verified);
+            Assert.Equal(VerificationTier.Unverified, r.Tier);
+        }
+        finally { File.Delete(file); }
+    }
+
+    [Fact]
+    public async Task T2_MalformedPayload_FallsThrough_ToUnverified()
+    {
+        // HTTP 200 but non-JSON body — JsonDocument.Parse will throw JsonException.
+        // T2 must fall through to Unverified rather than propagating the exception.
+        var file = WriteTemp("payload"u8.ToArray());
+        try
+        {
+            var src = new ChecksumSource("https://example.com/checksums.jsonl", ChecksumFormat.InTotoJsonl, ChecksumAlgorithm.Sha256);
+
+            var verifier = new ArtifactVerifier(new NullAuthenticodeInspector2(), FakeHttp("not json at all"));
+            var r = await verifier.VerifyAsync(file, DepWithChecksum(src), "1.0.0", default);
+
+            Assert.Equal(VerificationTier.Unverified, r.Tier);
+        }
+        finally { File.Delete(file); }
+    }
+
+    [Fact]
+    public async Task T2_Sha256Sums_Match_Verified()
+    {
+        var bytes = "payload-sha256sums"u8.ToArray();
+        var sha256 = Sha256Hex(bytes);
+        var assetName = "myapp-2.0.0.zip";
+
+        // SHA256SUMS format: "<hex>  <filename>"
+        var sumsBody = $"{sha256}  {assetName}\n";
+
+        var file = Path.Combine(Path.GetTempPath(), assetName);
+        File.WriteAllBytes(file, bytes);
+        try
+        {
+            var url = $"https://example.com/releases/{assetName}.SHA256SUMS";
+            var src = new ChecksumSource(url, ChecksumFormat.Sha256SumsFile, ChecksumAlgorithm.Sha256);
+
+            var verifier = new ArtifactVerifier(new NullAuthenticodeInspector2(), FakeHttp(sumsBody));
+            var r = await verifier.VerifyAsync(file, DepWithChecksum(src), "2.0.0", default);
+
+            Assert.True(r.Verified);
+            Assert.Equal(VerificationTier.UpstreamChecksum, r.Tier);
+        }
+        finally { File.Delete(file); }
     }
 }
 

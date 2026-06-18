@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using ControlMenu.Modules;
 
 namespace ControlMenu.Services.Verification;
@@ -16,7 +17,7 @@ public sealed class ArtifactVerifier(IAuthenticodeInspector authenticode, HttpCl
         // T1 - pinned hash
         if (dep.KnownHashes.TryGetValue(version, out var expected))
         {
-            var actual = await Sha256HexAsync(filePath, ct);
+            var actual = await HashHexAsync(filePath, ChecksumAlgorithm.Sha256, ct);
             return string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase)
                 ? new VerificationResult(true, VerificationTier.PinnedHash, "SHA-256", $"pinned {version}")
                 : new VerificationResult(false, VerificationTier.PinnedHash, "SHA-256",
@@ -49,22 +50,21 @@ public sealed class ArtifactVerifier(IAuthenticodeInspector authenticode, HttpCl
                     }
                 }
             }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            catch (Exception ex) when (ex is HttpRequestException
+                                           or TaskCanceledException
+                                           or JsonException
+                                           or FormatException
+                                           or UriFormatException
+                                           or InvalidOperationException)
             {
-                // checksum source unreachable -> fall through (do not hard-fail on a network blip)
+                // Checksum source unreachable, URL malformed, or payload unparseable
+                // -> fall through (do not hard-fail on a transient or config fault)
             }
         }
 
         // T3 added in Task 5. For now, fall through.
         return new VerificationResult(false, VerificationTier.Unverified, null,
             "no cryptographic tier available");
-    }
-
-    private static async Task<string> Sha256HexAsync(string path, CancellationToken ct)
-    {
-        await using var fs = File.OpenRead(path);
-        var hash = await SHA256.HashDataAsync(fs, ct);
-        return Convert.ToHexStringLower(hash);
     }
 
     private static async Task<string> HashHexAsync(string path, ChecksumAlgorithm algo, CancellationToken ct)
