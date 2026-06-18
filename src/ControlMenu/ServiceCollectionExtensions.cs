@@ -130,6 +130,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IOnvifDiscoveryClient, OnvifDiscoveryClient>();
         services.AddScoped<IOnvifClient, OnvifClient>();
         services.AddScoped<IHikvisionIsapiClient, HikvisionIsapiClient>();
+        // Pooled handler (shared, recycled) for Hikvision ISAPI probes — avoids a socket-per-probe
+        // leak during camera scans. 5s timeout preserves the previous per-call bound.
+        services.AddHttpClient("hikvision-isapi", c => c.Timeout = TimeSpan.FromSeconds(5));
         services.AddSingleton<IRtspProbeClient, RtspProbeClient>();
         services.AddSingleton<ICameraScanService, CameraScanService>();
         services.AddSingleton<IntervalChangeSignal>();
