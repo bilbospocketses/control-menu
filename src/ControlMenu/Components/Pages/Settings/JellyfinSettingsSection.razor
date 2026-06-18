@@ -1,5 +1,7 @@
 @using ControlMenu.Services
 @using ControlMenu.Modules.Jellyfin.Services
+@using ControlMenu.Components.Shared
+@implements IDisposable
 
 <SettingsSection Title="Docker Compose">
     <div class="settings-section-intro">
@@ -121,14 +123,17 @@
     </SettingsGrid>
 </SettingsSection>
 
-@if (!string.IsNullOrEmpty(_message))
+@if (Notice.IsVisible)
 {
-    <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
-        @_message
+    <div class="alert @Notice.CssClass" style="margin-top:1rem;">
+        @Notice.Message
     </div>
 }
 
 @code {
+    private TransientNotice? _noticeBacking;
+    private TransientNotice Notice => _noticeBacking ??= new(() => InvokeAsync(StateHasChanged));
+
     [Inject] private IConfigurationService Config { get; set; } = default!;
     [Inject] private IJellyfinService JellyfinService { get; set; } = default!;
     [Inject] private IJellyfinDirectoryResolver DirectoryResolver { get; set; } = default!;
@@ -143,8 +148,6 @@
     private string _logDirectory = "";
     private bool _parsing;
     private ComposeParseResult? _parseResult;
-    private string? _message;
-    private bool _messageIsError;
     private int _backupCount;
     private long _backupSize;
     private int _logCount;
@@ -172,16 +175,17 @@
     private async Task SaveAndParse()
     {
         _parsing = true;
-        _message = null;
+        Notice.Clear();
         StateHasChanged();
 
         await Config.SetSettingAsync("jellyfin-compose-path", _composePath);
         _parseResult = await JellyfinService.ParseComposeFileAsync();
 
-        _message = _parseResult.ErrorMessage is null
+        var isError = _parseResult.ErrorMessage is not null;
+        var msg = _parseResult.ErrorMessage is null
             ? "Compose file parsed. Container name and database path configured."
             : _parseResult.ErrorMessage;
-        _messageIsError = _parseResult.ErrorMessage is not null;
+        ShowMessage(msg, isError);
         _parsing = false;
     }
 
@@ -327,16 +331,10 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    private void ShowMessage(string msg, bool isError)
-    {
-        _message = msg;
-        _messageIsError = isError;
-        _ = Task.Delay(isError ? 10000 : 5000).ContinueWith(_ => InvokeAsync(() =>
-        {
-            _message = null;
-            StateHasChanged();
-        }));
-    }
+    private void ShowMessage(string msg, bool isError) =>
+        Notice.Show(msg, isError ? "alert-danger" : "alert-success", dismissMs: isError ? 10000 : 5000);
 
     private static string FormatSize(long bytes) => Services.FormatHelper.FormatSize(bytes);
+
+    public void Dispose() => _noticeBacking?.Dispose();
 }

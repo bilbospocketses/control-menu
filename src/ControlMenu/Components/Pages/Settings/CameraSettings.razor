@@ -1,3 +1,4 @@
+@using ControlMenu.Components.Shared
 @using ControlMenu.Components.Shared.Cameras
 @using ControlMenu.Components.Shared.Scanner
 @using ControlMenu.Modules.Cameras.Entities
@@ -150,14 +151,17 @@
     </div>
 }
 
-@if (!string.IsNullOrEmpty(_message))
+@if (Notice.IsVisible)
 {
-    <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
-        @_message
+    <div class="alert @Notice.CssClass" style="margin-top:1rem;">
+        @Notice.Message
     </div>
 }
 
 @code {
+    private TransientNotice? _noticeBacking;
+    private TransientNotice Notice => _noticeBacking ??= new(() => InvokeAsync(StateHasChanged));
+
     private List<Camera> _cameras = new();
     private bool _scanModalOpen;
     private bool _addManualOpen;
@@ -165,8 +169,6 @@
     private bool _showDeleteConfirm;
     private Camera? _deleteTarget;
     private bool _showDeleteAllConfirm;
-    private string? _message;
-    private bool _messageIsError;
     private bool _quickScanInProgress;
     private IDisposable? _scanSubscription;
     private const int DefaultLivenessInterval = 300;
@@ -208,8 +210,7 @@
 
     private async Task QuickScan()
     {
-        _message = null;
-        _messageIsError = false;
+        Notice.Clear();
         StateHasChanged();
 
         var detected = await SubnetDetector.DetectAsync();
@@ -341,17 +342,14 @@
 
     private async Task ShowMessage(string message, bool isError = false)
     {
-        _message = message;
-        _messageIsError = isError;
-        StateHasChanged();
-        await Task.Delay(isError ? 10000 : 5000);
-        _message = null;
-        StateHasChanged();
+        Notice.Show(message, isError ? "alert-danger" : "alert-success", dismissMs: isError ? 10000 : 5000);
+        await Task.CompletedTask;
     }
 
     public void Dispose()
     {
         ChangeNotifier.CamerasChanged -= OnCamerasChanged;
         _scanSubscription?.Dispose();
+        _noticeBacking?.Dispose();
     }
 }
