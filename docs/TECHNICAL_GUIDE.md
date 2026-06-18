@@ -265,7 +265,7 @@ The module declares two dependencies — `adb` (auto-managed in `dependencies/`)
 
 - **DeviceSelector** (`/android/devices`) -- CRUD for device records, network discovery for IP resolution
 - **GoogleTvDashboard** (`/android/googletv`) -- Power toggle, screensaver selector, screen timeout, launcher enable/disable, Projectivy backup list with restore, Shizuku start, screen mirror (passes `DeviceKind="tv"` to `ScrcpyMirror` so the ws-scrcpy-web toolbar defaults to D-pad mode)
-- **PixelDashboard** (`/android/phone`) -- ADB connect, PIN unlock, portrait-mode screen mirror with aspect ratio from ADB screen dimensions (passes `DeviceKind="phone"` to `ScrcpyMirror` so the ws-scrcpy-web toolbar defaults to Touch mode)
+- **DeviceDashboard** (Phone `/android/phone` + `/android/pixel`, Tablet `/android/tablet`, Watch `/android/watch`) -- the shared dashboard for the simple single-mirror device pages; the three route pages are thin wrappers that render it with their title/icon/device-type/device-kind. ADB connect, PIN unlock, portrait-mode screen mirror with aspect ratio from ADB screen dimensions. The device kind (`phone`/`tablet`/`watch`) is passed to `ScrcpyMirror` so the ws-scrcpy-web toolbar seeds the right input mode.
 
 ### WsScrcpyService
 
@@ -579,7 +579,7 @@ go2rtc is auto-installable via the dependency manager. During updates, `Dependen
 
 - `CameraServiceTests` (9 tests) -- CRUD operations, credential storage, camera count management
 - `CamerasModuleTests` (5 tests) -- Module metadata, dynamic nav entry generation
-- Scanner / network coverage: `CameraScanServiceTests`, `OnvifClientTests`, `RtspProbeClientTests`, `HikvisionIsapiClientTests`, `CameraLivenessHostedServiceTests`, `PurgeLegacyCameraSettingsMigrationTests`
+- Scanner / network coverage: `CameraScanServiceTests`, `SubnetMathTests`, `OnvifClientTests`, `RtspProbeClientTests`, `HikvisionIsapiClientTests`, `CameraLivenessHostedServiceTests`, `PurgeLegacyCameraSettingsMigrationTests`
 
 ---
 
