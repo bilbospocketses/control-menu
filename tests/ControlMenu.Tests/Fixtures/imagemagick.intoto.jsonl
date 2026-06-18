@@ -1,0 +1,1 @@
+{"_type":"https://in-toto.io/Statement/v1","subject":[{"name":"ImageMagick-7.1.2-25-portable-Q8-x64.7z","digest":{"sha256":"ff7c559f51bad365e3662f004aaed0e18c937d110f6e01183363602c07246e40"}}],"predicateType":"https://slsa.dev/provenance/v1","predicate":{}}
