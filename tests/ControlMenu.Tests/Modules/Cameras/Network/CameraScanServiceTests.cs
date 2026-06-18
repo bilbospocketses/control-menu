@@ -192,7 +192,14 @@ public class CameraScanServiceTests
 
         var subnets = new[] { Subnet("192.168.1.0/24") };
         var tasks = Enumerable.Range(0, 32).Select(_ => Task.Run(() => sut.StartScanAsync(subnets))).ToArray();
-        await Task.Delay(150);   // let every start attempt the guard; losers return, the winner blocks on the gate
+
+        // Wait until a scan has actually begun — a fixed delay flaked on loaded CI runners where the
+        // Task.Run bodies hadn't been scheduled yet (started == 0). Then settle briefly: a non-atomic
+        // guard would have let several of the 32 slip past and increment by now, while the atomic guard
+        // holds the winner on the gate so the count stays at exactly one.
+        for (var i = 0; i < 400 && Volatile.Read(ref started) == 0; i++)
+            await Task.Delay(25);
+        await Task.Delay(100);
 
         Assert.Equal(1, Volatile.Read(ref started));
 
