@@ -1,4 +1,9 @@
 using ControlMenu.Modules.Cameras;
+using ControlMenu.Modules.Cameras.Entities;
+using ControlMenu.Modules.Cameras.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 
 namespace ControlMenu.Tests.Modules.Cameras;
 
@@ -43,5 +48,57 @@ public class CamerasModuleTests
         Assert.Single(deps);
         Assert.Equal("go2rtc", deps[0].Name);
         Assert.Equal("go2rtc.exe", deps[0].ExecutableName);
+    }
+
+    [Fact]
+    public void ProjectEnabledNav_returns_only_enabled_cameras_as_id_and_name()
+    {
+        var front = new Camera { Id = Guid.NewGuid(), Name = "Front", IpAddress = "1.1.1.1", Enabled = true };
+        var off = new Camera { Id = Guid.NewGuid(), Name = "Off", IpAddress = "1.1.1.2", Enabled = false };
+        var back = new Camera { Id = Guid.NewGuid(), Name = "Back", IpAddress = "1.1.1.3", Enabled = true };
+
+        var nav = CamerasModule.ProjectEnabledNav(new[] { front, off, back });
+
+        Assert.Equal(2, nav.Count);
+        Assert.Equal((front.Id, "Front"), nav[0]);
+        Assert.Equal((back.Id, "Back"), nav[1]);
+    }
+
+    [Fact]
+    public async Task RefreshEnabledNavAsync_sets_EnabledCameras_from_a_fresh_scope()
+    {
+        var cam = new Camera { Id = Guid.NewGuid(), Name = "Front", IpAddress = "1.1.1.1", Enabled = true };
+        var cameraService = new Mock<ICameraService>();
+        cameraService.Setup(s => s.GetAllAsync()).ReturnsAsync(new[] { cam });
+
+        CamerasModule.EnabledCameras = new();
+        await CamerasModule.RefreshEnabledNavAsync(ScopeFactoryReturning(cameraService.Object), NullLogger.Instance);
+
+        Assert.Single(CamerasModule.EnabledCameras);
+        Assert.Equal((cam.Id, "Front"), CamerasModule.EnabledCameras[0]);
+        CamerasModule.EnabledCameras = new();
+    }
+
+    [Fact]
+    public async Task RefreshEnabledNavAsync_when_service_throws_swallows_and_does_not_propagate()
+    {
+        var cameraService = new Mock<ICameraService>();
+        cameraService.Setup(s => s.GetAllAsync()).ThrowsAsync(new InvalidOperationException("db down"));
+
+        var ex = await Record.ExceptionAsync(
+            () => CamerasModule.RefreshEnabledNavAsync(ScopeFactoryReturning(cameraService.Object), NullLogger.Instance));
+
+        Assert.Null(ex);
+    }
+
+    private static IServiceScopeFactory ScopeFactoryReturning(ICameraService cameraService)
+    {
+        var provider = new Mock<IServiceProvider>();
+        provider.Setup(p => p.GetService(typeof(ICameraService))).Returns(cameraService);
+        var scope = new Mock<IServiceScope>();
+        scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
+        var factory = new Mock<IServiceScopeFactory>();
+        factory.Setup(f => f.CreateScope()).Returns(scope.Object);
+        return factory.Object;
     }
 }
