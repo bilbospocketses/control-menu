@@ -1,37 +1,33 @@
+using System.Net;
+using System.Net.Http.Headers;
 using System.Xml.Linq;
 
 namespace ControlMenu.Modules.Cameras.Network;
 
 public class HikvisionIsapiClient : IHikvisionIsapiClient
 {
+    private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<HikvisionIsapiClient> _logger;
 
-    public HikvisionIsapiClient(ILogger<HikvisionIsapiClient> logger)
+    public HikvisionIsapiClient(IHttpClientFactory httpFactory, ILogger<HikvisionIsapiClient> logger)
     {
+        _httpFactory = httpFactory;
         _logger = logger;
-    }
-
-    protected virtual HttpClient CreateHttpClient(string username, string password)
-    {
-        var handler = new HttpClientHandler
-        {
-            Credentials = new System.Net.NetworkCredential(username, password),
-            PreAuthenticate = false,
-        };
-        return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
     }
 
     public async Task<HikvisionDeviceInfo?> GetDeviceInfoAsync(string ipAddress, int port, string username, string password, CancellationToken ct)
     {
+        const string requestPath = "/ISAPI/System/deviceInfo";
         try
         {
-            var url = $"http://{ipAddress}:{port}/ISAPI/System/deviceInfo";
-            // Use HttpClientHandler with NetworkCredential to support BOTH Basic and
-            // Digest auth via challenge-response. Older Hikvision firmware (V5.6.2 era)
-            // requires Digest; newer firmware (V5.7+) accepts Basic. Letting HttpClient
-            // negotiate via the WWW-Authenticate header covers both.
-            using var http = CreateHttpClient(username, password);
-            using var response = await http.GetAsync(url, ct);
+            // Pooled client from IHttpClientFactory: it recycles a shared SocketsHttpHandler, so a
+            // rapid camera scan no longer leaks a socket per probe (the previous code newed up an
+            // HttpClientHandler + HttpClient on every call). Credentials are attached per request in
+            // SendAuthenticatedAsync rather than living on the shared handler.
+            var http = _httpFactory.CreateClient("hikvision-isapi");
+            var url = $"http://{ipAddress}:{port}{requestPath}";
+
+            using var response = await SendAuthenticatedAsync(http, url, requestPath, username, password, ct);
             if (!response.IsSuccessStatusCode) return null;
 
             var body = await response.Content.ReadAsStringAsync(ct);
@@ -42,6 +38,42 @@ public class HikvisionIsapiClient : IHikvisionIsapiClient
             _logger.LogDebug(ex, "Hikvision ISAPI deviceInfo fetch failed for {Ip}", ipAddress);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Sends an unauthenticated GET, then answers a 401 Digest (preferred) or Basic challenge.
+    /// This covers BOTH older Hikvision firmware (V5.6.2 era) that requires Digest and newer
+    /// firmware that accepts Basic. Credentials are never sent preemptively.
+    /// </summary>
+    private static async Task<HttpResponseMessage> SendAuthenticatedAsync(
+        HttpClient http, string url, string requestPath, string username, string password, CancellationToken ct)
+    {
+        var first = await http.GetAsync(url, ct);
+        if (first.StatusCode != HttpStatusCode.Unauthorized) return first;
+
+        var authValue = BuildChallengeResponse(first.Headers.WwwAuthenticate, username, password, requestPath);
+        if (authValue is null) return first;   // no challenge we can answer → surface the 401
+        first.Dispose();
+
+        var retry = new HttpRequestMessage(HttpMethod.Get, url);
+        retry.Headers.TryAddWithoutValidation("Authorization", authValue);
+        return await http.SendAsync(retry, ct);
+    }
+
+    private static string? BuildChallengeResponse(
+        IEnumerable<AuthenticationHeaderValue> wwwAuthenticate, string username, string password, string requestPath)
+    {
+        var challenges = wwwAuthenticate.ToList();
+
+        var digest = challenges.FirstOrDefault(h => h.Scheme.Equals("Digest", StringComparison.OrdinalIgnoreCase));
+        if (digest?.Parameter is { } digestParams)
+            return DigestAuthHelper.BuildDigest(
+                DigestAuthHelper.ParseChallengeParams(digestParams), username, password, "GET", requestPath);
+
+        if (challenges.Any(h => h.Scheme.Equals("Basic", StringComparison.OrdinalIgnoreCase)))
+            return DigestAuthHelper.BuildBasic(username, password);
+
+        return null;
     }
 
     private static HikvisionDeviceInfo? ParseDeviceInfo(string xml)

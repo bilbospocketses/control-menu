@@ -116,7 +116,7 @@ public class JellyfinServiceTests
 
         IReadOnlyList<string>? captured = null;
         _mockExecutor.Setup(e => e.ExecuteAsync("sqlite3",
-                It.IsAny<IReadOnlyList<string>>(), null, default))
+                It.IsAny<IReadOnlyList<string>>(), null, It.IsAny<CancellationToken>()))
             .Callback<string, IReadOnlyList<string>, string?, CancellationToken>((_, a, _, _) => captured = a)
             .ReturnsAsync(new CommandResult(0, "", "", false));
 

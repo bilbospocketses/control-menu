@@ -38,24 +38,35 @@ public class RtspProbeClient : IRtspProbeClient
             using var stream = client.GetStream();
 
             var requestUri = $"{uri.Scheme}://{uri.Host}:{uri.Port}{uri.AbsolutePath}";
-            var request = new StringBuilder()
-                .Append("DESCRIBE ").Append(requestUri).Append(" RTSP/1.0\r\n")
-                .Append("CSeq: 1\r\n")
-                .Append("Accept: application/sdp\r\n");
 
-            if (!string.IsNullOrEmpty(uri.UserInfo))
+            // Never send credentials preemptively. The previous implementation base64'd
+            // the userinfo into an `Authorization: Basic` header on the very first request,
+            // which (a) leaks a trivially-reversible password to whatever answers on the
+            // socket — including a hostile device answering network discovery — and (b) is
+            // cleartext over the unencrypted TCP/554 channel. We send an unauthenticated
+            // DESCRIBE first and only respond to an explicit Digest challenge.
+            var firstResponse = await SendDescribeAsync(stream, requestUri, cseq: 1, authorization: null, cts.Token);
+            var result = ParseRtspResponse(firstResponse);
+
+            if (result.StatusCode == 401 && !string.IsNullOrEmpty(uri.UserInfo))
             {
-                var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes(uri.UserInfo));
-                request.Append("Authorization: Basic ").Append(basic).Append("\r\n");
+                var challenge = ExtractDigestChallenge(firstResponse);
+                // Answer ONLY a Digest challenge. We deliberately do not fall back to Basic:
+                // Basic would put the recoverable password back on the wire. A Basic-only
+                // server therefore stays a 401 here (its credentials are surfaced to the user).
+                if (challenge is not null)
+                {
+                    var (user, password) = SplitUserInfo(uri.UserInfo);
+                    var authorization = DigestAuthHelper.BuildDigest(challenge, user, password, "DESCRIBE", requestUri);
+                    // Reuse the open connection for the authenticated retry — the RTSP convention
+                    // is to keep the socket open across a 401. A server that closes it instead makes
+                    // the write/read throw, which the outer catch turns into a graceful probe failure.
+                    var authedResponse = await SendDescribeAsync(stream, requestUri, cseq: 2, authorization, cts.Token);
+                    result = ParseRtspResponse(authedResponse);
+                }
             }
-            request.Append("\r\n");
 
-            await stream.WriteAsync(Encoding.ASCII.GetBytes(request.ToString()), cts.Token);
-
-            var buf = new byte[8192];
-            var read = await stream.ReadAsync(buf, cts.Token);
-            var responseText = Encoding.ASCII.GetString(buf, 0, read);
-            return ParseRtspResponse(responseText);
+            return result;
         }
         catch (Exception ex)
         {
@@ -67,6 +78,83 @@ public class RtspProbeClient : IRtspProbeClient
                 uri.Scheme, uri.Host, uri.Port, uri.AbsolutePath);
             return new RtspDescribeResult(false, 0, ex.Message, null);
         }
+    }
+
+    private static async Task<string> SendDescribeAsync(
+        NetworkStream stream, string requestUri, int cseq, string? authorization, CancellationToken ct)
+    {
+        var request = new StringBuilder()
+            .Append("DESCRIBE ").Append(requestUri).Append(" RTSP/1.0\r\n")
+            .Append("CSeq: ").Append(cseq).Append("\r\n")
+            .Append("Accept: application/sdp\r\n");
+        if (!string.IsNullOrEmpty(authorization))
+            request.Append("Authorization: ").Append(authorization).Append("\r\n");
+        request.Append("\r\n");
+
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(request.ToString()), ct);
+        return await ReadResponseAsync(stream, ct);
+    }
+
+    /// <summary>
+    /// Reads a full RTSP response. A single <c>ReadAsync</c> is not guaranteed to return the
+    /// whole message, so we loop until the headers are complete and the declared
+    /// Content-Length body has arrived (or the peer closes / a 64 KiB safety cap is hit).
+    /// </summary>
+    private static async Task<string> ReadResponseAsync(NetworkStream stream, CancellationToken ct)
+    {
+        var buf = new byte[8192];
+        var sb = new StringBuilder();
+        var headerEnd = -1;
+        var contentLength = 0;
+
+        while (sb.Length < 65536)
+        {
+            var read = await stream.ReadAsync(buf, ct);
+            if (read == 0) break;
+            sb.Append(Encoding.ASCII.GetString(buf, 0, read));
+
+            if (headerEnd < 0)
+            {
+                headerEnd = sb.ToString().IndexOf("\r\n\r\n", StringComparison.Ordinal);
+                if (headerEnd >= 0)
+                    contentLength = ParseContentLength(sb.ToString(0, headerEnd));
+            }
+            if (headerEnd >= 0 && sb.Length - (headerEnd + 4) >= contentLength)
+                break;
+        }
+        return sb.ToString();
+    }
+
+    private static int ParseContentLength(string headers)
+    {
+        foreach (var line in headers.Split("\r\n"))
+        {
+            if (line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
+                return int.TryParse(line.AsSpan("Content-Length:".Length).Trim(), out var n) ? n : 0;
+        }
+        return 0;
+    }
+
+    /// <summary>Parses the first <c>WWW-Authenticate: Digest …</c> challenge, if any.</summary>
+    private static IReadOnlyDictionary<string, string>? ExtractDigestChallenge(string response)
+    {
+        foreach (var line in response.Split("\r\n"))
+        {
+            if (!line.StartsWith("WWW-Authenticate:", StringComparison.OrdinalIgnoreCase)) continue;
+            var value = line["WWW-Authenticate:".Length..].Trim();
+            if (value.StartsWith("Digest", StringComparison.OrdinalIgnoreCase))
+                return DigestAuthHelper.ParseChallengeParams(value["Digest".Length..]);
+        }
+        return null;
+    }
+
+    /// <summary>Splits and percent-decodes <c>user:password</c> userinfo from the RTSP URL.</summary>
+    private static (string User, string Password) SplitUserInfo(string userInfo)
+    {
+        var idx = userInfo.IndexOf(':');
+        return idx < 0
+            ? (Uri.UnescapeDataString(userInfo), "")
+            : (Uri.UnescapeDataString(userInfo[..idx]), Uri.UnescapeDataString(userInfo[(idx + 1)..]));
     }
 
     private static RtspDescribeResult ParseRtspResponse(string text)

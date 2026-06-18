@@ -55,4 +55,51 @@ public class ResolvedExecutorExtensionsTests
         Assert.NotNull(captured);
         Assert.Equal(args, captured);
     }
+
+    [Fact]
+    public async Task ExecuteResolvedAsync_ReturnsTimedOut_WhenChildExceedsTimeout()
+    {
+        var executor = new Mock<ICommandExecutor>();
+        var resolver = new Mock<IDependencyPathResolver>();
+        resolver.Setup(r => r.ResolveAsync("android-devices", "adb", It.IsAny<CancellationToken>()))
+                .ReturnsAsync("adb.exe");
+        // Simulate a hung child: block until the (linked) token cancels — the kill-on-cancel path.
+        executor.Setup(e => e.ExecuteAsync("adb.exe", "devices", null, It.IsAny<CancellationToken>()))
+                .Returns(async (string _, string? _, string? _, CancellationToken ct) =>
+                {
+                    await Task.Delay(Timeout.Infinite, ct);
+                    return new CommandResult(0, "", "", false);
+                });
+
+        var result = await executor.Object.ExecuteResolvedAsync(
+            resolver.Object, "android-devices", "adb", "devices",
+            timeout: TimeSpan.FromMilliseconds(100));
+
+        Assert.True(result.TimedOut);
+        Assert.Equal(-1, result.ExitCode);
+    }
+
+    [Fact]
+    public async Task ExecuteResolvedAsync_PropagatesCallerCancellation_NotAsTimeout()
+    {
+        var executor = new Mock<ICommandExecutor>();
+        var resolver = new Mock<IDependencyPathResolver>();
+        resolver.Setup(r => r.ResolveAsync("android-devices", "adb", It.IsAny<CancellationToken>()))
+                .ReturnsAsync("adb.exe");
+        executor.Setup(e => e.ExecuteAsync("adb.exe", "devices", null, It.IsAny<CancellationToken>()))
+                .Returns(async (string _, string? _, string? _, CancellationToken ct) =>
+                {
+                    await Task.Delay(Timeout.Infinite, ct);
+                    return new CommandResult(0, "", "", false);
+                });
+
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromMilliseconds(50));
+
+        // A caller-driven cancellation must surface as OperationCanceledException, not a TimedOut result.
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            executor.Object.ExecuteResolvedAsync(
+                resolver.Object, "android-devices", "adb", "devices",
+                cancellationToken: cts.Token, timeout: TimeSpan.FromSeconds(30)));
+    }
 }

@@ -761,14 +761,23 @@ Manages the lifecycle of external tool dependencies: version checking, downloadi
 - `UpdateSourceType.Manual` -- Always reports `UpToDate` (user manages these externally)
 
 **Download and install** (`DownloadAndInstallAsync`):
-1. Download the asset to a temp directory
-2. Extract (ZIP via `System.IO.Compression`, tar.gz via `System.Formats.Tar` over `GZipStream` — no external `tar` binary required)
-3. Verify the extracted binary by running the version command
-4. Stop dependent services if needed (ws-scrcpy-web and ADB server when updating `adb`; go2rtc when updating `go2rtc`)
-5. Backup existing files (`.bak` suffix)
-6. Copy new files into the install path
-7. Update the database entity
-8. Restart dependent services
+1. Download the asset to a temp directory over a **transport hard-gate** (HTTPS only; the final URL after redirects must resolve to an allowlisted host)
+2. **Verify the downloaded asset's integrity before extracting or running anything** — the tiered gate below; a failure aborts the install
+3. Extract via managed **SharpCompress** (`.zip` / `.tar.gz` / `.7z`), with an `IsWithinRoot` zip-slip guard on every entry — no external `tar` binary required
+4. Verify the extracted binary by running the version command
+5. Stop dependent services if needed (ws-scrcpy-web and ADB server when updating `adb`; go2rtc when updating `go2rtc`)
+6. Backup existing files (`.bak` suffix)
+7. Copy new files into the install path
+8. Update the database entity
+9. Restart dependent services
+
+**Runtime download integrity** (`IArtifactVerifier`): the updater executes freshly-downloaded third-party binaries, so every asset is verified *before* it is extracted or run. The gate is tiered — the first tier that can render a verdict wins:
+- **T1 — pinned SHA-256.** `KnownHashes` maps `name@version` to a known-good SHA-256; an exact match passes. Seeded for the current binaries and refreshed via `scripts/update-dependency-hashes.ps1` as upstream releases (a newer-than-seeded version falls through to T2/Tier-4 by design). The version key must match the resolved `LatestKnownVersion` string exactly (GitHub tags are stored `TrimStart('v')`), or T1 silently misses.
+- **T2 — upstream-published checksum.** sqlite's SHA3-256 download-page value; ImageMagick's `.intoto.jsonl` (in-toto attestation) SHA-256.
+- **T3 — Authenticode.** `adb.exe` is Authenticode-signed by Google; the chain is verified and the leaf pinned to `CN=Google LLC`. Revocation is **offline-tolerant** (`WTD_REVOKE_WHOLECHAIN`): a definitively-revoked cert is rejected, but an unreachable revocation server still trusts the signature so legitimate offline updates work (`WindowsAuthenticodeInspector`).
+- **Tier-4 — explicit user confirmation.** Assets with no verifiable provenance (go2rtc and vtracer are `NotSigned`) require a confirmation dialog before install.
+
+Extraction moved to SharpCompress specifically so ImageMagick's portable **`.7z`** (LZMA2+BCJ) actually applies — the previous `.zip`/`.tar.gz`-only extractor left magick's runtime auto-update silently inert.
 
 **Installed version detection** is local-only: `GetInstalledVersionAsync` resolves the configured `InstallPath` (with optional `dep-path-{name}` override), checks for the binary on disk, and runs its version command. Returns `null` if the binary isn't installed locally — never falls back to system PATH. This is enforced by the architectural rule, not just convention; see `IDependencyPathResolver` below.
 

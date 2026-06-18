@@ -15,7 +15,12 @@ permissions:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
+    # Gate on the actor AND that the PR's head branch lives in THIS repository. A fork PR
+    # (head.repo != this repo) can set the author but never satisfies the head-repo check, so a
+    # malicious fork can't ride the auto-merge path. Genuine Dependabot pushes branches in-repo.
+    if: >-
+      github.actor == 'dependabot[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: write        # gh pr merge --squash writes the default branch
       pull-requests: write   # enable auto-merge + label the PR

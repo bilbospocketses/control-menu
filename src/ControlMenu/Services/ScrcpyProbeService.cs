@@ -31,21 +31,39 @@ public sealed class ScrcpyProbeService : IScrcpyProbeService
 
             await ws.ConnectAsync(probeUri, cts.Token);
 
-            var buffer = new byte[8192];
-            var result = await ws.ReceiveAsync(buffer, cts.Token);
-
-            if (result.MessageType == WebSocketMessageType.Text)
-            {
-                var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                return JsonSerializer.Deserialize<ScrcpyProbeResult>(json);
-            }
-
-            return null;
+            var json = await ReadFullTextMessageAsync(ws, cts.Token);
+            return json is null ? null : JsonSerializer.Deserialize<ScrcpyProbeResult>(json);
         }
         catch (Exception ex) when (ex is OperationCanceledException or WebSocketException or JsonException or UriFormatException)
         {
             _logger.LogWarning(ex, "Probe failed for {Udid}", udid);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Reads a complete WebSocket text message, accumulating fragments until
+    /// <see cref="WebSocketReceiveResult.EndOfMessage"/>. A single <c>ReceiveAsync</c> only
+    /// returns the first ≤8 KiB frame, which truncated larger probe payloads (long
+    /// videoEncoders/audioEncoders lists). Returns null for a Close/non-Text message or if the
+    /// payload exceeds a 1 MiB safety cap.
+    /// </summary>
+    internal static async Task<string?> ReadFullTextMessageAsync(WebSocket ws, CancellationToken ct)
+    {
+        const int maxProbeBytes = 1024 * 1024;
+        var buffer = new byte[8192];
+        using var ms = new MemoryStream();
+
+        WebSocketReceiveResult result;
+        do
+        {
+            result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
+            if (result.MessageType == WebSocketMessageType.Close) return null;
+            ms.Write(buffer, 0, result.Count);
+            if (ms.Length > maxProbeBytes) return null;
+        } while (!result.EndOfMessage);
+
+        if (result.MessageType != WebSocketMessageType.Text) return null;
+        return Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
     }
 }

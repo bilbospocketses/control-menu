@@ -44,4 +44,15 @@ public class FileLoggingConfiguratorTests : IDisposable
         Assert.Contains("hello from", contents);
         Assert.Contains("unit-test", contents);
     }
+
+    [Fact]
+    public void AddFileSink_WiresProcessExitFlushExactlyOnce_AcrossRepeatedInits()
+    {
+        // Re-initializing must not stack a new ProcessExit flush handler each time (and the
+        // previous wiring registered none at all, so nothing flushed the file sink at shutdown).
+        using (LoggerFactory.Create(b => FileLoggingConfigurator.AddFileSink(b, _logPath))) { }
+        using (LoggerFactory.Create(b => FileLoggingConfigurator.AddFileSink(b, _logPath))) { }
+
+        Assert.Equal(1, FileLoggingConfigurator.ProcessExitFlushRegistrations);
+    }
 }

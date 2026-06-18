@@ -23,9 +23,12 @@ public class FileUnblockService : IFileUnblockService
 
         // Count blocked files first (files with Zone.Identifier alternate data stream),
         // then unblock all. Unblock-File has no -PassThru, so we count separately.
+        // -LiteralPath on both cmdlets keeps '[' and ']' in directory/file names from being
+        // interpreted as PowerShell wildcard character classes (which would silently match
+        // nothing). Unblock-File binds the piped FileInfo via PSPath (already literal).
         var command = $"-Command \"" +
-            $"$blocked = Get-ChildItem '{safePath}' -Recurse -File | " +
-            $"Where-Object {{ (Get-Item $_.FullName -Stream Zone.Identifier -ErrorAction SilentlyContinue) }}; " +
+            $"$blocked = Get-ChildItem -LiteralPath '{safePath}' -Recurse -File | " +
+            $"Where-Object {{ (Get-Item -LiteralPath $_.FullName -Stream Zone.Identifier -ErrorAction SilentlyContinue) }}; " +
             $"$count = ($blocked | Measure-Object).Count; " +
             $"if ($count -gt 0) {{ $blocked | Unblock-File }}; " +
             $"$count\"";

@@ -76,6 +76,26 @@ public class FileUnblockServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task UnblockDirectoryAsync_UsesLiteralPath_SoBracketsAreNotTreatedAsWildcards()
+    {
+        string? captured = null;
+        _mockExecutor.Setup(e => e.ExecuteAsync("powershell", It.IsAny<string>(), null, default))
+            .Callback<string, string?, string?, CancellationToken>((_, args, _, _) => captured = args)
+            .ReturnsAsync(new CommandResult(0, "0", "", false));
+
+        var service = CreateService();
+        await service.UnblockDirectoryAsync(_tempDir);
+
+        Assert.NotNull(captured);
+        // Both the recursive enumeration and the per-file Zone.Identifier check must use
+        // -LiteralPath, so a directory or file name containing [ or ] is matched literally
+        // instead of being interpreted as a PowerShell wildcard character class.
+        Assert.Contains("Get-ChildItem -LiteralPath", captured);
+        Assert.Contains("Get-Item -LiteralPath", captured);
+        Assert.DoesNotContain("Get-ChildItem '", captured);   // the old wildcard-prone bare-path form
+    }
+
+    [Fact]
     public async Task UnblockDirectoryAsync_ReturnsFalse_ForNonExistentDirectory()
     {
         var service = CreateService();
