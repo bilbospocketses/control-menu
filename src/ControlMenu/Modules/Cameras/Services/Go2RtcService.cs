@@ -71,7 +71,7 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var exePath = FindExecutable();
+        var exePath = await FindExecutableAsync();
         if (exePath is null)
         {
             _logger.LogWarning("go2rtc not installed under local dependencies — camera streaming unavailable");
@@ -105,23 +105,32 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         return StopAsync(CancellationToken.None);
     }
 
-    public void Restart()
+    public void Restart() => _ = RestartAsync();
+
+    private async Task RestartAsync()
     {
         _disposed = false;
         _crashCount = 0;
         _serviceReady = false;
-        var exePath = FindExecutable();
-        if (exePath is null)
+        try
         {
-            _logger.LogWarning("go2rtc not installed under local dependencies — cannot restart");
-            return;
+            var exePath = await FindExecutableAsync();
+            if (exePath is null)
+            {
+                _logger.LogWarning("go2rtc not installed under local dependencies — cannot restart");
+                return;
+            }
+            lock (_lock)
+            {
+                KillProcess();
+                SpawnProcess(exePath);
+            }
+            await WaitForReadyAsync();
         }
-        lock (_lock)
+        catch (Exception ex)
         {
-            KillProcess();
-            SpawnProcess(exePath);
+            _logger.LogError(ex, "Failed to restart go2rtc");
         }
-        _ = WaitForReadyAsync();
     }
 
     public async Task RegenerateConfigAsync()
@@ -148,7 +157,7 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
                 _crashCount = 0;
                 _disposed = false;
 
-                var exePath = FindExecutable();
+                var exePath = await FindExecutableAsync();
                 if (exePath is null) return;
 
                 lock (_lock)
@@ -271,13 +280,13 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
 
     private void OnCamerasChanged() => _ = RegenerateConfigAsync();
 
-    private string? FindExecutable()
+    internal async Task<string?> FindExecutableAsync()
     {
         using var scope = _scopeFactory.CreateScope();
         var resolver = scope.ServiceProvider.GetRequiredService<IDependencyPathResolver>();
         try
         {
-            return resolver.ResolveAsync("cameras", "go2rtc").GetAwaiter().GetResult();
+            return await resolver.ResolveAsync("cameras", "go2rtc");
         }
         catch (DependencyNotInstalledException)
         {
@@ -373,18 +382,31 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
         if (_crashCount <= 2)
         {
             _logger.LogInformation("Restarting go2rtc in 2 seconds (attempt {Count}/2)...", _crashCount);
-            _ = Task.Delay(2000).ContinueWith(async _ =>
-            {
-                if (_disposed) return;
-                var exePath = FindExecutable();
-                if (exePath is null) return;
-                lock (_lock) { SpawnProcess(exePath); }
-                await WaitForReadyAsync();
-            });
+            _ = RespawnAfterDelayAsync();
         }
         else
         {
             _logger.LogError("go2rtc crashed 3 times within 30s — giving up");
+        }
+    }
+
+    // Respawn after the crash-backoff delay as a proper async task. The old
+    // Task.Delay(...).ContinueWith(async _ => ...) produced a Task<Task> whose inner
+    // faults were never observed; this is still fire-and-forget but exception-safe (#20).
+    private async Task RespawnAfterDelayAsync()
+    {
+        try
+        {
+            await Task.Delay(2000);
+            if (_disposed) return;
+            var exePath = await FindExecutableAsync();
+            if (exePath is null) return;
+            lock (_lock) { SpawnProcess(exePath); }
+            await WaitForReadyAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to respawn go2rtc after crash");
         }
     }
 

@@ -106,24 +106,15 @@ using (var scope = app.Services.CreateScope())
 
     // Load enabled camera names for sidebar nav entries (module can't do async)
     var cameraService = scope.ServiceProvider.GetRequiredService<ICameraService>();
-    var allCameras = await cameraService.GetAllAsync();
-    CamerasModule.EnabledCameras = allCameras
-        .Where(c => c.Enabled)
-        .Select(c => (c.Id, c.Name))
-        .ToList();
+    CamerasModule.EnabledCameras = CamerasModule.ProjectEnabledNav(await cameraService.GetAllAsync());
 }
 
-// Refresh sidebar nav when cameras change (Add/Update/Delete/Enabled-toggle/Rename)
+// Refresh sidebar nav when cameras change (Add/Update/Delete/Enabled-toggle/Rename). CamerasChanged
+// fires on the camera-CRUD thread, so offload to a worker — never block it on async — and keep the
+// refresh exception-safe so a failed reload can't fault the notifying caller (#21).
 var cameraNotifier = app.Services.GetRequiredService<ICameraChangeNotifier>();
+var cameraNavScopeFactory = app.Services.GetRequiredService<IServiceScopeFactory>();
 cameraNotifier.CamerasChanged += () =>
-{
-    using var scope = app.Services.CreateScope();
-    var svc = scope.ServiceProvider.GetRequiredService<ICameraService>();
-    var fresh = svc.GetAllAsync().GetAwaiter().GetResult();
-    CamerasModule.EnabledCameras = fresh
-        .Where(c => c.Enabled)
-        .Select(c => (c.Id, c.Name))
-        .ToList();
-};
+    _ = Task.Run(() => CamerasModule.RefreshEnabledNavAsync(cameraNavScopeFactory, app.Logger));
 
 await app.RunAsync();

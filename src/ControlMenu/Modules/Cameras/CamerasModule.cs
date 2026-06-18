@@ -1,5 +1,8 @@
 using ControlMenu.Data.Enums;
+using ControlMenu.Modules.Cameras.Entities;
 using ControlMenu.Modules.Cameras.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace ControlMenu.Modules.Cameras;
 
@@ -17,6 +20,29 @@ public class CamerasModule : IToolModule
     /// Used by GetNavEntries() which can't do async.
     /// </summary>
     public static List<(Guid Id, string Name)> EnabledCameras { get; set; } = new();
+
+    /// <summary>Projects the enabled cameras to their (Id, Name) sidebar-nav entries.</summary>
+    public static List<(Guid Id, string Name)> ProjectEnabledNav(IEnumerable<Camera> cameras)
+        => cameras.Where(c => c.Enabled).Select(c => (c.Id, c.Name)).ToList();
+
+    /// <summary>
+    /// Refreshes <see cref="EnabledCameras"/> from a fresh DI scope. Exception-safe: this runs as a
+    /// fire-and-forget worker off the camera-change notifier's thread, where an escaping exception
+    /// has no owner and would fault the notifying caller (#21).
+    /// </summary>
+    public static async Task RefreshEnabledNavAsync(IServiceScopeFactory scopeFactory, ILogger logger)
+    {
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var cameraService = scope.ServiceProvider.GetRequiredService<ICameraService>();
+            EnabledCameras = ProjectEnabledNav(await cameraService.GetAllAsync());
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to refresh camera sidebar nav after a camera change");
+        }
+    }
 
     public IEnumerable<ModuleDependency> Dependencies =>
     [
