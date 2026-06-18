@@ -1,5 +1,6 @@
-using System.Net;
-using System.Net.Mail;
+using MailKit.Net.Smtp;
+using MailKit.Security;
+using MimeKit;
 
 namespace ControlMenu.Services;
 
@@ -39,14 +40,21 @@ public class EmailService : IEmailService
 
         try
         {
-            using var client = new SmtpClient(server, port)
-            {
-                Credentials = new NetworkCredential(username, password),
-                EnableSsl = true
-            };
+            var message = new MimeMessage();
+            message.From.Add(MailboxAddress.Parse(from));
+            message.To.Add(MailboxAddress.Parse(to));
+            message.Subject = subject;
+            message.Body = new TextPart("plain") { Text = body };
 
-            using var message = new MailMessage(from, to, subject, body);
-            await client.SendMailAsync(message, ct);
+            using var client = new SmtpClient();
+            // Enforce TLS. SecureSocketOptions.StartTls (NOT StartTlsWhenAvailable) requires
+            // the server to offer STARTTLS and throws rather than falling back to cleartext;
+            // port 465 uses implicit TLS (SMTPS), which the obsolete System.Net.Mail.SmtpClient
+            // this replaces could not do at all.
+            await client.ConnectAsync(server, port, ResolveSecureSocketOptions(port), ct);
+            await client.AuthenticateAsync(username, password, ct);
+            await client.SendAsync(message, ct);
+            await client.DisconnectAsync(quit: true, ct);
             return (true, null);
         }
         catch (Exception ex)
@@ -54,6 +62,15 @@ public class EmailService : IEmailService
             return (false, ex.Message);
         }
     }
+
+    /// <summary>
+    /// Maps an SMTP port to a TLS-enforcing connection mode: implicit TLS on 465 (SMTPS),
+    /// hard-required STARTTLS otherwise. Never returns <see cref="SecureSocketOptions.None"/>,
+    /// <see cref="SecureSocketOptions.Auto"/>, or <see cref="SecureSocketOptions.StartTlsWhenAvailable"/>,
+    /// all of which permit a cleartext session.
+    /// </summary>
+    internal static SecureSocketOptions ResolveSecureSocketOptions(int port)
+        => port == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls;
 
     public async Task<(bool Success, string? Error)> SendTestAsync(CancellationToken ct = default)
     {
