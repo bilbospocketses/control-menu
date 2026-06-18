@@ -538,7 +538,7 @@ api:
 
 **Crash recovery**: If go2rtc exits unexpectedly, the service restarts it up to 2 times within a 30-second window before giving up.
 
-**Binary resolution** (`FindExecutable`): Resolves through `IDependencyPathResolver.ResolveAsync("cameras", "go2rtc")` (via `IServiceScopeFactory`); returns `null` on `DependencyNotInstalledException`. The resolver itself applies the `dep-path-go2rtc` user override on top of the default `dependencies/go2rtc/`. No system PATH fallback — local-only per CLAUDE.md "Local Dependencies Only" rule.
+**Binary resolution** (`FindExecutableAsync`): Resolves through `IDependencyPathResolver.ResolveAsync("cameras", "go2rtc")` (via `IServiceScopeFactory`); returns `null` on `DependencyNotInstalledException`. The resolver itself applies the `dep-path-go2rtc` user override on top of the default `dependencies/go2rtc/`. No system PATH fallback — local-only per CLAUDE.md "Local Dependencies Only" rule.
 
 **Interface:**
 ```csharp
