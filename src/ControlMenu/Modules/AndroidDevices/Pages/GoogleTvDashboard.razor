@@ -222,16 +222,26 @@ else
 
         if (_device?.LastKnownIp is not null)
         {
-            await ConnectToDevice();
+            try
+            {
+                await ConnectToDevice();
 
-            _scrcpySettings = await ScrcpySettings.LoadAsync(Config, _device.Id);
-            if (_scrcpySettings is not null)
-            {
-                _mirrorLoading = false;
+                _scrcpySettings = await ScrcpySettings.LoadAsync(Config, _device.Id);
+                if (_scrcpySettings is not null)
+                {
+                    _mirrorLoading = false;
+                }
+                else
+                {
+                    _ = ProbeAndStartAsync();
+                }
             }
-            else
+            catch
             {
-                _ = ProbeAndStartAsync();
+                // A device/adb/probe failure during init must degrade gracefully — never let it
+                // propagate as an unhandled circuit exception and tear down the circuit (#10-rem).
+                _connected = false;
+                _mirrorLoading = false;
             }
         }
         else
@@ -271,92 +281,111 @@ else
     private string Ip => _device?.LastKnownIp ?? "";
     private int Port => _device?.AdbPort ?? 5555;
 
-    private async Task CheckPowerStatus()
+    private Task CheckPowerStatus() => DashboardGuard.RunAsync(
+        b => _busy = b,
+        async () =>
+        {
+            var state = await AdbService.GetPowerStateAsync(Ip, Port);
+            _powerState = state.ToString();
+        },
+        () => SetStatus("Failed to read power status.", "status-warning", "bi-exclamation-triangle"));
+
+    private Task TogglePower() => DashboardGuard.RunAsync(
+        b => _busy = b,
+        async () =>
+        {
+            await AdbService.TogglePowerAsync(Ip, Port);
+            SetStatus("Power toggled", "status-success", "bi-check-circle");
+            await Task.Delay(1000);
+            await CheckPowerStatus();
+        },
+        () => SetStatus("Failed to toggle power.", "status-warning", "bi-exclamation-triangle"));
+
+    private Task RebootDevice() => DashboardGuard.RunAsync(
+        b => _busy = b,
+        async () =>
+        {
+            SetStatus("Rebooting device...", "status-warning", "bi-hourglass-split");
+            await AdbService.RebootAsync(Ip, Port);
+            SetStatus("Reboot sent. Device will reconnect when ready.", "status-success", "bi-check-circle");
+        },
+        () => SetStatus("Failed to reboot device.", "status-warning", "bi-exclamation-triangle"));
+
+    private Task StartShizuku() => DashboardGuard.RunAsync(
+        b => _busy = b,
+        async () =>
+        {
+            await AdbService.StartShizukuAsync(Ip, Port);
+            SetStatus("Shizuku started.", "status-success", "bi-check-circle");
+        },
+        () => SetStatus("Failed to start Shizuku.", "status-warning", "bi-exclamation-triangle"));
+
+    private Task CheckScreensaver() => DashboardGuard.RunAsync(
+        b => _busy = b,
+        async () =>
+        {
+            _screensaver = await AdbService.GetScreensaverAsync(Ip, Port);
+        },
+        () => SetStatus("Failed to read screensaver.", "status-warning", "bi-exclamation-triangle"));
+
+    private Task ToggleScreensaver() => DashboardGuard.RunAsync(
+        b => _busy = b,
+        async () =>
+        {
+            var newSaver = _screensaver == "SkyFolio" ? "Google" : "SkyFolio";
+            await AdbService.SetScreensaverAsync(Ip, Port, newSaver);
+            _screensaver = newSaver;
+            SetStatus($"Screensaver set to {newSaver}.", "status-success", "bi-check-circle");
+        },
+        () => SetStatus("Failed to set screensaver.", "status-warning", "bi-exclamation-triangle"));
+
+    private Task SetTimeout()
     {
-        _busy = true;
-        var state = await AdbService.GetPowerStateAsync(Ip, Port);
-        _powerState = state.ToString();
-        _busy = false;
+        if (_newTimeout < 300000) return Task.CompletedTask;
+        return DashboardGuard.RunAsync(
+            b => _busy = b,
+            async () =>
+            {
+                await AdbService.SetScreenTimeoutAsync(Ip, Port, _newTimeout);
+                _screenTimeout = _newTimeout;
+                SetStatus($"Screen timeout set to {FormatTimeout(_newTimeout)}.", "status-success", "bi-check-circle");
+            },
+            () => SetStatus("Failed to set screen timeout.", "status-warning", "bi-exclamation-triangle"));
     }
 
-    private async Task TogglePower()
-    {
-        _busy = true;
-        await AdbService.TogglePowerAsync(Ip, Port);
-        SetStatus("Power toggled", "status-success", "bi-check-circle");
-        await Task.Delay(1000);
-        await CheckPowerStatus();
-        _busy = false;
-    }
+    private Task ToggleLauncher() => DashboardGuard.RunAsync(
+        b => _busy = b,
+        async () =>
+        {
+            var enable = _launcherDisabled == true;
+            await AdbService.SetLauncherEnabledAsync(Ip, Port, enable);
+            _launcherDisabled = !enable;
+            SetStatus($"TV Launcher {(enable ? "enabled" : "disabled")}.", "status-success", "bi-check-circle");
+        },
+        () => SetStatus("Failed to toggle launcher.", "status-warning", "bi-exclamation-triangle"));
 
-    private async Task RebootDevice()
-    {
-        _busy = true;
-        SetStatus("Rebooting device...", "status-warning", "bi-hourglass-split");
-        await AdbService.RebootAsync(Ip, Port);
-        SetStatus("Reboot sent. Device will reconnect when ready.", "status-success", "bi-check-circle");
-        _busy = false;
-    }
+    private Task LoadProjectivyBackups() => DashboardGuard.RunAsync(
+        b => _busy = b,
+        async () =>
+        {
+            _projectivyBackups = (await AdbService.ListProjectivyBackupsAsync(Ip, Port)).ToList();
+            if (_projectivyBackups.Count == 0)
+                SetStatus("No Projectivy backups found on device.", "status-warning", "bi-exclamation-triangle");
+        },
+        () => SetStatus("Failed to scan for backups.", "status-warning", "bi-exclamation-triangle"));
 
-    private async Task StartShizuku()
+    private Task RestoreProjectivy()
     {
-        _busy = true;
-        await AdbService.StartShizukuAsync(Ip, Port);
-        SetStatus("Shizuku started.", "status-success", "bi-check-circle");
-        _busy = false;
-    }
-
-    private async Task CheckScreensaver()
-    {
-        _screensaver = await AdbService.GetScreensaverAsync(Ip, Port);
-    }
-
-    private async Task ToggleScreensaver()
-    {
-        _busy = true;
-        var newSaver = _screensaver == "SkyFolio" ? "Google" : "SkyFolio";
-        await AdbService.SetScreensaverAsync(Ip, Port, newSaver);
-        _screensaver = newSaver;
-        SetStatus($"Screensaver set to {newSaver}.", "status-success", "bi-check-circle");
-        _busy = false;
-    }
-
-    private async Task SetTimeout()
-    {
-        if (_newTimeout < 300000) return;
-        _busy = true;
-        await AdbService.SetScreenTimeoutAsync(Ip, Port, _newTimeout);
-        _screenTimeout = _newTimeout;
-        SetStatus($"Screen timeout set to {FormatTimeout(_newTimeout)}.", "status-success", "bi-check-circle");
-        _busy = false;
-    }
-
-    private async Task ToggleLauncher()
-    {
-        _busy = true;
-        var enable = _launcherDisabled == true;
-        await AdbService.SetLauncherEnabledAsync(Ip, Port, enable);
-        _launcherDisabled = !enable;
-        SetStatus($"TV Launcher {(enable ? "enabled" : "disabled")}.", "status-success", "bi-check-circle");
-        _busy = false;
-    }
-
-    private async Task LoadProjectivyBackups()
-    {
-        _busy = true;
-        _projectivyBackups = (await AdbService.ListProjectivyBackupsAsync(Ip, Port)).ToList();
-        if (_projectivyBackups.Count == 0)
-            SetStatus("No Projectivy backups found on device.", "status-warning", "bi-exclamation-triangle");
-        _busy = false;
-    }
-
-    private async Task RestoreProjectivy()
-    {
-        if (string.IsNullOrEmpty(_selectedBackup)) return;
-        _busy = true;
-        await AdbService.RestoreProjectivyBackupAsync(Ip, Port, _selectedBackup);
-        SetStatus($"Restore initiated for {_selectedBackup}. Confirm on device.", "status-success", "bi-check-circle");
-        _busy = false;
+        if (string.IsNullOrEmpty(_selectedBackup)) return Task.CompletedTask;
+        var backup = _selectedBackup;
+        return DashboardGuard.RunAsync(
+            b => _busy = b,
+            async () =>
+            {
+                await AdbService.RestoreProjectivyBackupAsync(Ip, Port, backup);
+                SetStatus($"Restore initiated for {backup}. Confirm on device.", "status-success", "bi-check-circle");
+            },
+            () => SetStatus("Failed to restore backup.", "status-warning", "bi-exclamation-triangle"));
     }
 
     private async Task ProbeAndStartAsync()

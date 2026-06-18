@@ -161,27 +161,37 @@ else
 
         if (_device?.LastKnownIp is not null)
         {
-            _connected = await AdbService.ConnectAsync(_device.LastKnownIp, _device.AdbPort);
-
-            // Query actual screen dimensions for mirror sizing
-            if (_connected)
+            try
             {
-                var size = await AdbService.GetScreenSizeAsync(_device.LastKnownIp, _device.AdbPort);
-                if (size is not null)
+                _connected = await AdbService.ConnectAsync(_device.LastKnownIp, _device.AdbPort);
+
+                // Query actual screen dimensions for mirror sizing
+                if (_connected)
                 {
-                    _screenW = size.Value.Width;
-                    _screenH = size.Value.Height;
+                    var size = await AdbService.GetScreenSizeAsync(_device.LastKnownIp, _device.AdbPort);
+                    if (size is not null)
+                    {
+                        _screenW = size.Value.Width;
+                        _screenH = size.Value.Height;
+                    }
+                }
+
+                _scrcpySettings = await ScrcpySettings.LoadAsync(Config, _device.Id);
+                if (_scrcpySettings is not null)
+                {
+                    _mirrorLoading = false;
+                }
+                else
+                {
+                    _ = ProbeAndStartAsync();
                 }
             }
-
-            _scrcpySettings = await ScrcpySettings.LoadAsync(Config, _device.Id);
-            if (_scrcpySettings is not null)
+            catch
             {
+                // A device/adb/probe failure during init must degrade gracefully — never let it
+                // propagate as an unhandled circuit exception and tear down the circuit (#10-rem).
+                _connected = false;
                 _mirrorLoading = false;
-            }
-            else
-            {
-                _ = ProbeAndStartAsync();
             }
         }
         else
@@ -238,43 +248,52 @@ else
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task UnlockDevice()
+    private Task UnlockDevice()
     {
-        if (_device is null || string.IsNullOrEmpty(Ip) || string.IsNullOrEmpty(_pin)) return;
-        _busy = true;
-        await AdbService.UnlockWithPinAsync(Ip, Port, _pin);
-        Notice.Show($"{Noun} unlocked.", "status-success", "bi-unlock");
-        _busy = false;
+        if (_device is null || string.IsNullOrEmpty(Ip) || string.IsNullOrEmpty(_pin)) return Task.CompletedTask;
+        return DashboardGuard.RunAsync(
+            b => _busy = b,
+            async () =>
+            {
+                await AdbService.UnlockWithPinAsync(Ip, Port, _pin);
+                Notice.Show($"{Noun} unlocked.", "status-success", "bi-unlock");
+            },
+            () => Notice.Show($"Failed to unlock {Noun}.", "status-warning", "bi-exclamation-triangle"));
     }
 
-    private async Task ConnectDevice()
+    private Task ConnectDevice()
     {
-        if (_device is null) return;
-
-        // Resolve IP from ARP table if not known
-        if (_device.LastKnownIp is null && !string.IsNullOrEmpty(_device.MacAddress))
-        {
-            var ip = await NetworkDiscovery.ResolveIpFromMacAsync(_device.MacAddress);
-            if (ip is not null)
+        if (_device is null) return Task.CompletedTask;
+        var device = _device;
+        return DashboardGuard.RunAsync(
+            b => _busy = b,
+            async () =>
             {
-                _device.LastKnownIp = ip;
-                await DeviceService.UpdateLastSeenAsync(_device.Id, ip);
-            }
-        }
+                // Resolve IP from ARP table if not known
+                if (device.LastKnownIp is null && !string.IsNullOrEmpty(device.MacAddress))
+                {
+                    var ip = await NetworkDiscovery.ResolveIpFromMacAsync(device.MacAddress);
+                    if (ip is not null)
+                    {
+                        device.LastKnownIp = ip;
+                        await DeviceService.UpdateLastSeenAsync(device.Id, ip);
+                    }
+                }
 
-        if (_device.LastKnownIp is null)
-        {
-            Notice.Show("No IP address known for this device. Run a network scan in Settings.", "status-warning", "bi-exclamation-triangle");
-            return;
-        }
-        _busy = true;
-        _connected = await AdbService.ConnectAsync(Ip, Port);
-        if (_connected)
-        {
-            await DeviceService.UpdateLastSeenAsync(_device.Id, _device.LastKnownIp);
-        }
-        Notice.Show(_connected ? "Connected successfully." : "Connection failed.", _connected ? "status-success" : "status-warning", _connected ? "bi-check-circle" : "bi-x-circle");
-        _busy = false;
+                if (device.LastKnownIp is null)
+                {
+                    Notice.Show("No IP address known for this device. Run a network scan in Settings.", "status-warning", "bi-exclamation-triangle");
+                    return;
+                }
+
+                _connected = await AdbService.ConnectAsync(Ip, Port);
+                if (_connected)
+                {
+                    await DeviceService.UpdateLastSeenAsync(device.Id, device.LastKnownIp);
+                }
+                Notice.Show(_connected ? "Connected successfully." : "Connection failed.", _connected ? "status-success" : "status-warning", _connected ? "bi-check-circle" : "bi-x-circle");
+            },
+            () => Notice.Show("Connection failed.", "status-warning", "bi-x-circle"));
     }
 
     public void Dispose()
