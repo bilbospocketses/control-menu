@@ -1,5 +1,7 @@
 @using ControlMenu.Data.Entities
 @using ControlMenu.Data.Enums
+@using ControlMenu.Components.Shared
+@implements IDisposable
 @inject IDependencyManagerService DepManager
 @inject IConfigurationService Config
 @inject NavigationManager Nav
@@ -160,14 +162,17 @@
     }
 </div>
 
-@if (!string.IsNullOrEmpty(_message))
+@if (Notice.IsVisible)
 {
-    <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
-        @_message
+    <div class="alert @Notice.CssClass" style="margin-top:1rem;">
+        @Notice.Message
     </div>
 }
 
 @code {
+    private TransientNotice? _noticeBacking;
+    private TransientNotice Notice => _noticeBacking ??= new(() => InvokeAsync(StateHasChanged));
+
     private List<Dependency> _dependencies = [];
     private List<Dependency> _sortedDependencies = [];
     private HashSet<string> _hasInstallPath = [];
@@ -175,8 +180,6 @@
     private bool _checkingAll;
     private Guid? _checkingId;
     private Guid? _updatingId;
-    private string? _message;
-    private bool _messageIsError;
     private bool _showUpdateDialog;
     private AssetMatch? _resolvedAsset;
     private Guid _updateTargetId;
@@ -228,7 +231,7 @@
     private async Task CheckAll()
     {
         _checkingAll = true;
-        _message = null;
+        Notice.Clear();
         StateHasChanged();
 
         var results = await DepManager.CheckAllAsync();
@@ -265,8 +268,7 @@
         if (_resolvedAsset is null)
         {
             _showUpdateDialog = false;
-            _message = $"Could not resolve download for {dep.Name}";
-            _messageIsError = true;
+            Notice.Show($"Could not resolve download for {dep.Name}", "alert-danger", dismissMs: 10000);
         }
 
         StateHasChanged();
@@ -333,7 +335,7 @@
     {
         _updatingAll = true;
         _updateProgress = 0;
-        _message = null;
+        Notice.Clear();
         StateHasChanged();
 
         var toUpdate = _dependencies
@@ -397,16 +399,8 @@
         ShowSaveMessage($"{name} path reset to default.");
     }
 
-    private void ShowSaveMessage(string msg, bool isError = false)
-    {
-        _message = msg;
-        _messageIsError = isError;
-        _ = Task.Delay(isError ? 10000 : 5000).ContinueWith(_ => InvokeAsync(() =>
-        {
-            _message = null;
-            StateHasChanged();
-        }));
-    }
+    private void ShowSaveMessage(string msg, bool isError = false) =>
+        Notice.Show(msg, isError ? "alert-danger" : "alert-success", dismissMs: isError ? 10000 : 5000);
 
     private string GetExternalPathDisplay(string depName) => depName switch
     {
@@ -447,4 +441,6 @@
         if (depName == "ws-scrcpy-web") return "—";
         return string.IsNullOrEmpty(value) ? "—" : value;
     }
+
+    public void Dispose() => _noticeBacking?.Dispose();
 }

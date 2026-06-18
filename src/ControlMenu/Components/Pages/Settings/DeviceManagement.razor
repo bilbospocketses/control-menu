@@ -1,3 +1,4 @@
+@using ControlMenu.Components.Shared
 @using ControlMenu.Components.Shared.Scanner
 @using ControlMenu.Data.Entities
 @using ControlMenu.Data.Enums
@@ -158,14 +159,17 @@
     </div>
 }
 
-@if (!string.IsNullOrEmpty(_message))
+@if (Notice.IsVisible)
 {
-    <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
-        @_message
+    <div class="alert @Notice.CssClass" style="margin-top:1rem;">
+        @Notice.Message
     </div>
 }
 
 @code {
+    private TransientNotice? _noticeBacking;
+    private TransientNotice Notice => _noticeBacking ??= new(() => InvokeAsync(StateHasChanged));
+
     private List<ControlMenu.Data.Entities.Device> _devices = [];
     private readonly Dictionary<Guid, bool> _deviceHasPin = new();
     private bool _showForm;
@@ -180,9 +184,6 @@
     private bool _showDeleteAllConfirm;
     private bool _scanning;
     private bool _showScanModal;
-    private string? _message;
-
-    private bool _messageIsError;
     private const int DefaultDiscoveryInterval = 300;
     private int _discoveryInterval = DefaultDiscoveryInterval;
 
@@ -436,17 +437,14 @@
 
     private async Task ShowMessage(string message, bool isError = false)
     {
-        _message = message;
-        _messageIsError = isError;
-        StateHasChanged();
-        await Task.Delay(isError ? 10000 : 5000);
-        _message = null;
-        StateHasChanged();
+        Notice.Show(message, isError ? "alert-danger" : "alert-success", dismissMs: isError ? 10000 : 5000);
+        await Task.CompletedTask;
     }
 
     public void Dispose()
     {
         Handler.OnStateChanged -= HandleHandlerStateChanged;
         DeviceChangeNotifier.Changed -= OnDevicesChanged;
+        _noticeBacking?.Dispose();
     }
 }

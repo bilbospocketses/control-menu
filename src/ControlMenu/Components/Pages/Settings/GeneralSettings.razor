@@ -1,5 +1,7 @@
 @using ControlMenu.Services
 @using ControlMenu.Services.Update
+@using ControlMenu.Components.Shared
+@implements IDisposable
 @inject IConfigurationService Config
 @inject IJSRuntime JS
 @inject NavigationManager Nav
@@ -201,14 +203,17 @@
     </SettingsGrid>
 </SettingsSection>
 
-@if (!string.IsNullOrEmpty(_message))
+@if (Notice.IsVisible)
 {
-    <div class="alert @(_messageIsError ? "alert-danger" : "alert-success")" style="margin-top:1rem;">
-        @_message
+    <div class="alert @Notice.CssClass" style="margin-top:1rem;">
+        @Notice.Message
     </div>
 }
 
 @code {
+    private TransientNotice? _noticeBacking;
+    private TransientNotice Notice => _noticeBacking ??= new(() => InvokeAsync(StateHasChanged));
+
     private string _theme = "dark";
     private string _timezone = "UTC";
     private string _smtpServer = "";
@@ -218,8 +223,6 @@
     private string _fromEmail = "";
     private string _notificationEmail = "";
     private bool _sendingTest;
-    private string? _message;
-    private bool _messageIsError;
     private string _wsscrcpyUrl = "http://localhost:8000";
     private string _dockerPath = "";
 
@@ -318,7 +321,7 @@
     private async Task SendTestEmail()
     {
         _sendingTest = true;
-        _message = null;
+        Notice.Clear();
         StateHasChanged();
 
         var (success, error) = await EmailService.SendTestAsync();
@@ -326,16 +329,8 @@
         ShowMessage(success ? "Test email sent successfully!" : $"Failed: {error}", !success);
     }
 
-    private void ShowMessage(string msg, bool isError)
-    {
-        _message = msg;
-        _messageIsError = isError;
-        _ = Task.Delay(isError ? 10000 : 5000).ContinueWith(_ => InvokeAsync(() =>
-        {
-            _message = null;
-            StateHasChanged();
-        }));
-    }
+    private void ShowMessage(string msg, bool isError) =>
+        Notice.Show(msg, isError ? "alert-danger" : "alert-success", dismissMs: isError ? 10000 : 5000);
 
     private async Task RerunWizard()
     {
@@ -405,4 +400,6 @@
             StateHasChanged();
         }
     }
+
+    public void Dispose() => _noticeBacking?.Dispose();
 }
