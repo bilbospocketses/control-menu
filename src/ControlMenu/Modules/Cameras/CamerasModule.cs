@@ -30,7 +30,16 @@ public class CamerasModule : IToolModule
             GitHubRepo = "AlexxIT/go2rtc",
             AssetPattern = @"go2rtc_win64\.zip",
             InstallPath = Path.Combine(DepsRoot, "go2rtc"),
-            ProjectHomeUrl = "https://github.com/AlexxIT/go2rtc"
+            ProjectHomeUrl = "https://github.com/AlexxIT/go2rtc",
+            // T1: KnownHashes keyed by DependencyManagerService.ResolveTargetVersion output.
+            // GitHub deps strip the leading "v" from the tag (e.g. "1.9.14").
+            // Pinned 2026-06-18; refresh via scripts/update-dependency-hashes.ps1.
+            KnownHashes = new Dictionary<string, string>
+            {
+                ["1.9.14"] = "dd4167d75cb04abe618855b7c71f8658bd009f60c1a71835d134d2c11c939907"
+            },
+            // Tier 4: verified unsigned; no Checksum (T2), no ExpectedSigner (T3).
+            AllowedHosts = ["github.com", "*.githubusercontent.com"]
         }
     ];
     public IEnumerable<ConfigRequirement> ConfigRequirements => [];

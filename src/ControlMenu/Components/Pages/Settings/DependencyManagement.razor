@@ -134,6 +134,30 @@
             </div>
         </div>
     }
+
+    @if (_unverified is not null)
+    {
+        <div class="modal-overlay">
+            <div class="modal-dialog">
+                <h3>@_unverified.ConfirmTool @_unverified.ConfirmVersion could not be cryptographically verified</h3>
+                <p>
+                    The maintainer of <strong>@_unverified.ConfirmTool</strong> does not publish checksums or
+                    signatures for their releases, so this update cannot be cryptographically confirmed —
+                    only that it arrived over HTTPS from the expected source
+                    (<code>@_unverified.ConfirmHost</code>).
+                </p>
+                <p>
+                    Control Menu uses @_unverified.ConfirmTool because it is well-built, but you
+                    should be mindful: installing an update we cannot verify means trusting it as
+                    delivered. If you have any concern, verify the download yourself before accepting.
+                </p>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" @onclick="() => _unverified = null">Cancel</button>
+                    <button class="btn btn-primary" @onclick="ConfirmUnverified">Install anyway</button>
+                </div>
+            </div>
+        </div>
+    }
 </div>
 
 @if (!string.IsNullOrEmpty(_message))
@@ -156,6 +180,7 @@
     private bool _showUpdateDialog;
     private AssetMatch? _resolvedAsset;
     private Guid _updateTargetId;
+    private UpdateResult? _unverified;
     private int _updatableCount;
     private bool _updatingAll;
     private int _updateProgress;
@@ -255,6 +280,14 @@
 
         var result = await DepManager.DownloadAndInstallAsync(_updateTargetId, _resolvedAsset!);
 
+        if (result.Outcome == UpdateOutcome.NeedsUnverifiedConfirmation)
+        {
+            _unverified = result;
+            _updatingId = null;
+            StateHasChanged();
+            return;
+        }
+
         _updatingId = null;
         ShowSaveMessage(
             result.Success ? $"Updated to version {result.NewVersion}" : $"Update failed: {result.ErrorMessage}",
@@ -267,6 +300,33 @@
     {
         _showUpdateDialog = false;
         _resolvedAsset = null;
+    }
+
+    private async Task ConfirmUnverified()
+    {
+        var target = _unverified!;
+        _unverified = null;
+        _updatingId = _updateTargetId;
+        StateHasChanged();
+
+        // Reuse the already-resolved asset from ConfirmDownload — do NOT re-resolve.
+        // Re-resolving risks installing a different (potentially newer) asset than the one
+        // shown in the dialog the user just accepted.
+        if (_resolvedAsset is null)
+        {
+            _updatingId = null;
+            ShowSaveMessage($"Could not resolve download for {target.ConfirmTool}", isError: true);
+            return;
+        }
+
+        var result = await DepManager.DownloadAndInstallAsync(_updateTargetId, _resolvedAsset!, allowUnverified: true);
+
+        _updatingId = null;
+        ShowSaveMessage(
+            result.Success ? $"Updated to version {result.NewVersion}" : $"Update failed: {result.ErrorMessage}",
+            !result.Success);
+
+        await LoadDependencies();
     }
 
     private async Task UpdateAll()
@@ -298,6 +358,12 @@
             }
 
             var result = await DepManager.DownloadAndInstallAsync(dep.Id, asset);
+            if (result.Outcome == UpdateOutcome.NeedsUnverifiedConfirmation)
+            {
+                // Cannot verify this dep automatically — skip it so the user
+                // can update it individually and accept the Tier-4 dialog.
+                continue;
+            }
             if (result.Success)
                 succeeded++;
             else

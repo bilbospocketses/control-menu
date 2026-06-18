@@ -6,7 +6,7 @@ public interface IDependencyManagerService
     Task<DependencyCheckResult> CheckDependencyAsync(Guid dependencyId);
     Task<IReadOnlyList<DependencyCheckResult>> CheckAllAsync();
     Task<AssetMatch?> ResolveDownloadAssetAsync(Guid dependencyId);
-    Task<UpdateResult> DownloadAndInstallAsync(Guid dependencyId, AssetMatch asset);
+    Task<UpdateResult> DownloadAndInstallAsync(Guid dependencyId, AssetMatch asset, bool allowUnverified = false);
     Task<int> GetUpdateAvailableCountAsync();
     Task<IReadOnlyList<Data.Entities.Dependency>> GetAllDependenciesAsync();
     Task<IReadOnlyList<DependencyScanResult>> ScanForDependenciesAsync();
