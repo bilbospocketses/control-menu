@@ -1,4 +1,10 @@
+using ControlMenu.Common.Paths;
 using ControlMenu.Modules.Cameras.Services;
+using ControlMenu.Services;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 
 namespace ControlMenu.Tests.Modules.Cameras.Services;
 
@@ -39,5 +45,52 @@ public class Go2RtcServiceTests
         var line = Go2RtcService.TryBuildStreamLine(null, ip, 554, "admin", "secret", out var skip);
         Assert.Null(line);
         Assert.NotNull(skip);
+    }
+
+    [Fact]
+    public async Task FindExecutableAsync_ReturnsNull_WhenGo2RtcNotInstalled()
+    {
+        var resolver = new Mock<IDependencyPathResolver>();
+        resolver.Setup(r => r.ResolveAsync("cameras", "go2rtc", It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new DependencyNotInstalledException("cameras", "go2rtc", @"C:\deps\go2rtc.exe"));
+
+        var path = await BuildService(resolver.Object).FindExecutableAsync();
+
+        Assert.Null(path);
+    }
+
+    [Fact]
+    public async Task FindExecutableAsync_ReturnsResolvedPath_WhenInstalled()
+    {
+        var resolver = new Mock<IDependencyPathResolver>();
+        resolver.Setup(r => r.ResolveAsync("cameras", "go2rtc", It.IsAny<CancellationToken>()))
+                .ReturnsAsync(@"C:\deps\go2rtc\go2rtc.exe");
+
+        var path = await BuildService(resolver.Object).FindExecutableAsync();
+
+        Assert.Equal(@"C:\deps\go2rtc\go2rtc.exe", path);
+    }
+
+    private static Go2RtcService BuildService(IDependencyPathResolver resolver)
+    {
+        var provider = new Mock<IServiceProvider>();
+        provider.Setup(p => p.GetService(typeof(IDependencyPathResolver))).Returns(resolver);
+        var scope = new Mock<IServiceScope>();
+        scope.Setup(s => s.ServiceProvider).Returns(provider.Object);
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+        scopeFactory.Setup(f => f.CreateScope()).Returns(scope.Object);
+
+        var dataPath = new Mock<IDataPathResolver>();
+        dataPath.Setup(d => d.GetConfigDir()).Returns(Path.GetTempPath());
+
+        var lifetime = new Mock<IHostApplicationLifetime>();
+        lifetime.Setup(l => l.ApplicationStopping).Returns(CancellationToken.None);
+
+        return new Go2RtcService(
+            scopeFactory.Object,
+            NullLogger<Go2RtcService>.Instance,
+            new Mock<ICameraChangeNotifier>().Object,
+            lifetime.Object,
+            dataPath.Object);
     }
 }
