@@ -170,6 +170,38 @@ public class CameraScanServiceTests
     }
 
     [Fact]
+    public async Task StartScanAsync_ConcurrentStarts_StartExactlyOneScan()
+    {
+        // Gate the ONVIF probe so the winning scan blocks with Phase=Scanning held while a burst of
+        // concurrent starts all hit the guard. A non-atomic check-then-set lets several slip past
+        // (each emits a CameraScanStartedEvent and clears the in-flight scan's hits); the atomic
+        // guard admits exactly one.
+        var gate = new TaskCompletionSource();
+        _onvifDisc.Setup(d => d.ProbeAsync(It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .Returns(async (TimeSpan _, CancellationToken _) =>
+            {
+                await gate.Task;
+                return new List<OnvifProbeResponse>();
+            });
+        _rtsp.Setup(r => r.ProbeTcpAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        var started = 0;
+        var sut = CreateSut();
+        using var sub = sut.Subscribe(e => { if (e is CameraScanStartedEvent) Interlocked.Increment(ref started); });
+
+        var subnets = new[] { Subnet("192.168.1.0/24") };
+        var tasks = Enumerable.Range(0, 32).Select(_ => Task.Run(() => sut.StartScanAsync(subnets))).ToArray();
+        await Task.Delay(150);   // let every start attempt the guard; losers return, the winner blocks on the gate
+
+        Assert.Equal(1, Volatile.Read(ref started));
+
+        gate.SetResult();
+        await Task.WhenAll(tasks);
+        Assert.Equal(1, started);
+    }
+
+    [Fact]
     public async Task Subscribe_ReceivesEvents()
     {
         _onvifDisc.Setup(d => d.ProbeAsync(It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
