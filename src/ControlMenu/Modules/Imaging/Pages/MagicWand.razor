@@ -157,8 +157,11 @@
     private string? _imageUrl;
     private string? _imageWebCopyPath;
 
-    // Live preview (data URL of the in-process SkiaSharp flood-fill, downscaled internally).
+    // Live preview / Apply result, served via a /temp web-copy URL kept OFF the SignalR circuit
+    // (rather than pushed as a full base64 data: URL). _previewWebCopyPath tracks the current copy
+    // so each new preview replaces the prior one instead of accumulating temp files.
     private string? _previewUrl;
+    private string? _previewWebCopyPath;
 
     // Seed in SOURCE pixel coordinates; marker position as a percentage of the displayed image.
     private int? _seedX;
@@ -339,7 +342,7 @@
             var pngBytes = await Task.Run(() =>
                 FloodFillPreviewEngine.RenderPreviewPng(bytes, seedX, seedY, tol, contig));
 
-            _previewUrl = $"data:image/png;base64,{System.Convert.ToBase64String(pngBytes)}";
+            SetPreviewWebCopy(pngBytes);
             _error = null;
             await InvokeAsync(StateHasChanged);
         }
@@ -386,10 +389,10 @@
                 {
                     _resultMessage = "Background removed successfully.";
                     _savedPath = savedName;
-                    _imageWebCopyPath = PublishWebCopy(outBytes, "png", out var url);
-                    _downloadUrl = url;
-                    // Show the authoritative magick result in the stage.
-                    _previewUrl = $"data:image/png;base64,{base64}";
+                    // The authoritative magick result drives BOTH the stage preview and the
+                    // download via one /temp web-copy, served off the circuit (not a base64 URL).
+                    SetPreviewWebCopy(outBytes);
+                    _downloadUrl = _previewUrl;
                 }
                 else
                 {
@@ -404,9 +407,8 @@
                 await File.WriteAllBytesAsync(targetPath, outBytes);
                 _resultMessage = "Background removed successfully.";
                 _savedPath = targetPath;
-                _imageWebCopyPath = PublishWebCopy(outBytes, "png", out var url);
-                _downloadUrl = url;
-                _previewUrl = $"data:image/png;base64,{System.Convert.ToBase64String(outBytes)}";
+                SetPreviewWebCopy(outBytes);
+                _downloadUrl = _previewUrl;
             }
         }
         catch (ArgumentException ex)
@@ -448,6 +450,27 @@
         return webCopy;
     }
 
+    /// <summary>
+    /// Publishes <paramref name="pngBytes"/> as the current stage preview via a /temp web-copy
+    /// (served off the circuit), replacing any prior preview copy so they don't accumulate.
+    /// </summary>
+    private void SetPreviewWebCopy(byte[] pngBytes)
+    {
+        DeletePreviewWebCopy();
+        _previewWebCopyPath = PublishWebCopy(pngBytes, "png", out var url);
+        _previewUrl = url;
+    }
+
+    private void DeletePreviewWebCopy()
+    {
+        if (_previewWebCopyPath is not null)
+        {
+            try { if (File.Exists(_previewWebCopyPath)) File.Delete(_previewWebCopyPath); } catch { }
+            _previewWebCopyPath = null;
+        }
+        _previewUrl = null;
+    }
+
     private void ClearImageWebCopy()
     {
         if (_imageWebCopyPath is not null)
@@ -470,7 +493,7 @@
     {
         _seedX = null;
         _seedY = null;
-        _previewUrl = null;
+        DeletePreviewWebCopy();
         _error = null;
     }
 

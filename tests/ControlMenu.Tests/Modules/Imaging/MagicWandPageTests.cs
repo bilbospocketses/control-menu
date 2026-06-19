@@ -1,6 +1,8 @@
 using Bunit;
 using ControlMenu.Modules.Imaging.Pages;
 using ControlMenu.Modules.Imaging.Services;
+using ControlMenu.Modules.Imaging.Services.Options;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
@@ -101,6 +103,66 @@ public class MagicWandPageTests : BunitContext, IDisposable
         // No seed yet → Apply disabled.
         var apply = cut.Find("button.btn-primary");
         Assert.True(apply.HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void LivePreview_ServedViaTempUrl_NotBase64DataUrlOverCircuit()
+    {
+        var (b64, _) = TinyPng();
+        JSInterop.Setup<FilePickerResult?>("filePickerOpen", _ => true)
+            .SetResult(new FilePickerResult("logo.png", b64));
+        _svc.Setup(s => s.GetInfoAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ImageInfo(16, 16, "PNG", false, 256));
+        // Click-to-seed reads the element rect; a 1:1 natural/rendered mapping keeps the math simple.
+        JSInterop.Setup<ElementRect?>("getElementRect", _ => true)
+            .SetResult(new ElementRect(16, 16, 16, 16));
+
+        var cut = Render<MagicWand>();
+        cut.Find("button.btn-secondary").Click();
+        cut.WaitForState(() => cut.FindAll("img.wand-image").Count > 0, TimeSpan.FromSeconds(2));
+
+        var sourceSrc = cut.Find("img.wand-image").GetAttribute("src");
+        // Click a pixel → seeds → fires the live flood-fill preview.
+        cut.Find("img.wand-image").Click(new MouseEventArgs { OffsetX = 5, OffsetY = 5 });
+        cut.WaitForState(() => cut.Find("img.wand-image").GetAttribute("src") != sourceSrc, TimeSpan.FromSeconds(5));
+
+        var previewSrc = cut.Find("img.wand-image").GetAttribute("src")!;
+        // The preview must be served off the circuit via a /temp web-copy, not a full base64 data: URL.
+        Assert.StartsWith("/temp/", previewSrc);
+        Assert.DoesNotContain("data:", previewSrc);
+    }
+
+    [Fact]
+    public void Apply_PreviewAndDownload_ServedViaTempUrl_NotBase64DataUrlOverCircuit()
+    {
+        var (b64, _) = TinyPng();
+        JSInterop.Setup<FilePickerResult?>("filePickerOpen", _ => true)
+            .SetResult(new FilePickerResult("logo.png", b64));
+        _svc.Setup(s => s.GetInfoAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ImageInfo(16, 16, "PNG", false, 256));
+        JSInterop.Setup<ElementRect?>("getElementRect", _ => true)
+            .SetResult(new ElementRect(16, 16, 16, 16));
+        // Apply: magick returns a PNG; the native save returns a path so the result panel renders.
+        var (_, outBytes) = TinyPng(8, 8);
+        _svc.Setup(s => s.RemoveBackgroundAsync(It.IsAny<byte[]>(), It.IsAny<BackgroundRemoveOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(outBytes);
+        JSInterop.Setup<string?>("filePickerSaveAs", _ => true).SetResult("C:\\out\\logo-nobg.png");
+
+        var cut = Render<MagicWand>();
+        cut.Find("button.btn-secondary").Click();
+        cut.WaitForState(() => cut.FindAll("img.wand-image").Count > 0, TimeSpan.FromSeconds(2));
+        cut.Find("img.wand-image").Click(new MouseEventArgs { OffsetX = 5, OffsetY = 5 });
+        cut.WaitForState(() => !cut.Find("button.btn-primary").HasAttribute("disabled"), TimeSpan.FromSeconds(5));
+
+        cut.Find("button.btn-primary").Click(); // Apply & Save
+        cut.WaitForState(() => cut.FindAll("a.btn-pill-success").Count > 0, TimeSpan.FromSeconds(5));
+
+        var previewSrc = cut.Find("img.wand-image").GetAttribute("src")!;
+        var downloadHref = cut.Find("a.btn-pill-success").GetAttribute("href")!;
+        // Both the authoritative result preview and the download link come off the circuit via /temp.
+        Assert.StartsWith("/temp/", previewSrc);
+        Assert.DoesNotContain("data:", previewSrc);
+        Assert.StartsWith("/temp/", downloadHref);
     }
 
     public new void Dispose()
