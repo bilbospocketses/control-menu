@@ -19,7 +19,8 @@
 #   in the csprojs.
 #
 # Output: Releases/ControlMenu-<version>-Setup.msi + delta/full nupkgs +
-#   RELEASES.win.json feed. The MSI installs PerMachine to
+#   releases.stable.json feed (Velopack per-channel naming; this script packs
+#   --channel stable). The MSI installs PerMachine to
 #   C:\Program Files\ControlMenu\ with a UAC elevation prompt.
 
 param(
@@ -75,7 +76,9 @@ function Resolve-Vpk {
         Write-Host "Installing vpk $vpkVersion globally (matches the Velopack NuGet pin)..."
         # Uninstall any older vpk first to avoid version conflict
         dotnet tool uninstall -g vpk 2>$null | Out-Null
-        dotnet tool install -g vpk --version $vpkVersion
+        # Source-pinned to nuget.org + signature-validated via the repo nuget.config
+        # (audit #15: nuget.org-only source + signatureValidationMode=require).
+        dotnet tool install -g vpk --version $vpkVersion --configfile (Join-Path $PSScriptRoot '..\nuget.config')
         if ($LASTEXITCODE -ne 0) { throw "vpk install failed (exit $LASTEXITCODE)" }
         Write-Host "vpk $vpkVersion installed."
     }
