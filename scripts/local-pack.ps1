@@ -19,7 +19,8 @@
 #   in the csprojs.
 #
 # Output: Releases/ControlMenu-<version>-Setup.msi + delta/full nupkgs +
-#   RELEASES.win.json feed. The MSI installs PerMachine to
+#   releases.stable.json feed (Velopack per-channel naming; this script packs
+#   --channel stable). The MSI installs PerMachine to
 #   C:\Program Files\ControlMenu\ with a UAC elevation prompt.
 
 param(
