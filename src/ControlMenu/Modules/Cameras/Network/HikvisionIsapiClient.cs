@@ -80,7 +80,7 @@ public class HikvisionIsapiClient : IHikvisionIsapiClient
     {
         try
         {
-            var doc = XDocument.Parse(xml);
+            var doc = SafeXml.Parse(xml);
             var root = doc.Root;
             if (root is null) return null;
 

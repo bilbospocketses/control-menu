@@ -107,7 +107,7 @@ public class OnvifClient : IOnvifClient
             throw new OnvifAuthenticationException($"HTTP 401 from {serviceUrl}");
 
         XDocument doc;
-        try { doc = XDocument.Parse(body); }
+        try { doc = SafeXml.Parse(body); }
         catch (Exception ex) { throw new OnvifSoapFaultException($"Invalid SOAP response: {ex.Message}"); }
 
         var fault = doc.Descendants(SoapNs + "Fault").FirstOrDefault();

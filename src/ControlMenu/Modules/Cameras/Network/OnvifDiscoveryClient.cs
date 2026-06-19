@@ -138,7 +138,7 @@ public class OnvifDiscoveryClient : IOnvifDiscoveryClient
     private static OnvifProbeResponse? TryParseProbeMatch(string sourceIp, string responseXml)
     {
         XDocument doc;
-        try { doc = XDocument.Parse(responseXml); }
+        try { doc = SafeXml.Parse(responseXml); }
         catch (Exception) { return null; }
 
         var probeMatch = doc.Descendants(WsdNs + "ProbeMatch").FirstOrDefault();
