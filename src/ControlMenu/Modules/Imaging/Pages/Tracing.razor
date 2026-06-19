@@ -3,7 +3,6 @@
 @using ControlMenu.Modules.Imaging.Services
 @using ControlMenu.Modules.Imaging.Services.Options
 @inject ITracingService Svc
-@inject IWebHostEnvironment Env
 @inject IJSRuntime JS
 
 <PageTitle>Tracing</PageTitle>
@@ -242,7 +241,8 @@
     private string? _downloadUrl;
     private string? _outFileName;
 
-    // Rendered SVG preview (a temp web-copy URL under /temp; SVG renders fine in <img>).
+    // Rendered SVG preview as an inert data:image/svg+xml URL — never a navigable same-origin
+    // /temp file (which would let an embedded <script> run in the app's origin).
     private string? _previewUrl;
 
     // File System Access API mode
@@ -392,11 +392,14 @@
                     Invert = _monoInvert
                 });
 
-            // Publish a temp web-copy so the <img> preview can render the SVG. The same copy
-            // doubles as the Download Copy target (matches the other Imaging pages).
-            PublishWebCopy(svgBytes, baseName, out var previewUrl);
-            _previewUrl = previewUrl;
-            _downloadUrl = previewUrl;
+            // Serve the SVG as an inert data: URL for BOTH the <img> preview and the Download
+            // Copy link — never as a navigable same-origin /temp file. An SVG fetched from a
+            // same-origin URL is active content (an embedded <script> would run in the app's
+            // origin); a data: URL is inert in <img> and, with the download attribute, forces a
+            // save instead of an inline render.
+            var svgDataUrl = $"data:image/svg+xml;base64,{System.Convert.ToBase64String(svgBytes)}";
+            _previewUrl = svgDataUrl;
+            _downloadUrl = svgDataUrl;
 
             // Save via the native picker (FSA mode) or back to the source directory (path mode).
             if (_fileBytes is not null)
@@ -441,26 +444,6 @@
         {
             _tracing = false;
         }
-    }
-
-    /// <summary>
-    /// Writes <paramref name="svgBytes"/> to a GUID-named .svg under wwwroot/temp and returns the
-    /// public URL via <paramref name="url"/>, scheduling a best-effort delete after 5 minutes.
-    /// The basename is only kept for the download filename; the on-disk temp name is a GUID to
-    /// avoid collisions between concurrent traces.
-    /// </summary>
-    private void PublishWebCopy(byte[] svgBytes, string baseName, out string url)
-    {
-        var tempDir = Path.Combine(Env.WebRootPath, "temp");
-        Directory.CreateDirectory(tempDir);
-        var webCopy = Path.Combine(tempDir, $"{Guid.NewGuid():N}.svg");
-        File.WriteAllBytes(webCopy, svgBytes);
-        url = $"/temp/{Path.GetFileName(webCopy)}";
-
-        _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
-        {
-            try { if (File.Exists(webCopy)) File.Delete(webCopy); } catch { }
-        });
     }
 
     private void ResetResult()

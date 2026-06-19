@@ -1,6 +1,7 @@
 using Bunit;
 using ControlMenu.Modules.Imaging.Pages;
 using ControlMenu.Modules.Imaging.Services;
+using ControlMenu.Modules.Imaging.Services.Options;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
@@ -15,16 +16,32 @@ namespace ControlMenu.Tests.Modules.Imaging;
 /// trace produces a preview. The tracing service is mocked — these are UI tests, not
 /// vtracer/potrace integration tests.
 /// </summary>
-public class TracingPageTests : BunitContext
+public class TracingPageTests : BunitContext, IDisposable
 {
+    private readonly Mock<ITracingService> _svc = new();
+    private readonly string _webRoot;
+
     public TracingPageTests()
     {
-        Services.AddSingleton(new Mock<ITracingService>().Object);
-        Services.AddSingleton<IWebHostEnvironment>(new Mock<IWebHostEnvironment>().Object);
+        // A real WebRootPath so the (pre-fix) /temp web-copy path has somewhere to write; the
+        // #11 fix removes that write, but the test must let the old behaviour run to go RED.
+        _webRoot = Path.Combine(Path.GetTempPath(), "cm-tracing-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_webRoot);
+        var env = new Mock<IWebHostEnvironment>();
+        env.SetupGet(e => e.WebRootPath).Returns(_webRoot);
+
+        Services.AddSingleton(_svc.Object);
+        Services.AddSingleton(env.Object);
 
         // OnAfterRenderAsync probes for the File System Access API.
         JSInterop.Mode = JSRuntimeMode.Loose;
         JSInterop.Setup<bool>("hasFileSystemAccess", _ => true).SetResult(false);
+    }
+
+    public new void Dispose()
+    {
+        try { if (Directory.Exists(_webRoot)) Directory.Delete(_webRoot, recursive: true); } catch { }
+        base.Dispose();
     }
 
     [Fact]
@@ -97,5 +114,39 @@ public class TracingPageTests : BunitContext
             .Single(b => b.TextContent.Contains("Open in svgedit"));
 
         Assert.True(svgeditBtn.HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public async Task Trace_PreviewAndDownload_UseInertSvgDataUrl_NoNavigableTempSvg()
+    {
+        // Path-input mode (FSA mock reports unavailable) with a real source file on disk.
+        var srcDir = Path.Combine(_webRoot, "src");
+        Directory.CreateDirectory(srcDir);
+        var srcPath = Path.Combine(srcDir, "pic.png");
+        await File.WriteAllBytesAsync(srcPath, new byte[] { 1, 2, 3 }); // opaque to the mocked tracer
+
+        var svgBytes = System.Text.Encoding.UTF8.GetBytes(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"1\" height=\"1\"/></svg>");
+        _svc.Setup(s => s.TraceColorAsync(It.IsAny<byte[]>(), It.IsAny<TraceColorOptions>()))
+            .ReturnsAsync(svgBytes);
+
+        var cut = Render<Tracing>();
+        cut.Find("input.form-control[type=text]").Change(srcPath);
+        cut.Find("button.btn-primary").Click();
+        cut.WaitForState(() => cut.FindAll("img.trace-image").Count > 0, TimeSpan.FromSeconds(5));
+
+        // Preview must be an inert SVG data: URL — never a navigable same-origin /temp .svg.
+        var previewSrc = cut.Find("img.trace-image").GetAttribute("src")!;
+        Assert.StartsWith("data:image/svg+xml", previewSrc);
+        Assert.DoesNotContain("/temp/", previewSrc);
+
+        // The Download Copy link is likewise an inert data: URL (forces save, opaque origin).
+        var downloadHref = cut.Find("a.btn-pill-success").GetAttribute("href")!;
+        Assert.StartsWith("data:image/svg+xml", downloadHref);
+
+        // The stored-XSS primitive is gone: no navigable .svg was written under wwwroot/temp.
+        var tempDir = Path.Combine(_webRoot, "temp");
+        var strayCount = Directory.Exists(tempDir) ? Directory.GetFiles(tempDir, "*.svg").Length : 0;
+        Assert.Equal(0, strayCount);
     }
 }
