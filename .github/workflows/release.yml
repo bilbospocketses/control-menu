@@ -59,7 +59,9 @@ jobs:
       # package (#44); `--msi` / `--instLocation PerMachine` are solidly
       # supported on the 1.2.0 line (bundled WiX 5). Mirrors ws-scrcpy-web's pin.
       - name: Install vpk CLI
-        run: dotnet tool install -g vpk --version 1.2.0
+        # Source-pinned to nuget.org + signature-validated via the repo nuget.config
+        # (audit #15: nuget.org-only source + signatureValidationMode=require).
+        run: dotnet tool install -g vpk --version 1.2.0 --configfile nuget.config
 
       # Restore + build per project directly (not via ControlMenu.sln) to
       # mirror the local-pack.ps1 approach (3x dotnet publish below).
