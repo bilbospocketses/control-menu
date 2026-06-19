@@ -56,8 +56,12 @@ public static class ServiceCollectionExtensions
         // Connection string is built from the resolver, not from appsettings.json. This puts
         // the SQLite file at <dataRoot>/config/controlmenu.db in production and at
         // AppContext.BaseDirectory/controlmenu.db in dev.
+        // The busy-timeout interceptor makes a writer wait for a competing writer's lock
+        // (instead of immediately throwing "database is locked") — required now that
+        // DependencyManagerService.CheckAllAsync runs checks concurrently.
         services.AddDbContextFactory<AppDbContext>(options =>
-            options.UseSqlite($"Data Source={dataPathResolver.GetDbPath()}"));
+            options.UseSqlite($"Data Source={dataPathResolver.GetDbPath()}")
+                   .AddInterceptors(new SqliteBusyTimeoutInterceptor()));
 
         // Data Protection (used by SecretStore for encrypting settings).
         // Keys directory is created during resolver bootstrap, so the

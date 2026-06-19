@@ -24,16 +24,20 @@ public class PurgeLegacyCameraSettingsMigration
         var marker = await _config.GetSettingAsync(MarkerKey, Module);
         if (marker == "true") return;
 
+        var legacyKeys = new List<string>(MaxLegacyIndex * 5 + 1);
         for (int i = 1; i <= MaxLegacyIndex; i++)
         {
-            await _config.DeleteSettingAsync($"camera-{i}-name", Module);
-            await _config.DeleteSettingAsync($"camera-{i}-ip", Module);
-            await _config.DeleteSettingAsync($"camera-{i}-port", Module);
-            await _config.DeleteSettingAsync($"camera-{i}-username", Module);
-            await _config.DeleteSettingAsync($"camera-{i}-password", Module);
+            legacyKeys.Add($"camera-{i}-name");
+            legacyKeys.Add($"camera-{i}-ip");
+            legacyKeys.Add($"camera-{i}-port");
+            legacyKeys.Add($"camera-{i}-username");
+            legacyKeys.Add($"camera-{i}-password");
         }
-        await _config.DeleteSettingAsync("camera-count", Module);
+        legacyKeys.Add("camera-count");
+
+        // One set-based DELETE instead of 81 per-key context opens/round-trips.
+        await _config.DeleteSettingsAsync(legacyKeys, Module);
         await _config.SetSettingAsync(MarkerKey, "true", Module);
-        _logger.LogInformation("Purged legacy camera-{{1..{Max}}}-* settings + secrets", MaxLegacyIndex);
+        _logger.LogInformation("Purged {Count} legacy camera-* settings + secrets", legacyKeys.Count);
     }
 }

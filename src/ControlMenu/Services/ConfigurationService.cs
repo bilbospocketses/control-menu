@@ -91,6 +91,16 @@ public class ConfigurationService : IConfigurationService
         }
     }
 
+    public async Task DeleteSettingsAsync(IReadOnlyCollection<string> keys, string? moduleId = null)
+    {
+        if (keys.Count == 0) return;
+        var keyList = keys as string[] ?? keys.ToArray();
+        using var db = await _dbFactory.CreateDbContextAsync();
+        await db.Settings
+            .Where(s => s.ModuleId == moduleId && keyList.Contains(s.Key))
+            .ExecuteDeleteAsync();
+    }
+
     public async Task<IReadOnlyList<Setting>> GetModuleSettingsAsync(string moduleId)
     {
         using var db = await _dbFactory.CreateDbContextAsync();

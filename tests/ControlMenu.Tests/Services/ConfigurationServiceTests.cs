@@ -83,6 +83,36 @@ public class ConfigurationServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task DeleteSettingsAsync_RemovesOnlyListedKeysInModule()
+    {
+        // Listed keys in the target module (including a secret row) -> deleted.
+        await _service.SetSettingAsync("camera-1-name", "Front", "cameras");
+        await _service.SetSecretAsync("camera-1-password", "hunter2", "cameras");
+        // A key in the same module that is NOT in the list -> kept (e.g. the purge marker).
+        await _service.SetSettingAsync("cameras-legacy-purge-completed", "true", "cameras");
+        // The same key text under a different module -> kept.
+        await _service.SetSettingAsync("camera-1-name", "other", "other-module");
+        // The same key text as a global setting -> kept.
+        await _service.SetSettingAsync("camera-1-name", "global", moduleId: null);
+
+        await _service.DeleteSettingsAsync(new[] { "camera-1-name", "camera-1-password" }, "cameras");
+
+        Assert.Null(await _service.GetSettingAsync("camera-1-name", "cameras"));
+        Assert.Null(await _service.GetSecretAsync("camera-1-password", "cameras"));
+        Assert.Equal("true", await _service.GetSettingAsync("cameras-legacy-purge-completed", "cameras"));
+        Assert.Equal("other", await _service.GetSettingAsync("camera-1-name", "other-module"));
+        Assert.Equal("global", await _service.GetSettingAsync("camera-1-name", moduleId: null));
+    }
+
+    [Fact]
+    public async Task DeleteSettingsAsync_EmptyKeyList_DeletesNothing()
+    {
+        await _service.SetSettingAsync("keep", "v", "cameras");
+        await _service.DeleteSettingsAsync(Array.Empty<string>(), "cameras");
+        Assert.Equal("v", await _service.GetSettingAsync("keep", "cameras"));
+    }
+
+    [Fact]
     public async Task GetModuleSettingsAsync_ReturnsOnlyModuleSettings()
     {
         await _service.SetSettingAsync("global-key", "global-value");
