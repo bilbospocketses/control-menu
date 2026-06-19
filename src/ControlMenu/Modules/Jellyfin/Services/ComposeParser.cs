@@ -8,10 +8,26 @@ public record ComposeParseResult(
 
 public static class ComposeParser
 {
+    // A docker-compose.yml is a small text file; cap the read so a pathological or hostile
+    // file can't be slurped whole into memory.
+    private const long MaxComposeBytes = 1_048_576; // 1 MB
+
     public static ComposeParseResult Parse(string composePath)
     {
         if (!File.Exists(composePath))
             return new(null, null, null, $"File not found: {composePath}");
+
+        long fileLength;
+        try
+        {
+            fileLength = new FileInfo(composePath).Length;
+        }
+        catch (Exception ex)
+        {
+            return new(null, null, null, $"Cannot read file: {ex.Message}");
+        }
+        if (fileLength > MaxComposeBytes)
+            return new(null, null, null, $"Compose file is too large (> 1 MB): {composePath}");
 
         string[] lines;
         try
@@ -111,8 +127,27 @@ public static class ComposeParser
         if (configHostPath is null)
             return new(containerName, null, null, "No volume mount to /config found in compose file");
 
+        if (!IsValidHostPath(configHostPath))
+            return new(containerName, null, null,
+                $"Unsupported /config host path (must be a fully-qualified path with no quotes or control characters): {configHostPath}");
+
         var dbPath = Path.Combine(configHostPath, "data", "jellyfin.db");
         return new(containerName, configHostPath, dbPath, null);
+    }
+
+    /// <summary>
+    /// The /config host path flows to <see cref="Path.Combine(string,string,string)"/> and the
+    /// sqlite3 update sink, so reject anything that isn't a plain fully-qualified path: no quotes
+    /// or control characters, and rooted enough to resolve to a real local jellyfin.db (a relative
+    /// or Unix-style path can't on this host).
+    /// </summary>
+    private static bool IsValidHostPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        if (path.Contains('"') || path.Contains('\'')) return false;
+        foreach (var c in path)
+            if (char.IsControl(c)) return false;
+        return Path.IsPathFullyQualified(path);
     }
 
     private static int FindMountSeparator(string mount)
