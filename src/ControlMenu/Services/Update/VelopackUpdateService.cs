@@ -43,7 +43,14 @@ public sealed class VelopackUpdateService : IVelopackUpdateService
     {
         _lifetime = lifetime;
         _log = log;
-        _manager = new UpdateManager(new GithubSource(GitHubRepo, accessToken: null, prerelease: false));
+        // Pin the update channel to "stable" — the channel release.yml packs non-prerelease tags
+        // into (`vpk pack --channel stable`; -beta/-alpha tags go to the "beta" channel). Without an
+        // explicit channel the updater falls back to Velopack's RID-derived default, which would not
+        // reliably match the published "stable" channel. (Publisher/signature pinning beyond the
+        // channel is deferred to the Velopack Phase-2 signing initiative.)
+        _manager = new UpdateManager(
+            new GithubSource(GitHubRepo, accessToken: null, prerelease: false),
+            new UpdateOptions { ExplicitChannel = "stable" });
     }
 
     public async Task<UpdateAvailability> CheckForUpdatesAsync(CancellationToken ct = default)
