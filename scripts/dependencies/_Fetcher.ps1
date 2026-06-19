@@ -82,28 +82,38 @@ function Expand-CmZip {
     Expand-Archive -LiteralPath $Archive -DestinationPath $DestDir -Force
 }
 
+function Get-Cm7zr {
+    # Resolves a vendored, SHA-pinned 7zr.exe -- the official 7-Zip standalone .7z extractor --
+    # fetched into the build cache rather than resolved from PATH. Local-Dependencies-Only: build
+    # tools are vendored/fetched into the app's own folder, never assumed present on the runner.
+    #
+    # Provenance note: 7-zip.org serves only the *latest* standalone extractor at this URL and
+    # publishes neither an Authenticode signature nor a checksum for it, so the SHA-256 below is
+    # recorded from the official download (trust-on-first-use). It still pins integrity: a tampered
+    # download fails the hash check, and a future 7-Zip release that changes 7zr.exe trips the same
+    # check fail-closed -- re-download, confirm provenance, and re-pin the SHA then.
+    $url    = 'https://www.7-zip.org/a/7zr.exe'
+    $sha256 = 'abcf64ae1cbafddb5395e4cdd3bdc7e3e0561d54a0c6380e3dd43bdbffe519a2'
+    $cache  = Get-CmCacheDir -Name '7zr' -Version 'latest'
+    $exe    = Join-Path $cache '7zr.exe'
+    Invoke-CmDownload -Url $url -DestFile $exe -ExpectedSha256 $sha256
+    return $exe
+}
+
 function Expand-Cm7z {
     param(
         [Parameter(Mandatory)][string] $Archive,
         [Parameter(Mandatory)][string] $DestDir
     )
-    # Some deps (ImageMagick) ship .7z portables. Expand-Archive can't read .7z,
-    # so shell out to 7-Zip. CI (windows-latest) has 7z on PATH; locally we fall
-    # back to the default install dir. 7z is a BUILD tool (like vpk / dotnet),
-    # not a bundled app dependency, so a system 7z is acceptable for staging.
-    $sevenZip = (Get-Command 7z -ErrorAction SilentlyContinue).Source
-    if (-not $sevenZip) {
-        $candidate = Join-Path $env:ProgramFiles '7-Zip\7z.exe'
-        if (Test-Path $candidate) { $sevenZip = $candidate }
-    }
-    if (-not $sevenZip) {
-        throw "7-Zip not found. CI runners have 7z on PATH; install 7-Zip locally to extract .7z deps."
-    }
+    # Some deps (ImageMagick) ship .7z portables that Expand-Archive can't read. Extract them with
+    # the vendored, SHA-pinned 7zr.exe fetched into the build cache (Get-Cm7zr) -- never a
+    # PATH-resolved 7z (Local-Dependencies-Only: a system 7z is no longer assumed present).
+    $sevenZip = Get-Cm7zr
     if (Test-Path $DestDir) { Remove-Item -LiteralPath $DestDir -Recurse -Force }
     New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
-    Write-Host "  extracting : $Archive -> $DestDir (7z)"
+    Write-Host "  extracting : $Archive -> $DestDir (7zr)"
     & $sevenZip x $Archive "-o$DestDir" -y -bso0 -bsp0
-    if ($LASTEXITCODE -ne 0) { throw "7z extraction failed (exit $LASTEXITCODE): $Archive" }
+    if ($LASTEXITCODE -ne 0) { throw "7zr extraction failed (exit $LASTEXITCODE): $Archive" }
 }
 
 function Copy-CmStage {
