@@ -207,6 +207,9 @@ public class DependencyManagerService : IDependencyManagerService
         }
     }
 
+    /// <summary>Maximum number of dependency checks <see cref="CheckAllAsync"/> runs concurrently.</summary>
+    public const int MaxConcurrentChecks = 4;
+
     public async Task<IReadOnlyList<DependencyCheckResult>> CheckAllAsync()
     {
         List<Guid> depIds;
@@ -214,14 +217,25 @@ public class DependencyManagerService : IDependencyManagerService
             using var db = await _dbFactory.CreateDbContextAsync();
             depIds = await db.Dependencies.Select(d => d.Id).ToListAsync();
         }
-        var results = new List<DependencyCheckResult>();
-
-        foreach (var id in depIds)
+        // Run the per-dependency checks (each a version spawn + HTTP round-trip) concurrently
+        // but bounded, instead of strictly sequentially. Task.WhenAll preserves input order, so
+        // the results stay in dependency-id order. Each CheckDependencyAsync opens its own
+        // DbContext; the busy-timeout interceptor keeps concurrent SaveChanges from lock-erroring.
+        using var gate = new SemaphoreSlim(MaxConcurrentChecks);
+        var tasks = depIds.Select(async id =>
         {
-            results.Add(await CheckDependencyAsync(id));
-        }
+            await gate.WaitAsync();
+            try
+            {
+                return await CheckDependencyAsync(id);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
 
-        return results;
+        return await Task.WhenAll(tasks);
     }
 
     public async Task<AssetMatch?> ResolveDownloadAssetAsync(Guid dependencyId)

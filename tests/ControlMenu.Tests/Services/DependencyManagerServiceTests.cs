@@ -536,6 +536,67 @@ public class DependencyManagerServiceTests : IDisposable
             Times.Never,
             "DependencyManagerService must NOT kill-server via bare 'adb' — local-deps rule.");
     }
+
+    [Fact]
+    public async Task CheckAllAsync_RunsChecksConcurrently_BoundedByLimit()
+    {
+        const int depCount = 6; // > MaxConcurrentChecks so the bound is observable
+
+        var deps = new ModuleDependency[depCount];
+        for (int i = 0; i < depCount; i++)
+        {
+            deps[i] = new ModuleDependency
+            {
+                Name = $"dep-{i}",
+                ExecutableName = $"dep-{i}",
+                VersionCommand = $"dep-{i} --version",
+                VersionPattern = @"([\d.]+)",
+                SourceType = UpdateSourceType.GitHub,
+                GitHubRepo = $"example/dep-{i}",
+            };
+        }
+        var module = new FakeModule("concurrency-module", "Concurrency", deps);
+
+        // Connection-per-context file DB so genuinely concurrent checks are safe (mirrors prod).
+        using var fileFactory = TestDbContextFactory.CreateFileBackedFactory();
+        using (var setupDb = fileFactory.CreateDbContext())
+        {
+            for (int i = 0; i < depCount; i++)
+            {
+                setupDb.Dependencies.Add(new Dependency
+                {
+                    Id = Guid.NewGuid(),
+                    ModuleId = "concurrency-module",
+                    Name = $"dep-{i}",
+                    SourceType = UpdateSourceType.GitHub,
+                    Status = DependencyStatus.UpToDate,
+                    InstalledVersion = "1.0.0"
+                });
+            }
+            await setupDb.SaveChangesAsync();
+        }
+
+        // The version command resolves instantly; the GitHub HTTP call is the concurrency probe.
+        _mockExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CommandResult(0, "tool 1.0.0", "", false));
+
+        var handler = new ConcurrencyTrackingHandler(@"{""tag_name"": ""v9.9.9"", ""assets"": []}");
+        _mockHttpFactory.Setup(f => f.CreateClient("github-api")).Returns(new HttpClient(handler));
+
+        var service = new DependencyManagerService(
+            fileFactory, [module], _mockExecutor.Object, _mockHttpFactory.Object,
+            _mockConfig.Object, _wsScrcpy, _mockGo2Rtc.Object, _mockResolver.Object,
+            NullLogger<DependencyManagerService>.Instance, _alwaysVerifiedVerifier, _realExtractor);
+
+        var results = await service.CheckAllAsync();
+
+        Assert.Equal(depCount, results.Count);
+        Assert.True(handler.MaxObserved >= 2,
+            $"checks ran sequentially (max in-flight = {handler.MaxObserved}); expected concurrent execution");
+        Assert.True(handler.MaxObserved <= DependencyManagerService.MaxConcurrentChecks,
+            $"in-flight concurrency {handler.MaxObserved} exceeded the bound {DependencyManagerService.MaxConcurrentChecks}");
+    }
 }
 
 // Test helpers at bottom of file
@@ -593,4 +654,37 @@ internal class StubArtifactVerifier(ControlMenu.Services.Verification.Verificati
         string filePath, ControlMenu.Modules.ModuleDependency dep,
         string version, CancellationToken ct)
         => Task.FromResult(result);
+}
+
+/// <summary>
+/// Tracks the maximum number of HTTP requests in flight at once, so a test can prove that
+/// callers run concurrently (max &gt; 1) and stay within a bound. Each request lingers briefly
+/// so overlap is observable.
+/// </summary>
+internal sealed class ConcurrencyTrackingHandler(string body, int delayMs = 100) : HttpMessageHandler
+{
+    private int _current;
+    private int _max;
+    public int MaxObserved => Volatile.Read(ref _max);
+
+    protected override async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var now = Interlocked.Increment(ref _current);
+        int observed;
+        while (now > (observed = Volatile.Read(ref _max)))
+            Interlocked.CompareExchange(ref _max, now, observed);
+        try
+        {
+            await Task.Delay(delayMs, cancellationToken);
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(body)
+            };
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _current);
+        }
+    }
 }
