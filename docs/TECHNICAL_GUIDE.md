@@ -620,7 +620,7 @@ The module declares three auto-managed `ModuleDependency` entries (all pre-seede
 | `potrace` | DirectUrl (SourceForge) | 1.16 | `potrace-1.16.win64.zip` | `dependencies/potrace/` |
 
 Notes:
-- ImageMagick ships its Windows portables as `.7z` on GitHub (the imagemagick.org `.zip` archive path 404s for current builds), so the fetcher uses the new `Expand-Cm7z` helper (shells out to a build-time 7-Zip) rather than `Expand-Archive`. The version pattern matches `ImageMagick ([\d.]+-\d+)`.
+- ImageMagick ships its Windows portables as `.7z` on GitHub (the imagemagick.org `.zip` archive path 404s for current builds), so the fetcher uses the `Expand-Cm7z` helper (which extracts via a vendored, SHA-pinned `7zr.exe` fetched into the build cache by `Get-Cm7zr` — never a PATH-resolved 7z, per Local-Dependencies-Only) rather than `Expand-Archive`. The version pattern matches `ImageMagick ([\d.]+-\d+)`.
 - vtracer's `--version` prints `visioncortex VTracer 0.6.4` (capital `VTracer`), so the version pattern is `VTracer ([\d.]+)`, not the lowercase executable name.
 - potrace is pinned (no version-check URL); its zip extracts to a nested `potrace-1.16.win64/` dir, which the fetcher flattens so `potrace.exe` lands at the leaf root.
 
@@ -1013,7 +1013,7 @@ Shipping builds are packaged with [Velopack](https://github.com/velopack/velopac
 
 Under `<dataRoot>`: `config/controlmenu.db`, `logs/` (+ `logs/jellyfin/`), `keys/` (DataProtection), `dependencies/`, `jellyfin-backups/`.
 
-**Dependency pre-seeding.** The MSI bundles pinned runtime binaries (adb, sqlite3, go2rtc, magick, vtracer, potrace) under `seed/dependencies/`; on launch `SeedHydrator` copies any missing leaf into `<dataRoot>/dependencies/` (idempotent, preserves a user-updated version). CI stages the seed via `scripts/stage-seed.ps1` + `scripts/dependencies/fetch-*.ps1` (auto-discovered) between `dotnet publish` and `vpk pack`. The shared `_Fetcher.ps1` does pinned-URL + SHA-256 download, deterministic extract (`Expand-CmZip` for `.zip`, `Expand-Cm7z` for ImageMagick's `.7z` via a build-time 7-Zip), and idempotent caching; `fetch-magick.ps1` additionally stages the hardened `magick-policy.xml` next to `magick.exe`.
+**Dependency pre-seeding.** The MSI bundles pinned runtime binaries (adb, sqlite3, go2rtc, magick, vtracer, potrace) under `seed/dependencies/`; on launch `SeedHydrator` copies any missing leaf into `<dataRoot>/dependencies/` (idempotent, preserves a user-updated version). CI stages the seed via `scripts/stage-seed.ps1` + `scripts/dependencies/fetch-*.ps1` (auto-discovered) between `dotnet publish` and `vpk pack`. The shared `_Fetcher.ps1` does pinned-URL + SHA-256 download, deterministic extract (`Expand-CmZip` for `.zip`, `Expand-Cm7z` for ImageMagick's `.7z` via a vendored, SHA-pinned `7zr.exe` from `Get-Cm7zr`), and idempotent caching; `fetch-magick.ps1` additionally stages the hardened `magick-policy.xml` next to `magick.exe`.
 
 **In-app updates.** Settings → General → "Check for updates" uses `VelopackUpdateService` (`Velopack.UpdateManager` + `GithubSource`) against the GitHub Releases feed. Apply signals the launcher via `Environment.ExitCode = 75` + `StopApplication`; the launcher performs the Velopack swap and relaunches. The tag-triggered release pipeline lives in `.github/workflows/release.yml`.
 
