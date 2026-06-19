@@ -140,6 +140,12 @@ public static class ComposeParser
     /// sqlite3 update sink, so reject anything that isn't a plain fully-qualified path: no quotes
     /// or control characters, and rooted enough to resolve to a real local jellyfin.db (a relative
     /// or Unix-style path can't on this host).
+    /// <para>
+    /// A <c>..</c> segment in an otherwise fully-qualified path is intentionally allowed: it just
+    /// normalises to another real local path the user already controls (it's their own compose
+    /// file), and the sqlite3 sink it feeds is structured-arg (no shell, no injection), so there is
+    /// nothing to escalate. Don't "tighten" this to ban <c>..</c> without that context.
+    /// </para>
     /// </summary>
     private static bool IsValidHostPath(string path)
     {

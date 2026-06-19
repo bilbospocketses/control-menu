@@ -5,10 +5,16 @@ namespace ControlMenu.Modules.Cameras.Network;
 
 /// <summary>
 /// Parses untrusted XML (camera / device responses) with hardened reader settings: DTDs
-/// prohibited (no external-entity / XXE), no external resolver, and a size cap. Defense-in-depth —
-/// <see cref="XDocument.Parse(string)"/> already prohibits DTDs by default on this runtime, but
-/// routing every camera-response parse through one explicit safe reader keeps the guarantee local
-/// and future-proof.
+/// prohibited (no entity expansion / no XXE), no external resolver, and a size cap.
+/// <para>
+/// This is a real hardening, not just style. <see cref="XDocument.Parse(string)"/> does NOT
+/// prohibit DTDs by default — that guidance applies to <see cref="XmlReader.Create(System.IO.TextReader)"/>,
+/// not to <c>Parse</c>/<c>Load(string)</c>, which allow the DTD and EXPAND internal entities
+/// (verified on .NET 10). That is a bounded entity-expansion DoS vector reachable from any device
+/// answering camera discovery. (External entities are not fetched by default, so file-exfil XXE was
+/// not reachable.) Routing every camera-response parse through this reader prohibits the DTD
+/// entirely, drops any external resolver, and caps the document size.
+/// </para>
 /// </summary>
 internal static class SafeXml
 {
