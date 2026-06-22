@@ -226,7 +226,7 @@ jobs:
           echo "See \`CHANGELOG.md\` for the full notes." >> release-notes.md
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           # NO --prerelease flag, EVEN for alpha/beta tags. Velopack's
           # GithubSource queries the GitHub /releases/latest endpoint to
