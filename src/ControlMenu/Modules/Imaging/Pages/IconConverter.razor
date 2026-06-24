@@ -3,6 +3,7 @@
 @inject IImageService IconService
 @inject IWebHostEnvironment Env
 @inject IJSRuntime JS
+@implements IDisposable
 
 <PageTitle>Icon Converter</PageTitle>
 
@@ -96,6 +97,9 @@
     private string? _resultMessage;
     private string? _savedPath;
     private string? _downloadUrl;
+    // Tracks the current /temp download copy so each new conversion replaces the prior one instead
+    // of accumulating, and so Dispose can delete it on navigate-away rather than waiting on the timer.
+    private string? _downloadWebCopyPath;
     private string? _icoFileName;
 
     // File System Access API mode
@@ -120,7 +124,7 @@
     private async Task PickFile()
     {
         _resultMessage = null;
-        _downloadUrl = null;
+        DeleteDownloadWebCopy();
         _savedPath = null;
         _error = null;
 
@@ -152,7 +156,7 @@
         _converting = true;
         _resultMessage = null;
         _savedPath = null;
-        _downloadUrl = null;
+        DeleteDownloadWebCopy();
         _error = null;
 
         try
@@ -171,17 +175,8 @@
                     _resultMessage = "Icon created successfully.";
                     _savedPath = savedName;
 
-                    // Also provide a web download copy
-                    var tempDir = Path.Combine(Env.WebRootPath, "temp");
-                    Directory.CreateDirectory(tempDir);
-                    var webCopy = Path.Combine(tempDir, $"{Guid.NewGuid():N}.ico");
-                    await File.WriteAllBytesAsync(webCopy, icoBytes);
-                    _downloadUrl = $"/temp/{Path.GetFileName(webCopy)}";
-
-                    _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
-                    {
-                        try { if (File.Exists(webCopy)) File.Delete(webCopy); } catch { }
-                    });
+                    // Also provide a web download copy (replaces any prior copy; deleted on Dispose).
+                    SetDownloadWebCopy(icoBytes, "ico");
                 }
                 else
                 {
@@ -209,16 +204,8 @@
                 _resultMessage = "Icon created successfully.";
                 _savedPath = targetPath;
 
-                var tempDir = Path.Combine(Env.WebRootPath, "temp");
-                Directory.CreateDirectory(tempDir);
-                var webCopy = Path.Combine(tempDir, $"{Guid.NewGuid():N}.ico");
-                await File.WriteAllBytesAsync(webCopy, icoBytes);
-                _downloadUrl = $"/temp/{Path.GetFileName(webCopy)}";
-
-                _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
-                {
-                    try { if (File.Exists(webCopy)) File.Delete(webCopy); } catch { }
-                });
+                // Provide a web download copy (replaces any prior copy; deleted on Dispose).
+                SetDownloadWebCopy(icoBytes, "ico");
             }
         }
         catch (Exception ex)
@@ -229,6 +216,55 @@
         {
             _converting = false;
         }
+    }
+
+    /// <summary>
+    /// Publishes <paramref name="bytes"/> as the current download copy via a /temp web-copy,
+    /// replacing any prior copy so they don't accumulate.
+    /// </summary>
+    private void SetDownloadWebCopy(byte[] bytes, string ext)
+    {
+        DeleteDownloadWebCopy();
+        _downloadWebCopyPath = PublishWebCopy(bytes, ext, out var url);
+        _downloadUrl = url;
+    }
+
+    /// <summary>
+    /// Writes <paramref name="bytes"/> to a GUID-named file under wwwroot/temp and returns the
+    /// public URL via <paramref name="url"/>, scheduling a best-effort delete after 5 minutes.
+    /// Returns the on-disk path so the caller can replace/track the current web copy.
+    /// </summary>
+    private string PublishWebCopy(byte[] bytes, string ext, out string url)
+    {
+        var tempDir = Path.Combine(Env.WebRootPath, "temp");
+        Directory.CreateDirectory(tempDir);
+        var webCopy = Path.Combine(tempDir, $"{Guid.NewGuid():N}.{ext}");
+        File.WriteAllBytes(webCopy, bytes);
+        url = $"/temp/{Path.GetFileName(webCopy)}";
+
+        _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+        {
+            try { if (File.Exists(webCopy)) File.Delete(webCopy); } catch { }
+        });
+
+        return webCopy;
+    }
+
+    private void DeleteDownloadWebCopy()
+    {
+        if (_downloadWebCopyPath is not null)
+        {
+            try { if (File.Exists(_downloadWebCopyPath)) File.Delete(_downloadWebCopyPath); } catch { }
+            _downloadWebCopyPath = null;
+        }
+        _downloadUrl = null;
+    }
+
+    // Delete this page's /temp download copy on teardown (navigate-away), rather than leaving it
+    // for the 5-minute fallback timer. No-ops when nothing is tracked.
+    public void Dispose()
+    {
+        DeleteDownloadWebCopy();
     }
 
     private record FilePickerResult(string Name, string BytesBase64);
