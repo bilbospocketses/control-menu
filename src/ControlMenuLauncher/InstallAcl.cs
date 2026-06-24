@@ -38,7 +38,7 @@ namespace ControlMenu.Launcher;
 [SupportedOSPlatform("windows")]
 public static class InstallAcl
 {
-    private const string SentinelFileName = ".controlmenu-write-test";
+    private const string SentinelPrefix = ".controlmenu-write-test-";
     private const string AclSidAuthUsers = "*S-1-5-11";
 
     // Win32 ERROR_CANCELLED = 1223 (0x4C7). Win32Exception.NativeErrorCode
@@ -46,22 +46,29 @@ public static class InstallAcl
     private const int ErrorCancelled = 1223;
 
     /// <summary>
-    /// Test whether the running user can write to <paramref name="path"/> by
-    /// creating + deleting a sentinel file. Distinct filename from Velopack's
-    /// own probe so concurrent self-tests don't race.
+    /// Test whether the running user can write to <paramref name="path"/> by creating then deleting
+    /// a sentinel file. The sentinel name is unique per call (a fresh GUID), so concurrent launcher
+    /// self-tests — multiple instances can run at once — and Velopack's own probe never delete each
+    /// other's sentinel mid-flight. (A fixed name made the probe race-prone / DoS-able: an external
+    /// watcher or a second instance could remove the file between the write and the delete, or the
+    /// delete could hit a foreign sentinel.) The file is removed in a finally, so a write that
+    /// succeeds but can't be deleted leaves nothing behind.
     /// </summary>
     public static bool IsWritable(string path)
     {
-        var testPath = Path.Combine(path, SentinelFileName);
+        var testPath = Path.Combine(path, SentinelPrefix + Guid.NewGuid().ToString("N"));
         try
         {
             File.WriteAllBytes(testPath, []);
-            File.Delete(testPath);
             return true;
         }
         catch
         {
             return false;
+        }
+        finally
+        {
+            try { if (File.Exists(testPath)) File.Delete(testPath); } catch { /* best-effort cleanup */ }
         }
     }
 

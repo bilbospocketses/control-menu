@@ -118,3 +118,9 @@ cameraNotifier.CamerasChanged += () =>
     _ = Task.Run(() => CamerasModule.RefreshEnabledNavAsync(cameraNavScopeFactory, app.Logger));
 
 await app.RunAsync();
+
+// Return the apply-update exit code explicitly — the launcher reads 75 to swap in a downloaded
+// update — instead of relying on a clobberable Environment.ExitCode set deep inside a service.
+return app.Services.GetRequiredService<ControlMenu.Services.Update.UpdateApplyState>().ApplyRequested
+    ? ControlMenu.Services.Update.VelopackUpdateService.ExitCodeApplyUpdate
+    : 0;
