@@ -620,7 +620,7 @@ The module declares three auto-managed `ModuleDependency` entries (all pre-seede
 | `potrace` | DirectUrl (SourceForge) | 1.16 | `potrace-1.16.win64.zip` | `dependencies/potrace/` |
 
 Notes:
-- ImageMagick ships its Windows portables as `.7z` on GitHub (the imagemagick.org `.zip` archive path 404s for current builds), so the fetcher uses the `Expand-Cm7z` helper (which extracts via a vendored, SHA-pinned `7zr.exe` fetched into the build cache by `Get-Cm7zr` — never a PATH-resolved 7z, per Local-Dependencies-Only) rather than `Expand-Archive`. The version pattern matches `ImageMagick ([\d.]+-\d+)`.
+- ImageMagick ships its Windows portables as `.7z` on GitHub (the imagemagick.org `.zip` archive path 404s for current builds), so the fetcher uses the `Expand-Cm7z` helper rather than `Expand-Archive`. `Expand-Cm7z` extracts via the bundled **SharpCompress** library (the same one the runtime dependency updater uses, `ArchiveExtractor`) through the small `tools/Cm7zExtract` build tool (`dotnet run`) — never a PATH-resolved 7z or a separately-vendored extractor binary, per Local-Dependencies-Only. The version pattern matches `ImageMagick ([\d.]+-\d+)`.
 - vtracer's `--version` prints `visioncortex VTracer 0.6.4` (capital `VTracer`), so the version pattern is `VTracer ([\d.]+)`, not the lowercase executable name.
 - potrace is pinned (no version-check URL); its zip extracts to a nested `potrace-1.16.win64/` dir, which the fetcher flattens so `potrace.exe` lands at the leaf root.
 
