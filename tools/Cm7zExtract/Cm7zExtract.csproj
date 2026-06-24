@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Build-time .7z extractor. Replaces the previously vendored 7zr.exe so the build uses the same
+    bundled SharpCompress library the app already uses at runtime (ArchiveExtractor), rather than a
+    separate, unversioned, unsigned binary fetched trust-on-first-use from 7-zip.org. Invoked by
+    scripts/dependencies/_Fetcher.ps1 (Expand-Cm7z) via `dotnet run`. Not referenced by the app and
+    not included in any published output — it is build tooling only.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Cm7zExtract</AssemblyName>
+    <RootNamespace>Cm7zExtract</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Keep this version in sync with src/ControlMenu/ControlMenu.csproj's SharpCompress reference. -->
+    <PackageReference Include="SharpCompress" Version="0.49.1" />
+  </ItemGroup>
+
+</Project>
