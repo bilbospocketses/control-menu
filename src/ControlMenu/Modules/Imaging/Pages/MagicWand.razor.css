@@ -48,7 +48,7 @@
 }
 
 .checker {
-    /* 16px light/dark checkerboard via two crossed conic gradients. */
+    /* 16px light/dark checkerboard via four crossed linear gradients. */
     background-color: #fff;
     background-image:
         linear-gradient(45deg, #ccc 25%, transparent 25%),

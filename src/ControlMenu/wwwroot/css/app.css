@@ -64,31 +64,6 @@ a {
     margin: 0;
 }
 
-.home-module-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 16px;
-}
-
-.home-module-card {
-    background-color: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 20px;
-    box-shadow: var(--card-shadow);
-}
-
-.home-module-card i {
-    font-size: 1.5rem;
-    color: var(--accent-color);
-}
-
-.home-module-card h3 {
-    font-size: 1.1rem;
-    font-weight: 600;
-    margin: 8px 0;
-}
-
 .module-nav-links {
     display: flex;
     flex-direction: column;
@@ -179,17 +154,11 @@ select.form-control { appearance: auto; }
 .status-dot.stale { background-color: var(--warning-color); }
 .status-dot.offline { background-color: var(--danger-color); }
 
-/* ── Dialog / Modal overlay ── */
-.dialog-overlay { position: fixed; inset: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.dialog { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 24px; width: 480px; max-width: 90vw; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); }
-.dialog h3 { font-size: 1.1rem; font-weight: 600; margin: 0 0 16px 0; }
-.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-
-/* Modal aliases (DependencyManagement uses modal-* naming) */
-.modal-overlay { position: fixed; inset: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.modal-dialog { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 24px; width: 480px; max-width: 90vw; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); }
-.modal-dialog h3 { font-size: 1.1rem; font-weight: 600; margin: 0 0 16px 0; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+/* ── Dialog / Modal overlay (.modal-* are byte-identical aliases — DependencyManagement uses modal-* naming) ── */
+.dialog-overlay, .modal-overlay { position: fixed; inset: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.dialog, .modal-dialog { background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 24px; width: 480px; max-width: 90vw; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); }
+.dialog h3, .modal-dialog h3 { font-size: 1.1rem; font-weight: 600; margin: 0 0 16px 0; }
+.dialog-actions, .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 
 /* Status badges */
 .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.82rem; font-weight: 500; }
@@ -204,9 +173,9 @@ select.form-control { appearance: auto; }
 .btn-pill { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 999px; font-weight: 600; font-size: 0.9rem; text-decoration: none; border: none; cursor: pointer; transition: background 0.15s, transform 0.1s; }
 .btn-pill:active { transform: scale(0.97); }
 .btn-pill-success { background-color: var(--success-color); color: #fff; }
-.btn-pill-success:hover { background-color: #157347; color: #fff; }
+.btn-pill-success:hover { background-color: color-mix(in srgb, var(--success-color) 85%, #000); color: #fff; }
 .btn-pill-primary { background-color: var(--accent-color); color: #fff; }
-.btn-pill-primary:hover { background-color: #0b5ed7; color: #fff; }
+.btn-pill-primary:hover { background-color: color-mix(in srgb, var(--accent-color) 85%, #000); color: #fff; }
 
 /* ── Toolbar ── */
 .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
