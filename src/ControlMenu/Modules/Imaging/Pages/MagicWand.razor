@@ -4,6 +4,7 @@
 @inject IImageService Svc
 @inject IWebHostEnvironment Env
 @inject IJSRuntime JS
+@implements IDisposable
 
 <PageTitle>Magic Wand</PageTitle>
 
@@ -495,6 +496,14 @@
         _seedY = null;
         DeletePreviewWebCopy();
         _error = null;
+    }
+
+    // Delete this page's /temp web-copies on teardown (navigate-away), rather than leaving them
+    // for the 5-minute fallback timer. Both helpers no-op when nothing is tracked.
+    public void Dispose()
+    {
+        ClearImageWebCopy();
+        DeletePreviewWebCopy();
     }
 
     // FilePickerResult / ElementRect are shared public records in this namespace

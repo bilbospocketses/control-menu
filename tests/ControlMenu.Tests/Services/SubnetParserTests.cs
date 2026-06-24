@@ -10,6 +10,7 @@ public class SubnetParserTests
     [InlineData("10.0.0.0/16", "10.0.0.0/16", 65534)]
     [InlineData("192.168.1.5/32", "192.168.1.5/32", 1)]
     [InlineData("192.168.1.0/31", "192.168.1.0/31", 2)]
+    [InlineData("192.168.001.005/24", "192.168.1.0/24", 254)]  // leading zeros accepted (byte.TryParse)
     public void ParseCidr_Valid(string input, string normalized, int hostCount)
     {
         var result = SubnetParser.Parse(input);
@@ -46,6 +47,8 @@ public class SubnetParserTests
     [InlineData("192.168.1.0/8", "Subnet too large")]  // /8 is < /16
     [InlineData("192.168.1.0/33", "Prefix must be between /16 and /32")]
     [InlineData("999.168.1.0/24", "Invalid IP address")]
+    [InlineData("192.168.1.256/24", "Invalid IP address")]   // octet > 255 rejected (byte.TryParse)
+    [InlineData("192.168.1.10-300", "Invalid")]              // range-end octet > 255 rejected
     [InlineData("192.168.1.50-192.168.1.10", "Range start must be")]
     public void Parse_Invalid_ReturnsErrorWithExpectedSubstring(string input, string expectedSubstring)
     {

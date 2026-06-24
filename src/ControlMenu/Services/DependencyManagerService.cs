@@ -612,11 +612,22 @@ public class DependencyManagerService : IDependencyManagerService
         }
     }
 
-    private static string? BuildVersionedDownloadUrl(string templateUrl, string pageContent, ModuleDependency dep)
+    /// <remarks>
+    /// Targets a sqlite.org-style download index: <paramref name="dep"/>'s <c>AssetPattern</c> (or the
+    /// historical sqlite-tools fallback) locates the versioned filename on the page, and the URL is
+    /// rebuilt from sqlite.org's year-directory scheme. <c>AssetPattern</c> generalises only the
+    /// filename match — the host/scheme stays sqlite-specific, so today this is reached only by the
+    /// sqlite3 DirectUrl dependency. A future non-sqlite DirectUrl dep would also need host handling.
+    /// </remarks>
+    internal static string? BuildVersionedDownloadUrl(string templateUrl, string pageContent, ModuleDependency dep)
     {
-        // Find the actual download URL on the page that matches the asset pattern or executable name
+        // Find the actual download URL on the page that matches the dependency's declared asset
+        // pattern (wrapped in a capture group so Groups[1] is the filename). Fall back to the
+        // historical sqlite-tools pattern for a DirectUrl dep that declares no AssetPattern.
         var platform = OperatingSystem.IsWindows() ? "win" : "linux";
-        var pattern = $@"(sqlite-tools-{platform}-x64-\d+\.zip)";
+        var pattern = dep.AssetPattern is { Length: > 0 } ap
+            ? $"({ap})"
+            : $@"(sqlite-tools-{platform}-x64-\d+\.zip)";
         var match = Regex.Match(pageContent, pattern);
         if (!match.Success) return null;
 

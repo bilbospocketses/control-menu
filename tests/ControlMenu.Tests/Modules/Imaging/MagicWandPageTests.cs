@@ -165,6 +165,44 @@ public class MagicWandPageTests : BunitContext, IDisposable
         Assert.StartsWith("/temp/", downloadHref);
     }
 
+    [Fact]
+    public void Previews_DoNotAccumulate_AndDisposeClearsTempFiles()
+    {
+        var (b64, _) = TinyPng();
+        JSInterop.Setup<FilePickerResult?>("filePickerOpen", _ => true)
+            .SetResult(new FilePickerResult("logo.png", b64));
+        _svc.Setup(s => s.GetInfoAsync(It.IsAny<byte[]>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ImageInfo(16, 16, "PNG", false, 256));
+        JSInterop.Setup<ElementRect?>("getElementRect", _ => true)
+            .SetResult(new ElementRect(16, 16, 16, 16));
+
+        var cut = Render<MagicWand>();
+        cut.Find("button.btn-secondary").Click();
+        cut.WaitForState(() => cut.FindAll("img.wand-image").Count > 0, TimeSpan.FromSeconds(2));
+
+        var tempDir = Path.Combine(_webRoot, "temp");
+
+        // First seed → first live preview.
+        var src0 = cut.Find("img.wand-image").GetAttribute("src");
+        cut.Find("img.wand-image").Click(new MouseEventArgs { OffsetX = 5, OffsetY = 5 });
+        cut.WaitForState(() => cut.Find("img.wand-image").GetAttribute("src") != src0, TimeSpan.FromSeconds(5));
+
+        // Second seed → second preview. The prior preview copy must be replaced, not accumulated.
+        var src1 = cut.Find("img.wand-image").GetAttribute("src");
+        cut.Find("img.wand-image").Click(new MouseEventArgs { OffsetX = 6, OffsetY = 6 });
+        cut.WaitForState(() => cut.Find("img.wand-image").GetAttribute("src") != src1, TimeSpan.FromSeconds(5));
+
+        // Exactly the source web-copy + one preview copy remain (would be 3 if previews accumulated).
+        cut.WaitForAssertion(
+            () => Assert.Equal(2, Directory.GetFiles(tempDir, "*.png").Length),
+            TimeSpan.FromSeconds(5));
+
+        // Disposing the component (what the framework does on navigate-away) deletes its
+        // tracked /temp copies. Dispose is idempotent, so the context's later teardown is a no-op.
+        ((IDisposable)cut.Instance).Dispose();
+        Assert.Empty(Directory.GetFiles(tempDir, "*.png"));
+    }
+
     public new void Dispose()
     {
         try { if (Directory.Exists(_webRoot)) Directory.Delete(_webRoot, recursive: true); } catch { }

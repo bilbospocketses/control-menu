@@ -49,7 +49,7 @@
 
         <div class="dialog-actions">
             <button class="btn btn-secondary" @onclick="OnCancel">Cancel</button>
-            <button class="btn btn-primary" @onclick="OnSave" disabled="@(!IsValid)">
+            <button class="btn btn-primary" @onclick="HandleSave" disabled="@(!IsValid || _saving)">
                 @(IsEdit ? "Save Changes" : "Add Device")
             </button>
         </div>
@@ -75,10 +75,29 @@
     [Parameter]
     public EventCallback OnCancel { get; set; }
 
+    private bool _saving;
+
     private async Task OnPinInput(ChangeEventArgs e)
     {
         Pin = e.Value?.ToString() ?? "";
         await PinChanged.InvokeAsync(Pin);
+    }
+
+    // Guard against double-submit: ignore a re-entrant click while a save is in flight (and
+    // disable the button above for good measure). The parent's save is awaited, so the guard
+    // spans the whole operation.
+    private async Task HandleSave()
+    {
+        if (_saving) return;
+        _saving = true;
+        try
+        {
+            await OnSave.InvokeAsync();
+        }
+        finally
+        {
+            _saving = false;
+        }
     }
 
     private bool IsValid =>

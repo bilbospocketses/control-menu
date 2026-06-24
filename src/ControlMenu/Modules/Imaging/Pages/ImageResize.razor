@@ -4,6 +4,7 @@
 @inject IImageService Svc
 @inject IWebHostEnvironment Env
 @inject IJSRuntime JS
+@implements IDisposable
 
 <PageTitle>Image Resize</PageTitle>
 
@@ -364,13 +365,19 @@
         return ".png";
     }
 
+    // Tracks the current /temp web-copy so a re-convert replaces it (no accumulation) and Dispose
+    // removes it on navigate-away, instead of relying solely on the 5-minute fallback timer.
+    private string? _webCopyPath;
+
     private void PublishWebCopy(byte[] bytes, string ext)
     {
         var safeExt = string.IsNullOrWhiteSpace(ext) ? "png" : ext;
         var tempDir = Path.Combine(Env.WebRootPath, "temp");
         Directory.CreateDirectory(tempDir);
+        DeleteWebCopy();
         var webCopy = Path.Combine(tempDir, $"{Guid.NewGuid():N}.{safeExt}");
         File.WriteAllBytes(webCopy, bytes);
+        _webCopyPath = webCopy;
         _downloadUrl = $"/temp/{Path.GetFileName(webCopy)}";
 
         _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
@@ -378,6 +385,18 @@
             try { if (File.Exists(webCopy)) File.Delete(webCopy); } catch { }
         });
     }
+
+    private void DeleteWebCopy()
+    {
+        if (_webCopyPath is not null)
+        {
+            try { if (File.Exists(_webCopyPath)) File.Delete(_webCopyPath); } catch { }
+            _webCopyPath = null;
+            _downloadUrl = null;
+        }
+    }
+
+    public void Dispose() => DeleteWebCopy();
 
     private record FilePickerResult(string Name, string BytesBase64);
 }

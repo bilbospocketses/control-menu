@@ -10,6 +10,13 @@ namespace ControlMenu.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // NOTE: the migration name is historical/inaccurate. This RENAMES
+            // Cameras.Metadata -> SerialNumber (the column data is preserved, NOT dropped)
+            // and adds the typed device columns below — nothing is removed despite
+            // "RemoveMetadata". Do NOT rename this class/file/Id: EF Core matches migrations
+            // by the immutable Id string in __EFMigrationsHistory, so a rename makes EF treat
+            // this as unapplied and re-run the Up on existing DBs, which then throws (the
+            // Metadata column no longer exists) and breaks startup.
             migrationBuilder.RenameColumn(
                 name: "Metadata",
                 table: "Cameras",
