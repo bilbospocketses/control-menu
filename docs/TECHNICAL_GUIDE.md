@@ -415,7 +415,7 @@ Log levels: `START`, `STEP`, `OK`, `FAIL`, `DONE`
 The logger respects the `app-timezone` setting for timestamp display. It is constructed via `OperationLogger.Create(operation, utcOffset, IDataPathResolver)` and also provides static helpers:
 - `GetRecentLogs(count, paths)` -- Returns the N most recent log entries with status inference (reads last line for DONE/FAIL markers)
 - `GetDefaultLogDirectory(paths)` -- Returns `<dataRoot>/logs/jellyfin/`
-- `GetDefaultBackupDirectory(paths)` -- Returns `<dataRoot>/jellyfin-backups/` (`GetJellyfinBackupsDir()`), creates if missing
+- `GetDefaultBackupDirectory(paths)` -- Returns `<dataRoot>/jellyfin-backups/` (`GetJellyfinBackupsDir()`); pure — the backup-write path creates the directory, not this getter
 
 ### Pages
 
@@ -807,11 +807,11 @@ Cancellation is cooperative: workers poll `Job.CancellationRequested` between ba
 
 ### NetworkDiscoveryService
 
-Resolves device IPs from MAC addresses using the system ARP table.
+Resolves device IPs from MAC addresses using the system ARP table, via an injected `IArpTableProvider` (OS-selected at registration).
 
-- `GetArpTableAsync()` -- Runs `arp -a` and parses output (handles both Windows and Linux formats via source-generated regexes)
+- `GetArpTableAsync()` -- Delegates to `IArpTableProvider`: `WindowsArpTableProvider` reads the ARP cache via the IP Helper API (`iphlpapi!GetIpNetTable` P/Invoke — no shell-out, no locale-fragile parsing); `ShellArpTableProvider` runs `arp -a` and parses both layouts via source-generated regexes (non-Windows / fallback)
 - `ResolveIpFromMacAsync(mac)` -- Looks up a normalized MAC in the ARP table
-- `PingAsync(ip)` -- Single ping with 2-second timeout (platform-aware arguments)
+- `PingAsync(ip)` -- Single reachability check via managed `System.Net.NetworkInformation.Ping` (2-second timeout)
 - `NormalizeMac(mac)` -- Converts to lowercase dashes: `AA:BB:CC:DD:EE:FF` becomes `aa-bb-cc-dd-ee-ff`
 
 ### DeviceService
@@ -1013,9 +1013,9 @@ Shipping builds are packaged with [Velopack](https://github.com/velopack/velopac
 
 Under `<dataRoot>`: `config/controlmenu.db`, `logs/` (+ `logs/jellyfin/`), `keys/` (DataProtection), `dependencies/`, `jellyfin-backups/`.
 
-**Dependency pre-seeding.** The MSI bundles pinned runtime binaries (adb, sqlite3, go2rtc, magick, vtracer, potrace) under `seed/dependencies/`; on launch `SeedHydrator` copies any missing leaf into `<dataRoot>/dependencies/` (idempotent, preserves a user-updated version). CI stages the seed via `scripts/stage-seed.ps1` + `scripts/dependencies/fetch-*.ps1` (auto-discovered) between `dotnet publish` and `vpk pack`. The shared `_Fetcher.ps1` does pinned-URL + SHA-256 download, deterministic extract (`Expand-CmZip` for `.zip`, `Expand-Cm7z` for ImageMagick's `.7z` via a vendored, SHA-pinned `7zr.exe` from `Get-Cm7zr`), and idempotent caching; `fetch-magick.ps1` additionally stages the hardened `magick-policy.xml` next to `magick.exe`.
+**Dependency pre-seeding.** The MSI bundles pinned runtime binaries (adb, sqlite3, go2rtc, magick, vtracer, potrace) under `seed/dependencies/`; on launch `SeedHydrator` copies any missing leaf into `<dataRoot>/dependencies/` (idempotent, preserves a user-updated version). CI stages the seed via `scripts/stage-seed.ps1` + `scripts/dependencies/fetch-*.ps1` (auto-discovered) between `dotnet publish` and `vpk pack`. The shared `_Fetcher.ps1` does pinned-URL + SHA-256 download, deterministic extract (`Expand-CmZip` for `.zip`, `Expand-Cm7z` for ImageMagick's `.7z` via the bundled SharpCompress library through the `tools/Cm7zExtract` build tool — no vendored 7-Zip binary), and idempotent caching; `fetch-magick.ps1` additionally stages the hardened `magick-policy.xml` next to `magick.exe`.
 
-**In-app updates.** Settings → General → "Check for updates" uses `VelopackUpdateService` (`Velopack.UpdateManager` + `GithubSource`) against the GitHub Releases feed. Apply signals the launcher via `Environment.ExitCode = 75` + `StopApplication`; the launcher performs the Velopack swap and relaunches. The tag-triggered release pipeline lives in `.github/workflows/release.yml`.
+**In-app updates.** Settings → General → "Check for updates" uses `VelopackUpdateService` (`Velopack.UpdateManager` + `GithubSource`) against the GitHub Releases feed. Apply signals the launcher via a shared `UpdateApplyState` flag that `Program` returns as exit code 75 from `Main` (+ `StopApplication`); the launcher performs the Velopack swap and relaunches. The tag-triggered release pipeline lives in `.github/workflows/release.yml`.
 
 ### Dependency Path Resolution
 
