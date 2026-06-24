@@ -97,6 +97,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
 
         services.AddSingleton<IScrcpyProbeService, ScrcpyProbeService>();
+        services.AddSingleton<ControlMenu.Services.Update.UpdateApplyState>();
         services.AddSingleton<ControlMenu.Services.Update.IVelopackUpdateService, ControlMenu.Services.Update.VelopackUpdateService>();
 
         // Android Devices module services

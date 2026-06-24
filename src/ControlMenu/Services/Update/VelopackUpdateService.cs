@@ -32,16 +32,18 @@ public sealed class VelopackUpdateService : IVelopackUpdateService
     /// Exit-75 contract: must stay in sync with ControlMenu.Launcher.Supervisor.ChildSupervisor.ExitCodeApplyUpdate.
     /// Cannot import it directly — ControlMenu does not reference ControlMenuLauncher.
     /// </summary>
-    private const int ExitCodeApplyUpdate = 75;
+    public const int ExitCodeApplyUpdate = 75;
 
     private readonly UpdateManager _manager;
     private readonly IHostApplicationLifetime _lifetime;
+    private readonly UpdateApplyState _applyState;
     private readonly ILogger<VelopackUpdateService> _log;
     private UpdateInfo? _pending;
 
-    public VelopackUpdateService(IHostApplicationLifetime lifetime, ILogger<VelopackUpdateService> log)
+    public VelopackUpdateService(IHostApplicationLifetime lifetime, UpdateApplyState applyState, ILogger<VelopackUpdateService> log)
     {
         _lifetime = lifetime;
+        _applyState = applyState;
         _log = log;
         // Pin the update channel to "stable" — the channel release.yml packs non-prerelease tags
         // into (`vpk pack --channel stable`; -beta/-alpha tags go to the "beta" channel). Without an
@@ -95,7 +97,7 @@ public sealed class VelopackUpdateService : IVelopackUpdateService
             throw new InvalidOperationException("No downloaded update to apply");
 
         _log.LogInformation("Requesting Velopack apply via exit-{ExitCode}", ExitCodeApplyUpdate);
-        Environment.ExitCode = ExitCodeApplyUpdate;
+        _applyState.ApplyRequested = true; // Program returns ExitCodeApplyUpdate after RunAsync
         _lifetime.StopApplication();
     }
 }
