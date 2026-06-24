@@ -53,6 +53,7 @@ public class NetworkDiscoveryServiceTests
     [Fact]
     public async Task PingAsync_Loopback_ReturnsTrue()
     {
+        if (!OperatingSystem.IsWindows()) return; // real ICMP; loopback may be blocked on a locked-down CI
         var svc = new NetworkDiscoveryService(Mock.Of<IArpTableProvider>());
         Assert.True(await svc.PingAsync("127.0.0.1"));
     }
@@ -60,6 +61,7 @@ public class NetworkDiscoveryServiceTests
     [Fact]
     public async Task PingAsync_UnroutableAddress_ReturnsFalse()
     {
+        if (!OperatingSystem.IsWindows()) return; // real ICMP; gate to the app's supported platform
         // 192.0.2.1 is RFC 5737 TEST-NET-1 — guaranteed never to respond, so the ping times out.
         var svc = new NetworkDiscoveryService(Mock.Of<IArpTableProvider>());
         Assert.False(await svc.PingAsync("192.0.2.1"));

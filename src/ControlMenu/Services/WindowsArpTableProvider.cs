@@ -17,34 +17,52 @@ public sealed class WindowsArpTableProvider : IArpTableProvider
     [SupportedOSPlatform("windows")]
     internal static IReadOnlyList<ArpEntry> Read()
     {
+        const uint ERROR_INSUFFICIENT_BUFFER = 122;
+
         int size = 0;
-        GetIpNetTable(IntPtr.Zero, ref size, false); // first call sizes the buffer
+        GetIpNetTable(IntPtr.Zero, ref size, false); // sizes the buffer (ERROR_NO_DATA leaves size 0)
         if (size == 0) return [];
 
-        IntPtr buffer = Marshal.AllocHGlobal(size);
-        try
+        // Two-call pattern with a few retries: the ARP table can grow between the sizing call and
+        // the fetch, in which case the fetch returns ERROR_INSUFFICIENT_BUFFER and bumps `size`.
+        // Without the retry a busy host would intermittently report an empty table.
+        for (int attempt = 0; attempt < 5; attempt++)
         {
-            if (GetIpNetTable(buffer, ref size, false) != 0) return []; // NO_ERROR == 0
-
-            int count = Marshal.ReadInt32(buffer);
-            if (count <= 0) return [];
-
-            var rows = new List<(uint Addr, byte[] Mac6, int PhysLen, int Type)>(count);
-            int rowSize = Marshal.SizeOf<MIB_IPNETROW>();
-            IntPtr rowPtr = buffer + sizeof(int); // the table[] follows the dwNumEntries DWORD
-            for (int i = 0; i < count; i++)
+            IntPtr buffer = Marshal.AllocHGlobal(size);
+            try
             {
-                var row = Marshal.PtrToStructure<MIB_IPNETROW>(rowPtr);
-                var mac6 = new[] { row.Mac0, row.Mac1, row.Mac2, row.Mac3, row.Mac4, row.Mac5 };
-                rows.Add((unchecked((uint)row.dwAddr), mac6, row.dwPhysAddrLen, row.dwType));
-                rowPtr += rowSize;
+                uint rc = GetIpNetTable(buffer, ref size, false);
+                if (rc == 0) return ParseTable(buffer);         // NO_ERROR
+                if (rc != ERROR_INSUFFICIENT_BUFFER) return [];  // genuine failure or empty table
+                // else: `size` now holds the larger required size — realloc and retry.
             }
-            return MapRows(rows);
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
         }
-        finally
+        return [];
+    }
+
+    private static IReadOnlyList<ArpEntry> ParseTable(IntPtr buffer)
+    {
+        int count = Marshal.ReadInt32(buffer);
+        if (count <= 0) return [];
+
+        var rows = new List<(uint Addr, byte[] Mac6, int PhysLen, int Type)>(count);
+        // MIB_IPNETROW is 4-byte-granular (DWORDs + an 8-byte array), so Marshal.SizeOf already
+        // equals the padded stride and table[0] sits at offset 4 — no inter-row padding to account
+        // for. (Reordering or trimming the trailing Mac6/Mac7 bytes would break that assumption.)
+        int rowSize = Marshal.SizeOf<MIB_IPNETROW>();
+        IntPtr rowPtr = buffer + sizeof(int); // the table[] follows the dwNumEntries DWORD
+        for (int i = 0; i < count; i++)
         {
-            Marshal.FreeHGlobal(buffer);
+            var row = Marshal.PtrToStructure<MIB_IPNETROW>(rowPtr);
+            var mac6 = new[] { row.Mac0, row.Mac1, row.Mac2, row.Mac3, row.Mac4, row.Mac5 };
+            rows.Add((unchecked((uint)row.dwAddr), mac6, row.dwPhysAddrLen, row.dwType));
+            rowPtr += rowSize;
         }
+        return MapRows(rows);
     }
 
     /// <summary>
