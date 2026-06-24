@@ -56,12 +56,11 @@ public class OperationLogger : IDisposable
     public static string GetDefaultLogDirectory(ControlMenu.Common.Paths.IDataPathResolver paths) =>
         Path.Combine(paths.GetLogsDir(), "jellyfin");
 
-    public static string GetDefaultBackupDirectory(ControlMenu.Common.Paths.IDataPathResolver paths)
-    {
-        var dir = paths.GetJellyfinBackupsDir();
-        Directory.CreateDirectory(dir);
-        return dir;
-    }
+    // Pure: returns the path only. Callers that WRITE backups create the directory
+    // (JellyfinService.BackupDatabaseAsync already does), so a getter shouldn't have a
+    // filesystem side effect — mirrors GetDefaultLogDirectory above.
+    public static string GetDefaultBackupDirectory(ControlMenu.Common.Paths.IDataPathResolver paths) =>
+        paths.GetJellyfinBackupsDir();
 
     public static IReadOnlyList<OperationLogEntry> GetRecentLogs(int count, ControlMenu.Common.Paths.IDataPathResolver paths)
     {

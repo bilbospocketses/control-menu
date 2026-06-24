@@ -459,7 +459,8 @@ public class Go2RtcService : IHostedService, IDisposable, IGo2RtcService
     /// let StartAsync respawn one fresh instance.</summary>
     private void KillAllOrphans()
     {
-        var exeName = OperatingSystem.IsWindows() ? "go2rtc" : "go2rtc";
+        // Process.GetProcessesByName expects the bare process name (no ".exe") on every OS.
+        var exeName = "go2rtc";
         var killed = 0;
         foreach (var proc in Process.GetProcessesByName(exeName))
         {

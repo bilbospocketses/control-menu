@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+using System.Globalization;
 
 namespace ControlMenu.Services.Network;
 
@@ -67,7 +67,7 @@ public static class SubnetParser
 
         string endIp;
         if (IsValidIp(endStr)) endIp = endStr;
-        else if (Regex.IsMatch(endStr, @"^\d{1,3}$"))
+        else if (byte.TryParse(endStr, NumberStyles.None, CultureInfo.InvariantCulture, out _))
         {
             var sp = startStr.Split('.');
             endIp = $"{sp[0]}.{sp[1]}.{sp[2]}.{endStr}";
@@ -109,8 +109,9 @@ public static class SubnetParser
         if (parts.Length != 4) return false;
         foreach (var p in parts)
         {
-            if (!Regex.IsMatch(p, @"^\d{1,3}$")) return false;
-            if (!int.TryParse(p, out var n) || n < 0 || n > 255) return false;
+            // byte.TryParse with NumberStyles.None rejects signs, whitespace, and values
+            // over 255 in one step — replacing the old "1–3 digits AND 0–255" regex+int pair.
+            if (!byte.TryParse(p, NumberStyles.None, CultureInfo.InvariantCulture, out _)) return false;
         }
         return true;
     }

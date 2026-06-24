@@ -310,7 +310,9 @@
             if (savedDevice is not null && !string.IsNullOrEmpty(_formPin))
                 await Config.SetSecretAsync($"device-pin-{savedDevice.Id}", _formPin);
             else if (savedDevice is not null && string.IsNullOrEmpty(_formPin))
-                await Config.SetSettingAsync($"device-pin-{savedDevice.Id}", "");
+                // Clearing the PIN: delete the secret row, not write an empty plaintext setting
+                // (which would leave a stale, non-secret empty row behind).
+                await Config.DeleteSettingAsync($"device-pin-{savedDevice.Id}");
 
             // A newly added device claims its MAC from the discovery panel —
             // drop the matching row so the user doesn't see the same device

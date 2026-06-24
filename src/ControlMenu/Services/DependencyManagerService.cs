@@ -612,11 +612,15 @@ public class DependencyManagerService : IDependencyManagerService
         }
     }
 
-    private static string? BuildVersionedDownloadUrl(string templateUrl, string pageContent, ModuleDependency dep)
+    internal static string? BuildVersionedDownloadUrl(string templateUrl, string pageContent, ModuleDependency dep)
     {
-        // Find the actual download URL on the page that matches the asset pattern or executable name
+        // Find the actual download URL on the page that matches the dependency's declared asset
+        // pattern (wrapped in a capture group so Groups[1] is the filename). Fall back to the
+        // historical sqlite-tools pattern for a DirectUrl dep that declares no AssetPattern.
         var platform = OperatingSystem.IsWindows() ? "win" : "linux";
-        var pattern = $@"(sqlite-tools-{platform}-x64-\d+\.zip)";
+        var pattern = dep.AssetPattern is { Length: > 0 } ap
+            ? $"({ap})"
+            : $@"(sqlite-tools-{platform}-x64-\d+\.zip)";
         var match = Regex.Match(pageContent, pattern);
         if (!match.Success) return null;
 
