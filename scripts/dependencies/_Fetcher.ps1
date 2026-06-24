@@ -21,6 +21,22 @@ function Get-CmRepoRoot {
     return (Resolve-Path (Join-Path $here '..\..\')).Path.TrimEnd('\')
 }
 
+function Get-CmDotnet {
+    # Resolve the dotnet used to run the Cm7zExtract build tool. Prefer the vendored SDK that
+    # local-pack.ps1 bootstraps (scripts/dependencies/dotnet/<version>/dotnet.exe) so build-time
+    # tooling uses the same supply-chain-disciplined toolchain when present; fall back to a PATH
+    # `dotnet` (which release.yml provides via setup-dotnet). A net10 SDK is required either way.
+    $vendoredRoot = Join-Path (Get-CmRepoRoot) 'scripts\dependencies\dotnet'
+    if (Test-Path $vendoredRoot) {
+        $exe = Get-ChildItem -Path $vendoredRoot -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName 'dotnet.exe' } |
+            Where-Object { Test-Path $_ } |
+            Select-Object -First 1
+        if ($exe) { return $exe }
+    }
+    return 'dotnet'
+}
+
 function Get-CmCacheDir {
     param([Parameter(Mandatory)][string] $Name,
           [Parameter(Mandatory)][string] $Version)
@@ -97,8 +113,9 @@ function Expand-Cm7z {
     if (Test-Path $DestDir) { Remove-Item -LiteralPath $DestDir -Recurse -Force }
     New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
     $tool = Join-Path (Get-CmRepoRoot) 'tools\Cm7zExtract\Cm7zExtract.csproj'
-    Write-Host "  extracting : $Archive -> $DestDir (SharpCompress)"
-    dotnet run --project $tool -c Release --verbosity quiet -- $Archive $DestDir
+    $dotnet = Get-CmDotnet
+    Write-Host "  extracting : $Archive -> $DestDir (SharpCompress via $dotnet)"
+    & $dotnet run --project $tool -c Release --verbosity quiet -- $Archive $DestDir
     if ($LASTEXITCODE -ne 0) { throw "SharpCompress .7z extraction failed (exit $LASTEXITCODE): $Archive" }
 }
 
