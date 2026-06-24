@@ -19,13 +19,19 @@ window.controlMenu.layoutHomeTiles = function () {
         return;
     }
     var cards = grid.querySelectorAll('.module-card');
+    // Pass 1: read all content heights first. scrollHeight forces a synchronous
+    // layout, and setProperty invalidates it, so interleaving read/write per card
+    // thrashes layout once per card; batching the reads keeps it to one reflow.
+    // scrollHeight is the full content height even when overflow clips the card
+    // to a shorter cell, so it is independent of the current span.
+    var spans = new Array(cards.length);
     for (var i = 0; i < cards.length; i++) {
-        var card = cards[i];
-        // scrollHeight is the full content height even when overflow clips the
-        // card to a shorter cell, so it is independent of the current span.
-        var content = card.scrollHeight;
-        var span = Math.max(1, Math.ceil((content + gap) / (unit + gap)));
-        card.style.setProperty('--cm-tile-span', String(span));
+        var content = cards[i].scrollHeight;
+        spans[i] = Math.max(1, Math.ceil((content + gap) / (unit + gap)));
+    }
+    // Pass 2: write all spans.
+    for (var j = 0; j < cards.length; j++) {
+        cards[j].style.setProperty('--cm-tile-span', String(spans[j]));
     }
 };
 

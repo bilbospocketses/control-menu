@@ -1,7 +1,7 @@
 .scrcpy-settings-dialog {
-    background: var(--bs-body-bg, #1a1a2e);
-    color: var(--bs-body-color, #e0e0e0);
-    border: 1px solid var(--bs-border-color, #333);
+    background: var(--card-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     padding: 0;
     min-width: 500px;
@@ -17,7 +17,7 @@
     justify-content: space-between;
     align-items: center;
     padding: 12px 16px;
-    border-bottom: 1px solid var(--bs-border-color, #333);
+    border-bottom: 1px solid var(--border-color);
 }
 
 .modal-title {
@@ -28,7 +28,7 @@
 .modal-close {
     background: none;
     border: none;
-    color: var(--bs-body-color, #e0e0e0);
+    color: var(--text-primary);
     font-size: 1.4rem;
     cursor: pointer;
     padding: 0 4px;
@@ -45,15 +45,15 @@
 
 .label {
     font-size: 13px;
-    color: #aaa;
+    color: var(--text-muted);
     text-align: right;
     padding-right: 8px;
 }
 
 .input {
-    background: var(--bs-tertiary-bg, #1a1a2e);
-    color: var(--bs-body-color, #e0e0e0);
-    border: 1px solid var(--bs-border-color, #444);
+    background: var(--input-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--input-border);
     border-radius: 6px;
     padding: 4px 8px;
     font-size: 13px;
@@ -71,14 +71,14 @@
 }
 
 input[type="range"] {
-    accent-color: #5b9aff;
+    accent-color: var(--accent-color);
     padding: 0;
     border: none;
     background: transparent;
 }
 
 .status-probing {
-    color: #f06c75;
+    color: var(--danger-color);
     font-size: 13px;
 }
 
@@ -88,14 +88,14 @@ input[type="range"] {
     align-items: center;
     gap: 8px;
     padding: 12px 16px;
-    border-top: 1px solid var(--bs-border-color, #333);
+    border-top: 1px solid var(--border-color);
 }
 
 .notification-chip {
     font-size: 12px;
-    color: #4ade80;
+    color: var(--success-color);
     padding: 2px 10px;
-    border: 1px solid #4ade80;
+    border: 1px solid var(--success-color);
     border-radius: 12px;
 }
 
@@ -107,8 +107,8 @@ input[type="range"] {
 
 .btn-modal {
     background: transparent;
-    color: var(--bs-body-color, #e0e0e0);
-    border: 1px solid var(--bs-border-color, #444);
+    color: var(--text-primary);
+    border: 1px solid var(--input-border);
     border-radius: 6px;
     padding: 6px 16px;
     font-size: 13px;
@@ -116,14 +116,14 @@ input[type="range"] {
 }
 
 .btn-modal:hover {
-    background: var(--bs-tertiary-bg, #2a2a3a);
+    background: var(--hover-bg);
 }
 
 .btn-connect {
-    color: #5b9aff;
-    border-color: #5b9aff;
+    color: var(--accent-color);
+    border-color: var(--accent-color);
 }
 
 .btn-connect:hover {
-    background: rgba(91, 154, 255, 0.1);
+    background: var(--active-bg);
 }
