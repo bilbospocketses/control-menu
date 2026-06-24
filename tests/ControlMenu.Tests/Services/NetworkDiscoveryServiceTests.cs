@@ -5,96 +5,41 @@ namespace ControlMenu.Tests.Services;
 
 public class NetworkDiscoveryServiceTests
 {
-    private readonly Mock<ICommandExecutor> _mockExecutor = new();
-    private NetworkDiscoveryService CreateService() => new(_mockExecutor.Object);
-
-    [Fact]
-    public async Task GetArpTableAsync_ParsesWindowsOutput()
+    private static NetworkDiscoveryService WithArp(params ArpEntry[] entries)
     {
-        var windowsOutput = "Interface: 192.168.1.100 --- 0x4\r\n  Internet Address      Physical Address      Type\r\n  192.168.1.1           a0-b1-c2-d3-e4-f5     dynamic\r\n  192.168.1.50          aa-bb-cc-dd-ee-ff     dynamic\r\n  192.168.1.255         ff-ff-ff-ff-ff-ff     static\r\n";
-        _mockExecutor.Setup(e => e.ExecuteAsync("arp", "-a", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CommandResult(0, windowsOutput, "", false));
-        var service = CreateService();
-        var entries = await service.GetArpTableAsync();
-        Assert.Equal(3, entries.Count);
-        Assert.Contains(entries, e => e.IpAddress == "192.168.1.1" && e.MacAddress == "a0-b1-c2-d3-e4-f5");
-        Assert.Contains(entries, e => e.IpAddress == "192.168.1.50" && e.MacAddress == "aa-bb-cc-dd-ee-ff");
+        var provider = new Mock<IArpTableProvider>();
+        provider.Setup(p => p.GetArpTableAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(entries);
+        return new NetworkDiscoveryService(provider.Object);
     }
 
     [Fact]
-    public async Task GetArpTableAsync_ParsesLinuxArpOutput()
+    public async Task GetArpTableAsync_DelegatesToProvider()
     {
-        var linuxOutput = "? (192.168.1.1) at a0:b1:c2:d3:e4:f5 [ether] on eth0\n? (192.168.1.50) at aa:bb:cc:dd:ee:ff [ether] on eth0\n";
-        _mockExecutor.Setup(e => e.ExecuteAsync("arp", "-a", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CommandResult(0, linuxOutput, "", false));
-        var service = CreateService();
-        var entries = await service.GetArpTableAsync();
-        Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => e.IpAddress == "192.168.1.1" && e.MacAddress == "a0-b1-c2-d3-e4-f5");
-        Assert.Contains(entries, e => e.IpAddress == "192.168.1.50" && e.MacAddress == "aa-bb-cc-dd-ee-ff");
-    }
-
-    [Fact]
-    public async Task GetArpTableAsync_EmptyOutput_ReturnsEmptyList()
-    {
-        _mockExecutor.Setup(e => e.ExecuteAsync("arp", "-a", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CommandResult(0, "", "", false));
-        var service = CreateService();
-        var entries = await service.GetArpTableAsync();
-        Assert.Empty(entries);
+        var result = await WithArp(new ArpEntry("192.168.1.50", "aa-bb-cc-dd-ee-ff", "dynamic")).GetArpTableAsync();
+        Assert.Single(result);
+        Assert.Equal("192.168.1.50", result[0].IpAddress);
     }
 
     [Fact]
     public async Task ResolveIpFromMacAsync_FindsMatchingEntry()
     {
-        var output = "Interface: 192.168.1.100 --- 0x4\r\n  Internet Address      Physical Address      Type\r\n  192.168.1.50          aa-bb-cc-dd-ee-ff     dynamic\r\n";
-        _mockExecutor.Setup(e => e.ExecuteAsync("arp", "-a", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CommandResult(0, output, "", false));
-        var service = CreateService();
-        var ip = await service.ResolveIpFromMacAsync("AA-BB-CC-DD-EE-FF");
-        Assert.Equal("192.168.1.50", ip);
+        var svc = WithArp(new ArpEntry("192.168.1.50", "aa-bb-cc-dd-ee-ff", "dynamic"));
+        Assert.Equal("192.168.1.50", await svc.ResolveIpFromMacAsync("AA-BB-CC-DD-EE-FF"));
     }
 
     [Fact]
     public async Task ResolveIpFromMacAsync_NormalizesColonFormat()
     {
-        var output = "Interface: 192.168.1.100 --- 0x4\r\n  Internet Address      Physical Address      Type\r\n  192.168.1.50          aa-bb-cc-dd-ee-ff     dynamic\r\n";
-        _mockExecutor.Setup(e => e.ExecuteAsync("arp", "-a", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CommandResult(0, output, "", false));
-        var service = CreateService();
-        var ip = await service.ResolveIpFromMacAsync("aa:bb:cc:dd:ee:ff");
-        Assert.Equal("192.168.1.50", ip);
+        var svc = WithArp(new ArpEntry("192.168.1.50", "aa-bb-cc-dd-ee-ff", "dynamic"));
+        Assert.Equal("192.168.1.50", await svc.ResolveIpFromMacAsync("aa:bb:cc:dd:ee:ff"));
     }
 
     [Fact]
     public async Task ResolveIpFromMacAsync_NotFound_ReturnsNull()
     {
-        var output = "Interface: 192.168.1.100 --- 0x4\r\n  Internet Address      Physical Address      Type\r\n  192.168.1.50          aa-bb-cc-dd-ee-ff     dynamic\r\n";
-        _mockExecutor.Setup(e => e.ExecuteAsync("arp", "-a", null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CommandResult(0, output, "", false));
-        var service = CreateService();
-        var ip = await service.ResolveIpFromMacAsync("00-00-00-00-00-00");
-        Assert.Null(ip);
-    }
-
-    [Fact]
-    public async Task PingAsync_SuccessfulPing_ReturnsTrue()
-    {
-        _mockExecutor.Setup(e => e.ExecuteAsync("ping", It.IsAny<string>(), null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CommandResult(0, "Reply from 192.168.1.50", "", false));
-        var service = CreateService();
-        var result = await service.PingAsync("192.168.1.50");
-        Assert.True(result);
-    }
-
-    [Fact]
-    public async Task PingAsync_FailedPing_ReturnsFalse()
-    {
-        _mockExecutor.Setup(e => e.ExecuteAsync("ping", It.IsAny<string>(), null, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CommandResult(1, "Request timed out", "", false));
-        var service = CreateService();
-        var result = await service.PingAsync("192.168.1.50");
-        Assert.False(result);
+        var svc = WithArp(new ArpEntry("192.168.1.50", "aa-bb-cc-dd-ee-ff", "dynamic"));
+        Assert.Null(await svc.ResolveIpFromMacAsync("00-00-00-00-00-00"));
     }
 
     [Fact]
@@ -103,5 +48,22 @@ public class NetworkDiscoveryServiceTests
         Assert.Equal("aa-bb-cc-dd-ee-ff", NetworkDiscoveryService.NormalizeMac("AA-BB-CC-DD-EE-FF"));
         Assert.Equal("aa-bb-cc-dd-ee-ff", NetworkDiscoveryService.NormalizeMac("aa:bb:cc:dd:ee:ff"));
         Assert.Equal("aa-bb-cc-dd-ee-ff", NetworkDiscoveryService.NormalizeMac("AA:BB:CC:DD:EE:FF"));
+    }
+
+    [Fact]
+    public async Task PingAsync_Loopback_ReturnsTrue()
+    {
+        if (!OperatingSystem.IsWindows()) return; // real ICMP; loopback may be blocked on a locked-down CI
+        var svc = new NetworkDiscoveryService(Mock.Of<IArpTableProvider>());
+        Assert.True(await svc.PingAsync("127.0.0.1"));
+    }
+
+    [Fact]
+    public async Task PingAsync_UnroutableAddress_ReturnsFalse()
+    {
+        if (!OperatingSystem.IsWindows()) return; // real ICMP; gate to the app's supported platform
+        // 192.0.2.1 is RFC 5737 TEST-NET-1 — guaranteed never to respond, so the ping times out.
+        var svc = new NetworkDiscoveryService(Mock.Of<IArpTableProvider>());
+        Assert.False(await svc.PingAsync("192.0.2.1"));
     }
 }

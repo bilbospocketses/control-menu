@@ -89,6 +89,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDeviceService, DeviceService>();
         services.AddScoped<IDeviceTypeCache, DeviceTypeCache>();
         services.AddScoped<IEmailService, EmailService>();
+        // ARP table source: managed IP Helper (GetIpNetTable) on Windows, `arp -a` shell on Linux.
+        if (OperatingSystem.IsWindows())
+            services.AddSingleton<IArpTableProvider, WindowsArpTableProvider>();
+        else
+            services.AddSingleton<IArpTableProvider, ShellArpTableProvider>();
         services.AddSingleton<INetworkDiscoveryService, NetworkDiscoveryService>();
 
         services.AddSingleton<IScrcpyProbeService, ScrcpyProbeService>();
