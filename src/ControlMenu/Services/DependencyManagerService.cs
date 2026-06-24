@@ -612,6 +612,13 @@ public class DependencyManagerService : IDependencyManagerService
         }
     }
 
+    /// <remarks>
+    /// Targets a sqlite.org-style download index: <paramref name="dep"/>'s <c>AssetPattern</c> (or the
+    /// historical sqlite-tools fallback) locates the versioned filename on the page, and the URL is
+    /// rebuilt from sqlite.org's year-directory scheme. <c>AssetPattern</c> generalises only the
+    /// filename match — the host/scheme stays sqlite-specific, so today this is reached only by the
+    /// sqlite3 DirectUrl dependency. A future non-sqlite DirectUrl dep would also need host handling.
+    /// </remarks>
     internal static string? BuildVersionedDownloadUrl(string templateUrl, string pageContent, ModuleDependency dep)
     {
         // Find the actual download URL on the page that matches the dependency's declared asset
