@@ -18,7 +18,7 @@
 
   <ItemGroup>
     <!-- Keep this version in sync with src/ControlMenu/ControlMenu.csproj's SharpCompress reference. -->
-    <PackageReference Include="SharpCompress" Version="0.50.0" />
+    <PackageReference Include="SharpCompress" />
   </ItemGroup>
 
 </Project>
