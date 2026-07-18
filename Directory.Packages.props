@@ -1,0 +1,39 @@
+<Project>
+
+  <!--
+    Central Package Management (CPM). Every NuGet version for the solution is
+    declared ONCE here; the eight project files carry versionless
+    <PackageReference>s. This makes it impossible for projects to pin the same
+    package at different versions. That drift previously had coverlet.collector
+    at 6.0.2 in one test project and 10.0.1 in others, and Microsoft.NET.Test.Sdk
+    split across 18.5.1 / 18.8.1. Dependabot now updates the single
+    <PackageVersion> below and every project moves together.
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- EF Core Design/Sqlite intentionally track the latest 10.x (10.*), as in the
+         original project files; CPM needs this opt-in to permit floating versions. -->
+    <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="bunit" Version="2.7.2" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
+    <PackageVersion Include="MailKit" Version="4.17.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.*" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.*" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageVersion Include="Moq" Version="4.20.72" />
+    <PackageVersion Include="Serilog.AspNetCore" Version="9.0.0" />
+    <PackageVersion Include="Serilog.Sinks.File" Version="6.0.0" />
+    <PackageVersion Include="SharpCompress" Version="0.50.0" />
+    <PackageVersion Include="SkiaSharp" Version="4.150.1" />
+    <PackageVersion Include="Svg.Skia" Version="5.1.1" />
+    <PackageVersion Include="Velopack" Version="1.2.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="Xunit.SkippableFact" Version="1.5.61" />
+  </ItemGroup>
+
+</Project>
