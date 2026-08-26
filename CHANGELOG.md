@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **ImageMagick and vtracer can be installed and updated from the Dependencies page again.** Asset matching required a release asset's filename to contain a platform token (`win64` on 64-bit Windows) *in addition to* matching the dependency's declared asset pattern. Neither tool names its platform that way — ImageMagick publishes `…-portable-Q8-x64.7z` and vtracer publishes `…-x86_64-pc-windows-msvc.zip` — so both were rejected even though their patterns matched exactly, no download URL was ever resolved, and the two sat permanently at "update available" with a blank installed version. The platform token is now only applied to dependencies that declare no asset pattern, where matching falls back to the bare executable name and a wrong-OS asset could otherwise be picked. Installed builds were unaffected (the MSI seeds these binaries); this only ever bit in-app updates and fresh dev installs.
+
 ## [1.3.0] - 2026-08-26
 
 ### Changed
