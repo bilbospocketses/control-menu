@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-08-26
+
 ### Fixed
 
 - **vtracer and potrace now report their installed version correctly.** vtracer's `--version` banner changed upstream — 0.6.4 printed `visioncortex VTracer 0.6.4`, while 1.0.0-alpha.3 prints `vtracer 1.0.0-alpha.3` (lowercase, no prefix, and a prerelease suffix) — so the version pattern stopped matching and vtracer showed a blank installed version and a permanent "update available" even once installed. The pattern now matches both banner styles and captures the full version including a `-alpha.N` suffix, which matters because the parsed value is compared against the release tag. potrace's pattern was separately swallowing the sentence period that ends its banner, recording `1.16.` instead of `1.16`.
@@ -375,7 +377,8 @@ First official release.
 - **`fix(theme)` TopBar theme toggle** stays in sync when theme changes via the iframe bridge.
 - **`fix(theme)` Blazor subscriber pattern** — switched from returning a JS unsubscribe closure (broke the Blazor circuit) to a numeric-token handle pattern.
 
-[Unreleased]: https://github.com/bilbospocketses/control-menu/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/bilbospocketses/control-menu/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/bilbospocketses/control-menu/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/bilbospocketses/control-menu/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/bilbospocketses/control-menu/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/bilbospocketses/control-menu/compare/v1.1.0...v1.1.1
