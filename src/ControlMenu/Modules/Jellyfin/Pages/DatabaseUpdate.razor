@@ -130,7 +130,7 @@ else
             new("Stopping Docker container..."),
             new("Creating database backup..."),
             new("Running SQL update..."),
-            new("Starting Docker container..."),
+            new("Starting container, waiting for Jellyfin..."),
             new("Cleaning up old backups..."),
             new("Complete")
         ];
@@ -203,7 +203,7 @@ else
             if (!started)
             {
                 _steps[3].Status = StepStatus.Failed;
-                _steps[3].Detail = "Failed to start container.";
+                _steps[3].Detail = "docker start failed — the container did not start.";
                 logger.Fail("Failed to start container");
                 StateHasChanged();
             }
@@ -214,9 +214,11 @@ else
                 StateHasChanged();
                 var ready = await JellyfinService.WaitForContainerReadyAsync(containerId);
                 _steps[3].Status = ready ? StepStatus.Completed : StepStatus.Failed;
-                _steps[3].Detail = ready ? "Jellyfin is online." : "Container started but Jellyfin did not report ready within 60s.";
+                _steps[3].Detail = ready
+                    ? "Jellyfin is online."
+                    : "Container started, but Jellyfin did not report ready within 120s. The database update itself completed — check the container directly.";
                 if (ready) logger.Ok("Jellyfin startup complete");
-                else logger.Fail("Jellyfin did not report 'Startup complete' within 60s");
+                else logger.Fail("Container started, but Jellyfin did not report ready within 120s");
                 StateHasChanged();
             }
 
