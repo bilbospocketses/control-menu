@@ -648,6 +648,15 @@ public class DependencyManagerService : IDependencyManagerService
         using var doc = await FetchGitHubReleaseAsync(moduleDep.GitHubRepo!);
 
         var basePattern = moduleDep.AssetPattern ?? moduleDep.ExecutableName;
+
+        // An explicit AssetPattern already pins the platform -- ImageMagick encodes it as
+        // "-Q8-x64", vtracer as "x86_64-pc-windows-msvc" -- so the platform-token check must not
+        // second-guess it. It used to apply unconditionally, and since neither name contains
+        // "win64" it vetoed both assets: their patterns matched, no asset resolved, and the two
+        // imaging tools could never be installed or updated in-app. The token remains the
+        // heuristic for dependencies that declare no pattern and fall back to matching on the bare
+        // executable name, where an asset for the wrong OS could otherwise be selected.
+        var requirePlatformToken = string.IsNullOrEmpty(moduleDep.AssetPattern);
         var platformToken = GetPlatformToken();
 
         var matches = new List<AssetMatch>();
@@ -660,7 +669,8 @@ public class DependencyManagerService : IDependencyManagerService
                 var size = asset.GetProperty("size").GetInt64();
                 if (name is null || url is null) continue;
 
-                if (Regex.IsMatch(name, basePattern) && name.Contains(platformToken))
+                if (Regex.IsMatch(name, basePattern)
+                    && (!requirePlatformToken || name.Contains(platformToken)))
                 {
                     matches.Add(new AssetMatch(name, url, size, AutoSelected: true));
                 }

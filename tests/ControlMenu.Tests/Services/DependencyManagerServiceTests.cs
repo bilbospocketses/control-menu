@@ -597,6 +597,106 @@ public class DependencyManagerServiceTests : IDisposable
         Assert.True(handler.MaxObserved <= DependencyManagerService.MaxConcurrentChecks,
             $"in-flight concurrency {handler.MaxObserved} exceeded the bound {DependencyManagerService.MaxConcurrentChecks}");
     }
+
+    // ---------------------------------------------------------------------
+    // GitHub asset resolution -- platform-token veto regression
+    // ---------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("vtracer", @"vtracer-x86_64-pc-windows-msvc\.zip", "vtracer-x86_64-pc-windows-msvc.zip")]
+    [InlineData("magick", @"ImageMagick-[\d.]+-\d+-portable-Q8-x64\.7z", "ImageMagick-7.1.2-30-portable-Q8-x64.7z")]
+    public async Task ResolveDownloadAssetAsync_ExplicitAssetPattern_MatchesRegardlessOfPlatformToken(
+        string name, string assetPattern, string assetName)
+    {
+        // Regression: asset matching required BOTH the declared AssetPattern AND the asset name to
+        // contain a platform token ("win64" on Windows x64). Real assets do not name the platform
+        // that way -- ImageMagick uses "-Q8-x64", vtracer uses "x86_64-pc-windows-msvc" -- so both
+        // were vetoed despite their patterns matching exactly, and neither could be installed or
+        // updated in-app. Version checks still succeeded (they read tag_name, not assets), so the
+        // symptom was a dependency stuck at "update available" with a blank installed version.
+        // Packaged builds masked it -- the MSI seeds these binaries -- so only dev installs and
+        // in-app updates ever reached the resolver.
+        var (installDir, _) = MakeLocalInstall(name + "-install", name);
+        var module = new FakeModule("imaging", "Imaging",
+        [
+            new ModuleDependency
+            {
+                Name = name,
+                ExecutableName = name,
+                VersionCommand = name + " --version",
+                VersionPattern = @"([\d.]+)",
+                SourceType = UpdateSourceType.GitHub,
+                GitHubRepo = "example/" + name,
+                AssetPattern = assetPattern,
+                InstallPath = installDir
+            }
+        ]);
+
+        var depId = Guid.NewGuid();
+        using var setupDb = _dbFactory.CreateDbContext();
+        setupDb.Dependencies.Add(new Dependency
+        {
+            Id = depId,
+            ModuleId = "imaging",
+            Name = name,
+            SourceType = UpdateSourceType.GitHub,
+            Status = DependencyStatus.UpdateAvailable
+        });
+        await setupDb.SaveChangesAsync();
+
+        var json = "{\"tag_name\":\"v1.0.0\",\"assets\":[{\"name\":\"" + assetName +
+                   "\",\"browser_download_url\":\"https://example.com/" + assetName + "\",\"size\":4242}]}";
+        _mockHttpFactory.Setup(f => f.CreateClient("github-api")).Returns(new HttpClient(new MockHttpHandler(json)));
+
+        var asset = await CreateService(module).ResolveDownloadAssetAsync(depId);
+
+        Assert.NotNull(asset);
+        Assert.Equal(assetName, asset!.FileName);
+        Assert.Equal(4242, asset.SizeBytes);
+    }
+
+    [Fact]
+    public async Task ResolveDownloadAssetAsync_NoAssetPattern_StillFiltersByPlatformToken()
+    {
+        // The platform-token filter is the heuristic for dependencies that declare no AssetPattern
+        // and fall back to matching on the bare executable name. That fallback must keep filtering,
+        // otherwise a Linux asset could be selected on Windows.
+        var (installDir, _) = MakeLocalInstall("tool-b-install", "tool-b");
+        var module = new FakeModule("test-module", "Test",
+        [
+            new ModuleDependency
+            {
+                Name = "tool-b",
+                ExecutableName = "tool-b",
+                VersionCommand = "tool-b --version",
+                VersionPattern = @"([\d.]+)",
+                SourceType = UpdateSourceType.GitHub,
+                GitHubRepo = "example/tool-b",
+                InstallPath = installDir
+            }
+        ]);
+
+        var depId = Guid.NewGuid();
+        using var setupDb = _dbFactory.CreateDbContext();
+        setupDb.Dependencies.Add(new Dependency
+        {
+            Id = depId,
+            ModuleId = "test-module",
+            Name = "tool-b",
+            SourceType = UpdateSourceType.GitHub,
+            Status = DependencyStatus.UpdateAvailable
+        });
+        await setupDb.SaveChangesAsync();
+
+        var json = "{\"tag_name\":\"v1.0.0\",\"assets\":[{\"name\":\"tool-b-linux-x86_64.tar.gz\"," +
+                   "\"browser_download_url\":\"https://example.com/tool-b-linux.tar.gz\",\"size\":10}]}";
+        _mockHttpFactory.Setup(f => f.CreateClient("github-api")).Returns(new HttpClient(new MockHttpHandler(json)));
+
+        var asset = await CreateService(module).ResolveDownloadAssetAsync(depId);
+
+        Assert.Null(asset);
+    }
+
 }
 
 // Test helpers at bottom of file
