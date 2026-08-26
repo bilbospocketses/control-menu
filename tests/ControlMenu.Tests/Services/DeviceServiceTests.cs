@@ -3,6 +3,7 @@ using ControlMenu.Data.Enums;
 using ControlMenu.Services;
 using ControlMenu.Tests.Data;
 using ControlMenu.Tests.Services.Fakes;
+using Microsoft.Extensions.Time.Testing;
 
 namespace ControlMenu.Tests.Services;
 
@@ -10,12 +11,13 @@ public class DeviceServiceTests : IDisposable
 {
     private readonly InMemoryDbContextFactory _factory;
     private readonly FakeDeviceChangeNotifier _notifier = new();
+    private readonly FakeTimeProvider _time = new();
     private readonly DeviceService _service;
 
     public DeviceServiceTests()
     {
         _factory = TestDbContextFactory.CreateFactory();
-        _service = new DeviceService(_factory, _notifier);
+        _service = new DeviceService(_factory, _notifier, _time);
     }
 
     public void Dispose() => _factory.Dispose();
@@ -97,7 +99,8 @@ public class DeviceServiceTests : IDisposable
         await _service.UpdateLastSeenAsync(device.Id, "192.168.1.50");
         var loaded = await _service.GetDeviceAsync(device.Id);
         Assert.Equal("192.168.1.50", loaded!.LastKnownIp);
-        Assert.NotNull(loaded.LastSeen);
+        // Exact, not just non-null: the stamp must come from the injected clock.
+        Assert.Equal(_time.GetUtcNow().UtcDateTime, loaded.LastSeen);
     }
 
     [Fact]

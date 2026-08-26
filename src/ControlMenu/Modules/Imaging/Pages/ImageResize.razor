@@ -380,10 +380,13 @@
         _webCopyPath = webCopy;
         _downloadUrl = $"/temp/{Path.GetFileName(webCopy)}";
 
-        _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+        // Backstop sweep for a copy the page never got to delete itself. Tied to the component
+        // lifetime so navigating away cancels it, rather than leaving one live 5-minute timer per
+        // conversion holding onto the path; Dispose deletes the current copy eagerly regardless.
+        _ = Task.Delay(TimeSpan.FromMinutes(5), _lifetime.Token).ContinueWith(_ =>
         {
             try { if (File.Exists(webCopy)) File.Delete(webCopy); } catch { }
-        });
+        }, TaskContinuationOptions.OnlyOnRanToCompletion);
     }
 
     private void DeleteWebCopy()
@@ -396,7 +399,15 @@
         }
     }
 
-    public void Dispose() => DeleteWebCopy();
+    // Cancelled on Dispose; bounds the backstop sweep timers to the component's lifetime.
+    private readonly CancellationTokenSource _lifetime = new();
+
+    public void Dispose()
+    {
+        DeleteWebCopy();
+        _lifetime.Cancel();
+        _lifetime.Dispose();
+    }
 
     private record FilePickerResult(string Name, string BytesBase64);
 }

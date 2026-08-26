@@ -48,7 +48,10 @@ public class RtspProbeClientTests
             using var client = await listener.AcceptTcpClientAsync();
             using var stream = client.GetStream();
             var buf = new byte[4096];
-            await stream.ReadAsync(buf);
+            // Drain the client request. The count is checked rather than discarded: a zero-length
+            // read means the client hung up without sending, and replying to that would make the
+            // assertions below fail for a reason that has nothing to do with the code under test.
+            if (await stream.ReadAsync(buf) == 0) return;
             var resp = "RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Type: application/sdp\r\nContent-Length: 22\r\n\r\nv=0\r\no=- 0 0 IN IP4 0\r\n";
             var bytes = Encoding.ASCII.GetBytes(resp);
             await stream.WriteAsync(bytes);
@@ -78,7 +81,10 @@ public class RtspProbeClientTests
             using var client = await listener.AcceptTcpClientAsync();
             using var stream = client.GetStream();
             var buf = new byte[4096];
-            await stream.ReadAsync(buf);
+            // Drain the client request. The count is checked rather than discarded: a zero-length
+            // read means the client hung up without sending, and replying to that would make the
+            // assertions below fail for a reason that has nothing to do with the code under test.
+            if (await stream.ReadAsync(buf) == 0) return;
             var resp = "RTSP/1.0 401 Unauthorized\r\nCSeq: 1\r\nWWW-Authenticate: Basic realm=\"cam\"\r\n\r\n";
             await stream.WriteAsync(Encoding.ASCII.GetBytes(resp));
         });

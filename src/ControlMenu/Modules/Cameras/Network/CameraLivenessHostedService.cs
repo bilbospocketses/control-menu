@@ -24,6 +24,9 @@ public class CameraLivenessHostedService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IntervalChangeSignal _signal;
     private readonly ILogger<CameraLivenessHostedService> _logger;
+    // Injected so the tick cadence can be driven by a fake clock in tests instead of
+    // waiting out real minutes -- same treatment as DependencyCheckHostedService.
+    private readonly TimeProvider _timeProvider;
 
     // UTC ticks of the last completed tick (0 == "never", i.e. run immediately). Written on the loop
     // thread and read inside the tick, which can resume on a different thread-pool thread — accessed
@@ -33,16 +36,18 @@ public class CameraLivenessHostedService : BackgroundService
     public CameraLivenessHostedService(
         IServiceScopeFactory scopeFactory,
         IntervalChangeSignal signal,
-        ILogger<CameraLivenessHostedService> logger)
+        ILogger<CameraLivenessHostedService> logger,
+        TimeProvider timeProvider)
     {
         _scopeFactory = scopeFactory;
         _signal = signal;
         _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        try { await Task.Delay(InitialDelay, stoppingToken); }
+        try { await Task.Delay(InitialDelay, _timeProvider, stoppingToken); }
         catch (OperationCanceledException) { return; }
 
         while (!stoppingToken.IsCancellationRequested)
@@ -50,7 +55,7 @@ public class CameraLivenessHostedService : BackgroundService
             await RunOneTickForTestsAsync(stoppingToken);
 
             var signalTask = _signal.WaitAsync(IntervalChangeSignal.CameraLiveness);
-            var delayTask = Task.Delay(OuterTick, stoppingToken);
+            var delayTask = Task.Delay(OuterTick, _timeProvider, stoppingToken);
             // Task.WhenAny never throws — a cancelled delayTask completes it normally — so the loop
             // exits via the IsCancellationRequested check below rather than a (previously dead) catch.
             await Task.WhenAny(signalTask, delayTask);
@@ -73,13 +78,13 @@ public class CameraLivenessHostedService : BackgroundService
             if (interval <= 0) return;
 
             var lastTick = new DateTime(Volatile.Read(ref _lastTickTicks), DateTimeKind.Utc);
-            if (DateTime.UtcNow - lastTick < TimeSpan.FromSeconds(interval)) return;
+            if (_timeProvider.GetUtcNow().UtcDateTime - lastTick < TimeSpan.FromSeconds(interval)) return;
 
             var cameraService = scope.ServiceProvider.GetRequiredService<ICameraService>();
             var probe = scope.ServiceProvider.GetRequiredService<IRtspProbeClient>();
 
             var cameras = await cameraService.GetEnabledAsync();
-            Volatile.Write(ref _lastTickTicks, DateTime.UtcNow.Ticks);
+            Volatile.Write(ref _lastTickTicks, _timeProvider.GetUtcNow().UtcDateTime.Ticks);
             if (cameras.Count == 0) return;
 
             var hits = 0;

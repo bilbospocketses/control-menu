@@ -64,7 +64,9 @@ public static class FloodFillPreviewEngine
         using (var canvas = new SKCanvas(result))
         {
             canvas.Clear(SKColors.Transparent);
-            canvas.DrawBitmap(source, 0, 0);
+            // Nearest sampling, and exact 1:1 placement: this is a colour/alpha-type normalisation
+            // blit, not a resize, so no interpolation must touch the pixels the flood fill reads.
+            canvas.DrawBitmap(source, 0, 0, new SKSamplingOptions(SKFilterMode.Nearest));
         }
 
         var threshold = Math.Clamp(tolerance, 0, 100) / 100.0;

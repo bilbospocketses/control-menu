@@ -8,11 +8,14 @@ public class DeviceService : IDeviceService
 {
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
     private readonly IDeviceChangeNotifier _notifier;
+    private readonly TimeProvider _timeProvider;
 
-    public DeviceService(IDbContextFactory<AppDbContext> dbFactory, IDeviceChangeNotifier notifier)
+    /// <param name="timeProvider">Clock behind the <c>LastSeen</c> stamps, mirroring CameraService.</param>
+    public DeviceService(IDbContextFactory<AppDbContext> dbFactory, IDeviceChangeNotifier notifier, TimeProvider timeProvider)
     {
         _dbFactory = dbFactory;
         _notifier = notifier;
+        _timeProvider = timeProvider;
     }
 
     public async Task<IReadOnlyList<Device>> GetAllDevicesAsync()
@@ -69,7 +72,7 @@ public class DeviceService : IDeviceService
         if (device is not null)
         {
             device.LastKnownIp = ipAddress;
-            device.LastSeen = DateTime.UtcNow;
+            device.LastSeen = _timeProvider.GetUtcNow().UtcDateTime;
             await db.SaveChangesAsync();
             _notifier.NotifyChanged();
         }

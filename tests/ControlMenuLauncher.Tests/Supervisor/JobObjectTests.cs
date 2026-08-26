@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.Versioning;
 using ControlMenu.Launcher.Supervisor;
 using Xunit;
 
@@ -11,6 +12,7 @@ namespace ControlMenu.Launcher.Tests;
 /// grandchild surviving launcher exit) — these cover the create/adopt/release
 /// surface deterministically.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public class JobObjectTests
 {
     [Fact]

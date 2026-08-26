@@ -1,8 +1,12 @@
+using System.Runtime.Versioning;
 using ControlMenu.Launcher;
 using Xunit;
 
 namespace ControlMenu.Launcher.Tests;
 
+// InstallAcl wraps Windows ACL APIs, so these call sites are Windows-only by construction.
+// CI runs on windows-latest; declaring the platform is what stops CA1416 firing on every build.
+[SupportedOSPlatform("windows")]
 public class InstallAclTests : IDisposable
 {
     private readonly string _tempDir;

@@ -75,6 +75,36 @@ Module services are registered in `Program.cs` (there is no per-module `Configur
 - **No PowerShell string interpolation into shell commands** — use `CommandExecutor` with an argument list
 - **SQLite access via EF Core** — no raw SQL unless there's a measured reason
 
+## Dependencies (Central Package Management)
+
+Package **versions live in one place** — `Directory.Packages.props` at the repo root. Every `.csproj` carries a **versionless** `PackageReference`:
+
+```xml
+<!-- Directory.Packages.props -->
+<PackageVersion Include="Serilog.AspNetCore" Version="9.0.0" />
+
+<!-- src/ControlMenu/ControlMenu.csproj -->
+<PackageReference Include="Serilog.AspNetCore" />
+```
+
+**Adding a package:** add a `<PackageVersion>` entry to `Directory.Packages.props` (alphabetical), then a versionless `<PackageReference>` to the project that needs it. Putting a `Version=` attribute on a `PackageReference` is an **error** under CPM, not a warning — the build fails.
+
+This exists because versions had previously drifted between projects: `coverlet.collector` sat at 6.0.2 in one test project and 10.0.1 in the others, and `Microsoft.NET.Test.Sdk` was split across two versions. Dependabot now updates the single `<PackageVersion>` and every project moves together.
+
+Two packages intentionally float on `10.*` (`Microsoft.EntityFrameworkCore.Design` and `.Sqlite`), which is why `CentralPackageFloatingVersionsEnabled` is set.
+
+## Testing Time-Dependent Code
+
+Anything that delays, schedules, or stamps a timestamp takes a `TimeProvider` (registered as `TimeProvider.System` in `ServiceCollectionExtensions`). Tests drive `FakeTimeProvider` from `Microsoft.Extensions.TimeProvider.Testing` and advance the clock explicitly rather than sleeping.
+
+`tests/ControlMenu.Tests/TestHelpers/AsyncSignal.cs` holds the rules and the reasoning:
+
+- **Positive assertion** ("this must happen") — never sleep; await a signal the production code raises. A timeout is a failure ceiling, not a wait.
+- **Negative assertion** ("this must NOT happen") — a bounded real wait is unavoidable, since absence cannot be awaited. Erring longer is safe; it only makes the assertion stricter.
+- **Settle before advancing a fake clock** — `FakeTimeProvider` deadlines are *absolute*. Advance before the code under test has armed its timer and the timer starts from the new "now", so the advance never reaches it.
+
+Do not add a bare `await Task.Delay(...)` to a test to "let things settle". That is what made one test fail intermittently for two months and block the entire Dependabot queue.
+
 ## Tests
 
 Tests use **xUnit** and live in `tests/`. Target coverage is the service layer — DB interactions, command execution, module discovery, network scanning. UI is smoke-tested manually via `docs/manual-test-checklist.md`.
@@ -107,7 +137,7 @@ Do not include AI-generated attribution lines in commit messages.
 
 ## Branch Strategy
 
-`master` is the development branch and is **PR-gated** (since 2026-05-18). Direct pushes to master are blocked at the ruleset level; every change goes branch → PR → 5 required checks green → squash-merge.
+`master` is the development branch and is **PR-gated** (since 2026-05-18). Direct pushes to master are blocked at the ruleset level; every change goes branch → PR → 3 required checks green → squash-merge.
 
 **Required status checks** (all must be green before merge):
 - `build-and-test` — `dotnet restore/build/test ControlMenu.sln` on `windows-latest`

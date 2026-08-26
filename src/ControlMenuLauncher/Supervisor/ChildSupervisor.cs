@@ -71,6 +71,11 @@ public static class ChildSupervisor
                 {
                     try
                     {
+                        // Blocking on purpose. The supervisor is synchronous by design (it is
+                        // built around Process.WaitForExit) and this is a console host with no
+                        // SynchronizationContext, so there is no context to deadlock against.
+                        // Making the whole WaitForExit chain async to avoid one blocking call
+                        // here would be a large change for no behavioural gain.
                         PreApplyHygiene.RunAsync(paths).GetAwaiter().GetResult();
                     }
                     catch (Exception ex)

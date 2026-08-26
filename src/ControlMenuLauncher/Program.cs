@@ -72,12 +72,18 @@ internal static class Program
         // 3. Single-instance guard. Acquired AFTER hook dispatch (hooks are
         //    short-lived single-shots that legitimately race with a running
         //    instance). Mirrors main.rs:110-133.
-        var mutexName = SingleInstance.CurrentMutexName();
-        var instance = SingleInstance.Acquire(mutexName);
-        if (instance is null)
+        //    Windows-only: the guard is a named kernel mutex, and both CurrentMutexName and
+        //    Acquire are [SupportedOSPlatform("windows")]. Guarded here rather than marking the
+        //    whole launcher Windows-only, matching how the install-root ACL grant above is handled.
+        SingleInstance? instance = null;
+        if (OperatingSystem.IsWindows())
         {
-            LauncherLogger.Info("another ControlMenuLauncher instance is already running; exiting");
-            return 0;
+            instance = SingleInstance.Acquire(SingleInstance.CurrentMutexName());
+            if (instance is null)
+            {
+                LauncherLogger.Info("another ControlMenuLauncher instance is already running; exiting");
+                return 0;
+            }
         }
 
         // Hydrate pre-seeded dependencies from current\seed\dependencies\ into
@@ -147,7 +153,7 @@ internal static class Program
         }
         finally
         {
-            instance.Dispose();
+            instance?.Dispose();
             LauncherLogger.Info("ControlMenuLauncher exiting");
         }
     }

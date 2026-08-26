@@ -443,10 +443,13 @@
         File.WriteAllBytes(webCopy, bytes);
         url = $"/temp/{Path.GetFileName(webCopy)}";
 
-        _ = Task.Delay(TimeSpan.FromMinutes(5)).ContinueWith(_ =>
+        // Backstop sweep for a copy the page never got to delete itself. Tied to the component
+        // lifetime so navigating away cancels it, rather than leaving one live 5-minute timer per
+        // conversion holding onto the path; Dispose deletes the current copy eagerly regardless.
+        _ = Task.Delay(TimeSpan.FromMinutes(5), _lifetime.Token).ContinueWith(_ =>
         {
             try { if (File.Exists(webCopy)) File.Delete(webCopy); } catch { }
-        });
+        }, TaskContinuationOptions.OnlyOnRanToCompletion);
 
         return webCopy;
     }
@@ -500,10 +503,15 @@
 
     // Delete this page's /temp web-copies on teardown (navigate-away), rather than leaving them
     // for the 5-minute fallback timer. Both helpers no-op when nothing is tracked.
+    // Cancelled on Dispose; bounds the backstop sweep timers to the component's lifetime.
+    private readonly CancellationTokenSource _lifetime = new();
+
     public void Dispose()
     {
         ClearImageWebCopy();
         DeletePreviewWebCopy();
+        _lifetime.Cancel();
+        _lifetime.Dispose();
     }
 
     // FilePickerResult / ElementRect are shared public records in this namespace
