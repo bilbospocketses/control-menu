@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
+using ControlMenu.Tests.TestHelpers;
+
 namespace ControlMenu.Tests.Modules.Cameras.Network;
 
 public class CameraScanServiceTests
@@ -129,7 +131,11 @@ public class CameraScanServiceTests
         _onvifDisc.Setup(d => d.ProbeAsync(It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
             .Returns(async (TimeSpan _, CancellationToken _) =>
             {
-                await Task.Delay(50); // Force ONVIF to land after TCP
+                // Deliberate latency *inside the mock* to shape the scenario — this is not the test
+                // waiting on the SUT, it is the fake ONVIF probe simulating a slower network round
+                // trip so its response lands after the (synchronous) TCP probe. Gating it on the TCP
+                // probe instead would deadlock if the service awaits ONVIF before starting TCP.
+                await Task.Delay(50);
                 return new List<OnvifProbeResponse>
                 {
                     new("192.168.1.10", "Hikvision", "DS-2CD2143G0-I", "http://192.168.1.10/onvif/device_service")
@@ -194,12 +200,14 @@ public class CameraScanServiceTests
         var tasks = Enumerable.Range(0, 32).Select(_ => Task.Run(() => sut.StartScanAsync(subnets))).ToArray();
 
         // Wait until a scan has actually begun — a fixed delay flaked on loaded CI runners where the
-        // Task.Run bodies hadn't been scheduled yet (started == 0). Then settle briefly: a non-atomic
-        // guard would have let several of the 32 slip past and increment by now, while the atomic guard
-        // holds the winner on the gate so the count stays at exactly one.
-        for (var i = 0; i < 400 && Volatile.Read(ref started) == 0; i++)
-            await Task.Delay(25);
-        await Task.Delay(100);
+        // Task.Run bodies hadn't been scheduled yet (started == 0).
+        await AsyncSignal.BecomesTrueAsync(
+            () => Volatile.Read(ref started) >= 1, "one of the 32 concurrent starts should have begun a scan");
+
+        // Then settle: a non-atomic guard would have let several of the 32 slip past and increment by
+        // now, while the atomic guard holds the winner on the gate so the count stays at exactly one.
+        // This one is a genuine negative assertion, so a bounded real wait is the only way to make it.
+        await AsyncSignal.SettleAsync();
 
         Assert.Equal(1, Volatile.Read(ref started));
 

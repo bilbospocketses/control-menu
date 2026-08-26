@@ -3,6 +3,7 @@ using ControlMenu.Modules.Cameras.Entities;
 using ControlMenu.Modules.Cameras.Services;
 using ControlMenu.Services;
 using ControlMenu.Tests.Data;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 
 namespace ControlMenu.Tests.Modules.Cameras;
@@ -12,12 +13,13 @@ public class CameraServiceTests : IDisposable
     private readonly InMemoryDbContextFactory _dbFactory;
     private readonly Mock<IConfigurationService> _config = new();
     private readonly Mock<ICameraChangeNotifier> _notifier = new();
+    private readonly FakeTimeProvider _time = new();
     private readonly CameraService _sut;
 
     public CameraServiceTests()
     {
         _dbFactory = TestDbContextFactory.CreateFactory();
-        _sut = new CameraService(_dbFactory, _config.Object, _notifier.Object);
+        _sut = new CameraService(_dbFactory, _config.Object, _notifier.Object, _time);
     }
 
     public void Dispose() => _dbFactory.Dispose();
@@ -92,7 +94,9 @@ public class CameraServiceTests : IDisposable
         var seededTimestamp = saved.LastSeen;
         Assert.NotNull(seededTimestamp);
 
-        await Task.Delay(10);
+        // Move the clock rather than sleeping: a real 10ms sleep is not guaranteed to advance
+        // DateTime.UtcNow at all, whose resolution on Windows is ~15.6ms.
+        _time.Advance(TimeSpan.FromSeconds(1));
         await _sut.UpdateLastSeenAsync(saved.Id);
 
         var fetched = await _sut.GetAsync(saved.Id);
