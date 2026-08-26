@@ -67,7 +67,7 @@ Open http://localhost:5159 in your browser. The first-run wizard will guide you 
 dotnet test
 ```
 
-713 tests covering services, modules, the launcher, and integrations (across `ControlMenu.Tests`, `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests`).
+726 tests covering services, modules, the launcher, and integrations (across `ControlMenu.Tests`, `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests`).
 
 ## Architecture
 

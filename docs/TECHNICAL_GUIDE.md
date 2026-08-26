@@ -1064,7 +1064,7 @@ All paths resolve under `<dataRoot>` via `IDataPathResolver` — `C:\ProgramData
 - **xUnit** -- test runner
 - **Moq** -- mocking framework
 - **bunit** -- Blazor (Razor) component testing
-- **713 tests** (all green on net10.0) across three projects — `ControlMenu.Tests` (app), `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests` — run together via `ControlMenu.sln`
+- **726 tests** (all green on net10.0) across three projects — `ControlMenu.Tests` (app), `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests` — run together via `ControlMenu.sln`
 
 ### Test Database
 
