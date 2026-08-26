@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-26
+
 ### Changed
 
 - **Home page reverted to the menu-sections layout** — a hero plus one card per module (sub-pages as pill links) and a Settings card, driven by the module registry. The discovery-dashboard home (scan buttons + live "Discovered Android/Cameras" panels) is removed. Device and camera **scanning is unchanged** — it remains in Settings → Android Devices / Cameras and the setup Wizard.
@@ -368,7 +370,9 @@ First official release.
 - **`fix(theme)` TopBar theme toggle** stays in sync when theme changes via the iframe bridge.
 - **`fix(theme)` Blazor subscriber pattern** — switched from returning a JS unsubscribe closure (broke the Blazor circuit) to a numeric-token handle pattern.
 
-[Unreleased]: https://github.com/bilbospocketses/control-menu/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/bilbospocketses/control-menu/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/bilbospocketses/control-menu/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/bilbospocketses/control-menu/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/bilbospocketses/control-menu/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/bilbospocketses/control-menu/compare/v1.0.1...v1.1.0
 [1.1.0-beta.3]: https://github.com/bilbospocketses/control-menu/compare/v1.1.0-beta.2...v1.1.0-beta.3
