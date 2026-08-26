@@ -45,16 +45,20 @@ public class ImagingModule : IToolModule
                 ControlMenu.Services.Verification.ChecksumAlgorithm.Sha256)
         },
         // vtracer: color raster -> SVG tracer (Phase G "Tracing"). GitHub source.
-        // Release tags carry NO "v" prefix (0.6.4). The Windows zip extracts
-        // vtracer.exe flat at the archive root. NOTE: --version prints
-        // "visioncortex VTracer 0.6.4" (capital VTracer), so the pattern matches
-        // "VTracer", not the lowercase executable name.
+        // Release tags carry NO "v" prefix (0.6.4, 1.0.0-alpha.3). The Windows zip
+        // extracts vtracer.exe flat at the archive root.
+        // NOTE: the --version banner CHANGED upstream. 0.6.4 printed
+        // "visioncortex VTracer 0.6.4"; 1.0.0-alpha.3 prints "vtracer 1.0.0-alpha.3"
+        // -- lowercase, no prefix, and a prerelease suffix. The pattern is therefore
+        // case-insensitive and captures the full semver token including "-alpha.3",
+        // because the parsed value is compared against the release tag: dropping the
+        // suffix would leave vtracer reporting an update forever.
         new ModuleDependency
         {
             Name = "vtracer",
             ExecutableName = "vtracer",
             VersionCommand = "vtracer --version",
-            VersionPattern = @"VTracer ([\d.]+)",
+            VersionPattern = @"(?i)vtracer\s+v?([\w.\-]+)",
             SourceType = UpdateSourceType.GitHub,
             GitHubRepo = "visioncortex/vtracer",
             ProjectHomeUrl = "https://github.com/visioncortex/vtracer",
@@ -80,7 +84,9 @@ public class ImagingModule : IToolModule
             Name = "potrace",
             ExecutableName = "potrace",
             VersionCommand = "potrace --version",
-            VersionPattern = @"potrace ([\d.]+)",
+            // The banner ends with a sentence period ("potrace 1.16. Copyright (C) ..."),
+            // which a greedy [\d.]+ swallowed -- recording "1.16." as the installed version.
+            VersionPattern = @"potrace\s+(\d+(?:\.\d+)*)",
             SourceType = UpdateSourceType.DirectUrl,
             ProjectHomeUrl = "https://potrace.sourceforge.net/",
             DownloadUrl = "https://potrace.sourceforge.net/download/1.16/potrace-1.16.win64.zip",
