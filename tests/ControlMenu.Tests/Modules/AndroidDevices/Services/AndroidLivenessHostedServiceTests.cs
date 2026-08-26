@@ -3,6 +3,7 @@ using ControlMenu.Modules.AndroidDevices.Services;
 using ControlMenu.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 
 namespace ControlMenu.Tests.Modules.AndroidDevices.Services;
@@ -13,6 +14,7 @@ namespace ControlMenu.Tests.Modules.AndroidDevices.Services;
 public class AndroidLivenessHostedServiceTests
 {
     private readonly Mock<IConfigurationService> _config = new();
+    private readonly FakeTimeProvider _time = new();
     private readonly Mock<IDeviceService> _deviceService = new();
 
     private IServiceScopeFactory BuildScopeFactory()
@@ -30,7 +32,7 @@ public class AndroidLivenessHostedServiceTests
     }
 
     private AndroidLivenessHostedService CreateService() =>
-        new(BuildScopeFactory(), new IntervalChangeSignal(), NullLogger<AndroidLivenessHostedService>.Instance);
+        new(BuildScopeFactory(), new IntervalChangeSignal(), NullLogger<AndroidLivenessHostedService>.Instance, _time);
 
     [Fact]
     public async Task IntervalZero_DoesNotQueryDevices()
@@ -51,5 +53,29 @@ public class AndroidLivenessHostedServiceTests
         await CreateService().RunOneTickForTestsAsync(default);
 
         _deviceService.Verify(s => s.UpdateLastSeenAsync(It.IsAny<Guid>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TickInsideTheInterval_IsSkipped_AndRunsOnceItElapses()
+    {
+        // The interval gate had no coverage: _lastTickTicks starts at 0, so the very first tick
+        // always clears it and every existing test only ever ran one tick. With the clock injected
+        // the gate is assertable -- this is the behaviour that decides how often devices get probed.
+        _config.Setup(c => c.GetSettingAsync("discovery-interval", null)).ReturnsAsync("300");
+        _deviceService.Setup(s => s.GetAllDevicesAsync()).ReturnsAsync(new List<Device>());
+        var svc = CreateService();
+
+        await svc.RunOneTickForTestsAsync(default);
+        _deviceService.Verify(s => s.GetAllDevicesAsync(), Times.Once);
+
+        // One second short of the 300s interval: the device query must not repeat.
+        _time.Advance(TimeSpan.FromSeconds(299));
+        await svc.RunOneTickForTestsAsync(default);
+        _deviceService.Verify(s => s.GetAllDevicesAsync(), Times.Once);
+
+        // Interval elapsed: it runs again.
+        _time.Advance(TimeSpan.FromSeconds(2));
+        await svc.RunOneTickForTestsAsync(default);
+        _deviceService.Verify(s => s.GetAllDevicesAsync(), Times.Exactly(2));
     }
 }

@@ -24,10 +24,10 @@ else
         </span>
     </div>
 
-    @if (!string.IsNullOrEmpty(_statusMessage))
+    @if (Notice.IsVisible)
     {
-        <div class="status-bar @_statusClass">
-            <i class="bi @_statusIcon"></i> @_statusMessage
+        <div class="status-bar @Notice.CssClass">
+            <i class="bi @Notice.Icon"></i> @Notice.Message
         </div>
     }
 
@@ -188,9 +188,11 @@ else
     private ScrcpyMirror? _mirror;
     private bool _connected;
     private bool _busy;
-    private string _statusMessage = "";
-    private string _statusClass = "";
-    private string _statusIcon = "";
+    private TransientNotice? _noticeBacking;
+    private TransientNotice Notice => _noticeBacking ??= new(() => InvokeAsync(StateHasChanged));
+
+    // Cancelled on Dispose so a pending post-action settle cannot resume on a torn-down component.
+    private readonly CancellationTokenSource _lifetime = new();
     private string _powerState = "Unknown";
     private string _screensaver = "Unknown";
     private int _screenTimeout;
@@ -290,37 +292,40 @@ else
             var state = await AdbService.GetPowerStateAsync(Ip, Port);
             _powerState = state.ToString();
         },
-        () => SetStatus("Failed to read power status.", "status-warning", "bi-exclamation-triangle"));
+        () => Notice.Show("Failed to read power status.", "status-warning", "bi-exclamation-triangle"));
 
     private Task TogglePower() => DashboardGuard.RunAsync(
         b => _busy = b,
         async () =>
         {
             await AdbService.TogglePowerAsync(Ip, Port);
-            SetStatus("Power toggled", "status-success", "bi-check-circle");
-            await Task.Delay(1000);
+            Notice.Show("Power toggled", "status-success", "bi-check-circle");
+            // Let the device settle before re-reading power state. Tied to the component lifetime so
+            // navigating away mid-settle cannot resume against a disposed component.
+            try { await Task.Delay(1000, _lifetime.Token); }
+            catch (OperationCanceledException) { return; }
             await CheckPowerStatus();
         },
-        () => SetStatus("Failed to toggle power.", "status-warning", "bi-exclamation-triangle"));
+        () => Notice.Show("Failed to toggle power.", "status-warning", "bi-exclamation-triangle"));
 
     private Task RebootDevice() => DashboardGuard.RunAsync(
         b => _busy = b,
         async () =>
         {
-            SetStatus("Rebooting device...", "status-warning", "bi-hourglass-split");
+            Notice.Show("Rebooting device...", "status-warning", "bi-hourglass-split");
             await AdbService.RebootAsync(Ip, Port);
-            SetStatus("Reboot sent. Device will reconnect when ready.", "status-success", "bi-check-circle");
+            Notice.Show("Reboot sent. Device will reconnect when ready.", "status-success", "bi-check-circle");
         },
-        () => SetStatus("Failed to reboot device.", "status-warning", "bi-exclamation-triangle"));
+        () => Notice.Show("Failed to reboot device.", "status-warning", "bi-exclamation-triangle"));
 
     private Task StartShizuku() => DashboardGuard.RunAsync(
         b => _busy = b,
         async () =>
         {
             await AdbService.StartShizukuAsync(Ip, Port);
-            SetStatus("Shizuku started.", "status-success", "bi-check-circle");
+            Notice.Show("Shizuku started.", "status-success", "bi-check-circle");
         },
-        () => SetStatus("Failed to start Shizuku.", "status-warning", "bi-exclamation-triangle"));
+        () => Notice.Show("Failed to start Shizuku.", "status-warning", "bi-exclamation-triangle"));
 
     private Task CheckScreensaver() => DashboardGuard.RunAsync(
         b => _busy = b,
@@ -328,7 +333,7 @@ else
         {
             _screensaver = await AdbService.GetScreensaverAsync(Ip, Port);
         },
-        () => SetStatus("Failed to read screensaver.", "status-warning", "bi-exclamation-triangle"));
+        () => Notice.Show("Failed to read screensaver.", "status-warning", "bi-exclamation-triangle"));
 
     private Task ToggleScreensaver() => DashboardGuard.RunAsync(
         b => _busy = b,
@@ -337,9 +342,9 @@ else
             var newSaver = _screensaver == "SkyFolio" ? "Google" : "SkyFolio";
             await AdbService.SetScreensaverAsync(Ip, Port, newSaver);
             _screensaver = newSaver;
-            SetStatus($"Screensaver set to {newSaver}.", "status-success", "bi-check-circle");
+            Notice.Show($"Screensaver set to {newSaver}.", "status-success", "bi-check-circle");
         },
-        () => SetStatus("Failed to set screensaver.", "status-warning", "bi-exclamation-triangle"));
+        () => Notice.Show("Failed to set screensaver.", "status-warning", "bi-exclamation-triangle"));
 
     private Task SetTimeout()
     {
@@ -350,9 +355,9 @@ else
             {
                 await AdbService.SetScreenTimeoutAsync(Ip, Port, _newTimeout);
                 _screenTimeout = _newTimeout;
-                SetStatus($"Screen timeout set to {FormatTimeout(_newTimeout)}.", "status-success", "bi-check-circle");
+                Notice.Show($"Screen timeout set to {FormatTimeout(_newTimeout)}.", "status-success", "bi-check-circle");
             },
-            () => SetStatus("Failed to set screen timeout.", "status-warning", "bi-exclamation-triangle"));
+            () => Notice.Show("Failed to set screen timeout.", "status-warning", "bi-exclamation-triangle"));
     }
 
     private Task ToggleLauncher() => DashboardGuard.RunAsync(
@@ -362,9 +367,9 @@ else
             var enable = _launcherDisabled == true;
             await AdbService.SetLauncherEnabledAsync(Ip, Port, enable);
             _launcherDisabled = !enable;
-            SetStatus($"TV Launcher {(enable ? "enabled" : "disabled")}.", "status-success", "bi-check-circle");
+            Notice.Show($"TV Launcher {(enable ? "enabled" : "disabled")}.", "status-success", "bi-check-circle");
         },
-        () => SetStatus("Failed to toggle launcher.", "status-warning", "bi-exclamation-triangle"));
+        () => Notice.Show("Failed to toggle launcher.", "status-warning", "bi-exclamation-triangle"));
 
     private Task LoadProjectivyBackups() => DashboardGuard.RunAsync(
         b => _busy = b,
@@ -372,9 +377,9 @@ else
         {
             _projectivyBackups = (await AdbService.ListProjectivyBackupsAsync(Ip, Port)).ToList();
             if (_projectivyBackups.Count == 0)
-                SetStatus("No Projectivy backups found on device.", "status-warning", "bi-exclamation-triangle");
+                Notice.Show("No Projectivy backups found on device.", "status-warning", "bi-exclamation-triangle");
         },
-        () => SetStatus("Failed to scan for backups.", "status-warning", "bi-exclamation-triangle"));
+        () => Notice.Show("Failed to scan for backups.", "status-warning", "bi-exclamation-triangle"));
 
     private Task RestoreProjectivy()
     {
@@ -385,9 +390,9 @@ else
             async () =>
             {
                 await AdbService.RestoreProjectivyBackupAsync(Ip, Port, backup);
-                SetStatus($"Restore initiated for {backup}. Confirm on device.", "status-success", "bi-check-circle");
+                Notice.Show($"Restore initiated for {backup}. Confirm on device.", "status-success", "bi-check-circle");
             },
-            () => SetStatus("Failed to restore backup.", "status-warning", "bi-exclamation-triangle"));
+            () => Notice.Show("Failed to restore backup.", "status-warning", "bi-exclamation-triangle"));
     }
 
     private async Task ProbeAndStartAsync()
@@ -420,28 +425,6 @@ else
         await InvokeAsync(StateHasChanged);
     }
 
-    private CancellationTokenSource? _statusCts;
-
-    private void SetStatus(string message, string cssClass, string icon, int dismissMs = 5000)
-    {
-        _statusMessage = message;
-        _statusClass = cssClass;
-        _statusIcon = icon;
-
-        _statusCts?.Cancel();
-        _statusCts = new CancellationTokenSource();
-        var token = _statusCts.Token;
-
-        _ = Task.Delay(dismissMs, token).ContinueWith(_ =>
-        {
-            InvokeAsync(() =>
-            {
-                _statusMessage = "";
-                StateHasChanged();
-            });
-        }, TaskContinuationOptions.OnlyOnRanToCompletion);
-    }
-
     private static string FormatTimeout(int ms) =>
         ms switch
         {
@@ -452,7 +435,8 @@ else
     public void Dispose()
     {
         _presenceWatcher?.Dispose();
-        _statusCts?.Cancel();
-        _statusCts?.Dispose();
+        _noticeBacking?.Dispose();
+        _lifetime.Cancel();
+        _lifetime.Dispose();
     }
 }

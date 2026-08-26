@@ -977,6 +977,14 @@ The Data Protection keys under `<dataRoot>/keys/` (`C:\ProgramData\ControlMenu\k
 
 ## 13. Build and Deployment
 
+### Package Versions (Central Package Management)
+
+Every NuGet version for the solution is declared once in **`Directory.Packages.props`** at the repo root; the project files carry versionless `<PackageReference>` entries. `ManagePackageVersionsCentrally` is `true`, so a `Version=` attribute on a `PackageReference` is a build **error**, not a warning.
+
+This was adopted because versions had drifted between projects — `coverlet.collector` at 6.0.2 in one test project and 10.0.1 in the others, `Microsoft.NET.Test.Sdk` split across two versions. Dependabot now updates the single `<PackageVersion>` and every project moves together, which is also why the nuget updates arrive as one grouped PR rather than one per project.
+
+`CentralPackageFloatingVersionsEnabled` is `true` so `Microsoft.EntityFrameworkCore.Design` and `.Sqlite` can keep floating on `10.*`, as they did before CPM. That float is load-bearing: it is what silently resolved the SQLitePCLRaw NU1903 advisory when EF Core 10.0.11 moved onto the patched 2.1.12.
+
 ### Development
 
 ```bash
@@ -1056,7 +1064,7 @@ All paths resolve under `<dataRoot>` via `IDataPathResolver` — `C:\ProgramData
 - **xUnit** -- test runner
 - **Moq** -- mocking framework
 - **bunit** -- Blazor (Razor) component testing
-- **508 tests** (all green on net10.0) across three projects — `ControlMenu.Tests` (app), `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests` — run together via `ControlMenu.sln`
+- **713 tests** (all green on net10.0) across three projects — `ControlMenu.Tests` (app), `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests` — run together via `ControlMenu.sln`
 
 ### Test Database
 

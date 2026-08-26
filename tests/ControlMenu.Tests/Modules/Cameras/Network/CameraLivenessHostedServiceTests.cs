@@ -4,6 +4,7 @@ using ControlMenu.Modules.Cameras.Services;
 using ControlMenu.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 
 namespace ControlMenu.Tests.Modules.Cameras.Network;
@@ -11,6 +12,7 @@ namespace ControlMenu.Tests.Modules.Cameras.Network;
 public class CameraLivenessHostedServiceTests
 {
     private readonly Mock<IConfigurationService> _config = new();
+    private readonly FakeTimeProvider _time = new();
     private readonly Mock<ICameraService> _cameraService = new();
     private readonly Mock<IRtspProbeClient> _probe = new();
 
@@ -30,7 +32,7 @@ public class CameraLivenessHostedServiceTests
     }
 
     private CameraLivenessHostedService CreateService() =>
-        new(BuildScopeFactory(), new IntervalChangeSignal(), NullLogger<CameraLivenessHostedService>.Instance);
+        new(BuildScopeFactory(), new IntervalChangeSignal(), NullLogger<CameraLivenessHostedService>.Instance, _time);
 
     [Fact]
     public async Task IntervalZero_DoesNotProbe()
@@ -86,5 +88,29 @@ public class CameraLivenessHostedServiceTests
         await CreateService().RunOneTickForTestsAsync(default);
 
         _probe.Verify(p => p.ProbeTcpAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task TickInsideTheInterval_IsSkipped_AndRunsOnceItElapses()
+    {
+        // The interval gate had no coverage: _lastTickTicks starts at 0, so the very first tick
+        // always clears it and every existing test only ever ran one tick. With the clock injected
+        // the gate is assertable -- this is the behaviour that decides how often devices get probed.
+        _config.Setup(c => c.GetSettingAsync("cameras-liveness-interval-seconds", "cameras")).ReturnsAsync("300");
+        _cameraService.Setup(s => s.GetEnabledAsync()).ReturnsAsync(new List<Camera>());
+        var svc = CreateService();
+
+        await svc.RunOneTickForTestsAsync(default);
+        _cameraService.Verify(s => s.GetEnabledAsync(), Times.Once);
+
+        // One second short of the 300s interval: the camera query must not repeat.
+        _time.Advance(TimeSpan.FromSeconds(299));
+        await svc.RunOneTickForTestsAsync(default);
+        _cameraService.Verify(s => s.GetEnabledAsync(), Times.Once);
+
+        // Interval elapsed: it runs again.
+        _time.Advance(TimeSpan.FromSeconds(2));
+        await svc.RunOneTickForTestsAsync(default);
+        _cameraService.Verify(s => s.GetEnabledAsync(), Times.Exactly(2));
     }
 }
