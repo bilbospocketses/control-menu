@@ -8,19 +8,25 @@ public class DependencyCheckHostedService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<DependencyCheckHostedService> _logger;
+    private readonly TimeProvider _timeProvider;
 
+    /// <param name="timeProvider">Clock backing the startup settle, the between-cycle interval and
+    /// the error backoff. Registered as <see cref="TimeProvider.System"/> in DI; tests substitute a
+    /// fake clock so they can assert the schedule is honoured without waiting it out in real time.</param>
     public DependencyCheckHostedService(
         IServiceScopeFactory scopeFactory,
-        ILogger<DependencyCheckHostedService> logger)
+        ILogger<DependencyCheckHostedService> logger,
+        TimeProvider timeProvider)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _timeProvider = timeProvider;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Wait for app to finish initializing
-        await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+        await Task.Delay(TimeSpan.FromSeconds(10), _timeProvider, stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -41,7 +47,7 @@ public class DependencyCheckHostedService : BackgroundService
                 var intervalStr = await config.GetSettingAsync("dep-check-interval");
                 var intervalSeconds = int.TryParse(intervalStr, out var parsed) ? parsed : 86400;
 
-                await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), _timeProvider, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -50,7 +56,7 @@ public class DependencyCheckHostedService : BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Dependency check cycle failed");
-                await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+                await Task.Delay(TimeSpan.FromMinutes(5), _timeProvider, stoppingToken);
             }
         }
     }

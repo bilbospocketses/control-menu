@@ -2,6 +2,7 @@ using ControlMenu.Data.Entities;
 using ControlMenu.Data.Enums;
 using ControlMenu.Services;
 using ControlMenu.Tests.Services.Fakes;
+using ControlMenu.Tests.TestHelpers;
 
 namespace ControlMenu.Tests.Services;
 
@@ -81,13 +82,15 @@ public class DeviceTypeCacheTests
     public async Task Dispose_UnsubscribesFromNotifier()
     {
         var updated = 0;
-        _cache.CacheUpdated += () => updated++;
+        var refreshed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _cache.CacheUpdated += () => { updated++; refreshed.TrySetResult(); };
 
         _cache.Dispose();
         _deviceService.Devices.Add(Make(DeviceType.AndroidPhone));
         _notifier.RaiseChanged();
 
-        await Task.Delay(100);
+        await AsyncSignal.NeverArrivesAsync(
+            refreshed.Task, "a disposed cache must be unsubscribed and must not refresh");
 
         Assert.Equal(0, updated);
     }

@@ -3,6 +3,7 @@ using ControlMenu.Data.Enums;
 using ControlMenu.Modules.AndroidDevices.Services;
 using ControlMenu.Services;
 using ControlMenu.Tests.Services.Fakes;
+using ControlMenu.Tests.TestHelpers;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 
@@ -20,6 +21,14 @@ public class DeviceTypePresenceWatcherTests
     private readonly FakeDeviceChangeNotifier _notifier = new();
     private int _redirectCount;
 
+    // The notifier's Changed event is Action-typed, so the watcher handles it through an async void
+    // hop: RaiseChanged() returns before the redirect/invalidate has run. These tests therefore wait
+    // on the watcher's own callbacks rather than sleeping a guessed span. Re-armable because two
+    // tests need "did it fire *again*?" after an earlier redirect already fired.
+    private TaskCompletionSource _nextRedirect = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private Task NextRedirect => _nextRedirect.Task;
+    private void ArmNextRedirect() => _nextRedirect = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     private static Device MakePhone()
         => new() { Id = Guid.NewGuid(), Name = "P", Type = DeviceType.AndroidPhone, MacAddress = "aa", ModuleId = "android-devices" };
 
@@ -34,7 +43,7 @@ public class DeviceTypePresenceWatcherTests
             DeviceType.AndroidPhone,
             ScopeFactory(),
             _notifier,
-            () => { _redirectCount++; return Task.CompletedTask; },
+            () => { _redirectCount++; _nextRedirect.TrySetResult(); return Task.CompletedTask; },
             onInvalidate);
 
     [Fact]
@@ -67,9 +76,10 @@ public class DeviceTypePresenceWatcherTests
         using var watcher = NewWatcher();
         await watcher.EnsurePresentOrRedirectAsync();
 
+        ArmNextRedirect();
         _deviceService.Devices.Clear();
         _notifier.RaiseChanged();
-        await Task.Delay(50);
+        await AsyncSignal.ArrivesAsync(NextRedirect);
 
         Assert.Equal(1, _redirectCount);
     }
@@ -79,12 +89,13 @@ public class DeviceTypePresenceWatcherTests
     {
         _deviceService.Devices.Add(MakePhone());
         var invalidateCount = 0;
-        using var watcher = NewWatcher(() => { invalidateCount++; return Task.CompletedTask; });
+        var invalidated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var watcher = NewWatcher(() => { invalidateCount++; invalidated.TrySetResult(); return Task.CompletedTask; });
         await watcher.EnsurePresentOrRedirectAsync();
 
         _deviceService.Devices.Add(MakePhone());
         _notifier.RaiseChanged();
-        await Task.Delay(50);
+        await AsyncSignal.ArrivesAsync(invalidated.Task);
 
         Assert.Equal(0, _redirectCount);
         Assert.Equal(1, invalidateCount);
@@ -95,9 +106,12 @@ public class DeviceTypePresenceWatcherTests
     {
         using var watcher = NewWatcher();
         await watcher.EnsurePresentOrRedirectAsync();
+        Assert.Equal(1, _redirectCount);
 
+        ArmNextRedirect();
         _notifier.RaiseChanged();
-        await Task.Delay(50);
+        await AsyncSignal.NeverArrivesAsync(
+            NextRedirect, "the watcher already redirected once and must not redirect again");
 
         Assert.Equal(1, _redirectCount);
     }
@@ -110,9 +124,11 @@ public class DeviceTypePresenceWatcherTests
         await watcher.EnsurePresentOrRedirectAsync();
 
         watcher.Dispose();
+        ArmNextRedirect();
         _deviceService.Devices.Clear();
         _notifier.RaiseChanged();
-        await Task.Delay(50);
+        await AsyncSignal.NeverArrivesAsync(
+            NextRedirect, "a disposed watcher must be unsubscribed and must not redirect");
 
         Assert.Equal(0, _redirectCount);
     }

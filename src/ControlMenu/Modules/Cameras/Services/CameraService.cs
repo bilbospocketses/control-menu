@@ -11,15 +11,21 @@ public class CameraService : ICameraService
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
     private readonly IConfigurationService _config;
     private readonly ICameraChangeNotifier _notifier;
+    private readonly TimeProvider _timeProvider;
 
+    /// <param name="timeProvider">Clock behind the <c>LastSeen</c> stamps. Registered as
+    /// <see cref="TimeProvider.System"/> in DI; injecting it lets tests assert that a bump actually
+    /// moves the stamp without sleeping past the ~15.6ms resolution of the system clock.</param>
     public CameraService(
         IDbContextFactory<AppDbContext> dbFactory,
         IConfigurationService config,
-        ICameraChangeNotifier notifier)
+        ICameraChangeNotifier notifier,
+        TimeProvider timeProvider)
     {
         _dbFactory = dbFactory;
         _config = config;
         _notifier = notifier;
+        _timeProvider = timeProvider;
     }
 
     public async Task<IReadOnlyList<Camera>> GetAllAsync()
@@ -47,7 +53,7 @@ public class CameraService : ICameraService
     {
         using var db = await _dbFactory.CreateDbContextAsync();
         if (camera.Id == Guid.Empty) camera.Id = Guid.NewGuid();
-        if (camera.LastSeen is null) camera.LastSeen = DateTime.UtcNow;
+        if (camera.LastSeen is null) camera.LastSeen = _timeProvider.GetUtcNow().UtcDateTime;
         db.Cameras.Add(camera);
         await db.SaveChangesAsync();
         await _config.SetSecretAsync($"camera-{camera.Id:N}-username", username, Module);
@@ -96,7 +102,7 @@ public class CameraService : ICameraService
         using var db = await _dbFactory.CreateDbContextAsync();
         var camera = await db.Cameras.FindAsync(id);
         if (camera is null) return;
-        camera.LastSeen = DateTime.UtcNow;
+        camera.LastSeen = _timeProvider.GetUtcNow().UtcDateTime;
         await db.SaveChangesAsync();
         _notifier.NotifyChanged();
     }

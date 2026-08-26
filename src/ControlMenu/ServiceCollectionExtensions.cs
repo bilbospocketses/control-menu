@@ -180,6 +180,10 @@ public static class ServiceCollectionExtensions
             var extractor = sp.GetRequiredService<IArchiveExtractor>();
             return new DependencyManagerService(dbFactory, modules, executor, httpFactory, config, wsScrcpy, go2Rtc, resolver, logger, verifier, extractor);
         });
+        // The clock behind scheduled background work. Registered so hosted services can take a
+        // TimeProvider dependency and tests can drive their schedules with a fake clock instead of
+        // waiting real seconds -- see DependencyCheckHostedServiceTests.
+        services.AddSingleton(TimeProvider.System);
         services.AddHostedService<DependencyCheckHostedService>();
         services.AddHostedService<ObsoleteSettingsCleanupService>();
 

@@ -1,5 +1,6 @@
 using ControlMenu.Services;
 using ControlMenu.Services.Network;
+using ControlMenu.Tests.TestHelpers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -175,7 +176,12 @@ public class NetworkScanServiceTests
         var svc = CreateService();
 
         var received = new List<ScanEvent>();
-        using var sub = svc.Subscribe(e => received.Add(e));
+        var complete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var sub = svc.Subscribe(e =>
+        {
+            received.Add(e);
+            if (e is ScanCompleteEvent) complete.TrySetResult();
+        });
 
         var startTask = svc.StartScanAsync(new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) });
         var serverSocket = await fakeServer.GetClientAsync(TimeSpan.FromSeconds(5));
@@ -192,7 +198,9 @@ public class NetworkScanServiceTests
         await fakeServer.SendAsync(serverSocket, new { type = "scan.complete", found = 2 });
 
         await startTask;
-        await Task.Delay(300);
+        // scan.complete is the last frame the server sends; once it has been dispatched every
+        // earlier event is already in `received`, so there is nothing left to sleep for.
+        await AsyncSignal.ArrivesAsync(complete.Task);
 
         var hits = received.OfType<ScanHitEvent>().Select(e => e.Hit).ToList();
         Assert.Equal(2, hits.Count);
@@ -209,7 +217,12 @@ public class NetworkScanServiceTests
         var svc = CreateService();
 
         var received = new List<ScanEvent>();
-        using var sub = svc.Subscribe(e => received.Add(e));
+        var complete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var sub = svc.Subscribe(e =>
+        {
+            received.Add(e);
+            if (e is ScanCompleteEvent) complete.TrySetResult();
+        });
 
         var subnets = new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) };
         var startTask = svc.StartScanAsync(subnets);
@@ -230,8 +243,8 @@ public class NetworkScanServiceTests
         await fakeServer.SendAsync(serverSocket, new { type = "scan.complete", found = 1 });
 
         await startTask;
-        // Allow the receive loop to drain.
-        await Task.Delay(300);
+        // Wait for the terminal frame rather than guessing at drain time.
+        await AsyncSignal.ArrivesAsync(complete.Task);
 
         Assert.Contains(received, e => e is ScanStartedEvent started && started.TotalHosts == 6);
         Assert.Contains(received, e => e is ScanProgressEvent p && p.Checked == 3);
@@ -266,14 +279,15 @@ public class NetworkScanServiceTests
         await using var fakeServer = new FakeWsScanServer();
         await ConfigureWsScrcpyForAsync(fakeServer.Url);
         var svc = CreateService();
-        using var sub = svc.Subscribe(_ => { });
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var sub = svc.Subscribe(e => { if (e is ScanStartedEvent) started.TrySetResult(); });
 
         var subnets = new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) };
         var first = svc.StartScanAsync(subnets);
         var serverSocket = await fakeServer.GetClientAsync(TimeSpan.FromSeconds(5));
         await fakeServer.ReceiveAsync<object>(serverSocket);
         await fakeServer.SendAsync(serverSocket, new { type = "scan.started", totalHosts = 6, totalSubnets = 1, startedAt = 0L });
-        await Task.Delay(100);  // let scan.started flow through Dispatch
+        await AsyncSignal.ArrivesAsync(started.Task);  // Phase has flipped to Scanning
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => svc.StartScanAsync(subnets));
     }
@@ -397,19 +411,23 @@ public class NetworkScanServiceTests
         // Subscribe AFTER Complete fires to catch anything the receive loop might dispatch
         // in response to the upcoming abnormal close.
         var extraEvents = new List<ScanEvent>();
+        var spurious = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var extraSub = svc.Subscribe(e =>
         {
             // Ignore the snapshot replay (ScanStarted already fired)
             if (e is ScanStartedEvent or ScanHitEvent) return;
             extraEvents.Add(e);
+            if (e is ScanCancelledEvent or ScanErrorEvent) spurious.TrySetResult();
         });
 
         // Abort the server socket without a close frame — simulates the
         // ws-scrcpy-web abrupt-close behavior.
         serverSocket.Abort();
 
-        // Give the receive loop time to see the aborted socket.
-        await Task.Delay(300);
+        // Absence cannot be awaited, so bound the wait explicitly: the receive loop gets a real
+        // window to notice the aborted socket and (wrongly) dispatch something.
+        await AsyncSignal.NeverArrivesAsync(
+            spurious.Task, "an abrupt close after scan.complete must not dispatch Cancelled/Error");
 
         Assert.Equal(ScanPhase.Complete, svc.Phase);
         Assert.DoesNotContain(extraEvents, e => e is ScanCancelledEvent);
