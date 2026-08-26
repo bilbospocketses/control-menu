@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Jellyfin database date update no longer reports failure after doing its work correctly.** The routine stops the container, backs up the database, applies the SQL update and restarts the container — all of which succeeded — but the final readiness check decided Jellyfin was up by polling `docker logs --since <timestamp>` for its `Startup complete` line. On a long-lived container that call silently returns **zero** lines for any recent timestamp while returning the full log for an older one, so the marker could never be seen and every run ended as "Failed to start container" a minute later, despite the container being healthy. Readiness is now decided by the container's own healthcheck, falling back to a `--tail` read whose timestamps are compared against the container's start time — which is what `--since` was really there for, since a long-lived log holds the marker from every previous start. The wait budget is raised from 60s to 120s because a healthcheck only flips on its first passing probe (the Jellyfin image probes every 30s), and the step is relabelled so a readiness timeout is no longer indistinguishable from `docker start` actually failing.
+
 ## [1.3.1] - 2026-08-26
 
 ### Fixed

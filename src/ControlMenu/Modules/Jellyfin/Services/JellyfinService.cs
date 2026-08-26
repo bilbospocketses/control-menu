@@ -55,22 +55,103 @@ public class JellyfinService : IJellyfinService
         return result.ExitCode == 0;
     }
 
-    public async Task<bool> WaitForContainerReadyAsync(string containerId, int timeoutSeconds = 60, CancellationToken ct = default)
+    /// <summary>Log line Jellyfin emits once the server is actually serving.</summary>
+    /// <remarks>
+    /// Deliberately case-sensitive. The same log also carries "Core startup complete" (lowercase s)
+    /// and plugin task lines like "MediaBar Startup Completed" (capital C); neither means the server
+    /// is up, and neither matches this.
+    /// </remarks>
+    private const string StartupMarker = "Startup complete";
+
+    /// <summary>
+    /// Waits until the container is actually serving.
+    /// </summary>
+    /// <remarks>
+    /// This used to poll <c>docker logs --since &lt;timestamp&gt;</c> for <see cref="StartupMarker"/>.
+    /// That is unusable: on a long-lived container <c>--since</c> silently returns ZERO lines for a
+    /// recent timestamp while returning the full log for an old one (measured on a container with
+    /// 467k lines: <c>--since 2026-06-01</c> returned everything, <c>--since &lt;today&gt;</c> returned
+    /// nothing), so readiness could never be observed even though Jellyfin logged the marker ~14s
+    /// after start. Every step of the db-date-update routine would succeed and the run would still
+    /// report as failed.
+    ///
+    /// Readiness is now decided by two independent signals, whichever arrives first:
+    /// the container's own healthcheck (authoritative when the image defines one -- the Jellyfin
+    /// image does), and failing that a <c>--tail</c> read whose docker timestamps are compared
+    /// against the container's start time. The timestamp comparison is what <c>--since</c> was
+    /// really there for: a long-lived log holds the marker from every previous start, and matching
+    /// one of those would report ready while the server is still booting.
+    ///
+    /// The default budget is 120s rather than 60s because a healthcheck only flips to "healthy" on
+    /// its first passing probe, and intervals of 30s are common (the Jellyfin image uses exactly that).
+    /// </remarks>
+    public async Task<bool> WaitForContainerReadyAsync(string containerId, int timeoutSeconds = 120, CancellationToken ct = default)
     {
-        var since = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
+        var startedAt = await GetContainerStartedAtAsync(containerId, ct);
         var deadline = DateTime.UtcNow.AddSeconds(timeoutSeconds);
-        // Initial delay — give container time to begin writing new logs
-        await Task.Delay(3000, ct);
-        while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
+
+        while (!ct.IsCancellationRequested)
         {
-            var result = await _executor.ExecuteAsync("docker", $"logs --since {since} {containerId}", null, ct);
-            if (result.StandardOutput.Contains("Startup complete") ||
-                result.StandardError.Contains("Startup complete"))
-                return true;
-            await Task.Delay(2000, ct);
+            if (await IsContainerHealthyAsync(containerId, ct)) return true;
+            if (await LogsReportStartupAsync(containerId, startedAt, ct)) return true;
+            if (DateTime.UtcNow >= deadline) return false;
+
+            try { await Task.Delay(2000, ct); }
+            catch (OperationCanceledException) { return false; }
         }
         return false;
     }
+
+    /// <summary>Container start time, used to reject a marker left over from an earlier start.</summary>
+    private async Task<DateTimeOffset?> GetContainerStartedAtAsync(string containerId, CancellationToken ct)
+    {
+        var result = await _executor.ExecuteAsync(
+            "docker", $"inspect -f {{{{.State.StartedAt}}}} {containerId}", null, ct);
+        return result.ExitCode == 0 && TryParseTimestamp(result.StandardOutput.Trim(), out var started)
+            ? started
+            : null;
+    }
+
+    /// <summary>Reports the image's own healthcheck verdict; false when the image defines none.</summary>
+    private async Task<bool> IsContainerHealthyAsync(string containerId, CancellationToken ct)
+    {
+        var result = await _executor.ExecuteAsync(
+            "docker",
+            $"inspect -f {{{{if .State.Health}}}}{{{{.State.Health.Status}}}}{{{{else}}}}none{{{{end}}}} {containerId}",
+            null, ct);
+        return result.ExitCode == 0
+            && result.StandardOutput.Trim().Equals("healthy", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Looks for the startup marker in recent logs, ignoring anything older than this start.</summary>
+    private async Task<bool> LogsReportStartupAsync(string containerId, DateTimeOffset? startedAt, CancellationToken ct)
+    {
+        var result = await _executor.ExecuteAsync("docker", $"logs -t --tail 200 {containerId}", null, ct);
+
+        var combined = result.StandardOutput + Environment.NewLine + result.StandardError;
+        foreach (var line in combined.Split('\r', '\n'))
+        {
+            if (!line.Contains(StartupMarker, StringComparison.Ordinal)) continue;
+
+            // No start time available (inspect failed) -- the marker is the only signal we have.
+            if (startedAt is null) return true;
+
+            // `docker logs -t` prefixes each line with an RFC3339 timestamp.
+            var split = line.IndexOf(' ');
+            if (split > 0
+                && TryParseTimestamp(line[..split], out var stamp)
+                && stamp >= startedAt.Value)
+                return true;
+        }
+        return false;
+    }
+
+    private static bool TryParseTimestamp(string value, out DateTimeOffset parsed) =>
+        DateTimeOffset.TryParse(
+            value,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
+            out parsed);
 
     public async Task<string?> BackupDatabaseAsync(OperationLogger? logger = null, CancellationToken ct = default)
     {

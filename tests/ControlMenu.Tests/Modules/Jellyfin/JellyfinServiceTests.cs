@@ -197,4 +197,92 @@ public class JellyfinServiceTests
             e => e.ExecuteAsync("/cm/local/sqlite3.exe", It.IsAny<IReadOnlyList<string>>(), null, It.IsAny<CancellationToken>()),
             Times.Once);
     }
+
+    // ---------------------------------------------------------------------
+    // WaitForContainerReadyAsync -- readiness must not depend on `docker logs --since`
+    // ---------------------------------------------------------------------
+    //
+    // Regression: readiness was decided by `docker logs --since <timestamp>` grepping for
+    // "Startup complete". On a long-lived container that call silently returns ZERO lines for any
+    // recent timestamp (verified: --since 2026-06-01 -> 467k lines, --since <today> -> 0), so the
+    // check could never succeed even though Jellyfin logs "Main: Startup complete" ~14s after
+    // start. Every step of the db-date-update routine succeeded and the run was still reported as
+    // failed. Readiness now prefers the container's own healthcheck and falls back to a --tail read
+    // whose timestamps are compared against the container start time.
+
+    private void SetupStartedAt(string containerId, string startedAtIso) =>
+        _mockExecutor.Setup(e => e.ExecuteAsync("docker",
+                It.Is<string>(a => a.Contains("StartedAt") && a.Contains(containerId)), null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CommandResult(0, startedAtIso + "\n", "", false));
+
+    private void SetupHealth(string containerId, string status) =>
+        _mockExecutor.Setup(e => e.ExecuteAsync("docker",
+                It.Is<string>(a => a.Contains(".State.Health") && a.Contains(containerId)), null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CommandResult(0, status + "\n", "", false));
+
+    private void SetupLogs(string containerId, string stdout) =>
+        _mockExecutor.Setup(e => e.ExecuteAsync("docker",
+                It.Is<string>(a => a.StartsWith("logs") && a.Contains(containerId)), null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new CommandResult(0, stdout, "", false));
+
+    [Fact]
+    public async Task WaitForContainerReadyAsync_ReturnsTrue_WhenTheContainerReportsHealthy()
+    {
+        SetupStartedAt("abc123", "2026-08-26T19:03:34.701211748Z");
+        SetupHealth("abc123", "healthy");
+        SetupLogs("abc123", "");   // no marker at all -- health alone must be enough
+
+        Assert.True(await CreateService().WaitForContainerReadyAsync("abc123", timeoutSeconds: 0));
+    }
+
+    [Fact]
+    public async Task WaitForContainerReadyAsync_ReturnsTrue_WhenNoHealthcheckButLogMarkerFollowsStart()
+    {
+        SetupStartedAt("abc123", "2026-08-26T19:03:34.701211748Z");
+        SetupHealth("abc123", "none");   // image defines no healthcheck
+        SetupLogs("abc123",
+            "2026-08-26T19:03:48.778080977Z [15:03:48] [INF] [9] Main: Startup complete 0:00:13.5322133\n");
+
+        Assert.True(await CreateService().WaitForContainerReadyAsync("abc123", timeoutSeconds: 0));
+    }
+
+    [Fact]
+    public async Task WaitForContainerReadyAsync_IgnoresAStartupMarkerFromBeforeThisStart()
+    {
+        // The whole reason the original used --since: a long-lived container's log holds the
+        // "Startup complete" line from every PREVIOUS start. Matching one of those would report
+        // ready instantly while Jellyfin is still booting -- worse than the bug being fixed.
+        SetupStartedAt("abc123", "2026-08-26T19:03:34.701211748Z");
+        SetupHealth("abc123", "starting");
+        SetupLogs("abc123",
+            "2026-06-30T18:21:58.000000000Z [14:21:58] [INF] [9] Main: Startup complete 0:00:12.1\n");
+
+        Assert.False(await CreateService().WaitForContainerReadyAsync("abc123", timeoutSeconds: 0));
+    }
+
+    [Fact]
+    public async Task WaitForContainerReadyAsync_ReturnsFalse_WhenNeitherSignalArrivesBeforeTheDeadline()
+    {
+        SetupStartedAt("abc123", "2026-08-26T19:03:34.701211748Z");
+        SetupHealth("abc123", "starting");
+        SetupLogs("abc123", "2026-08-26T19:03:40.000000000Z [15:03:40] [INF] Loading plugins\n");
+
+        Assert.False(await CreateService().WaitForContainerReadyAsync("abc123", timeoutSeconds: 0));
+    }
+
+    [Fact]
+    public async Task WaitForContainerReadyAsync_NeverUsesDockerLogsSince()
+    {
+        // --since is the broken primitive. Pin it out so it cannot creep back in.
+        SetupStartedAt("abc123", "2026-08-26T19:03:34.701211748Z");
+        SetupHealth("abc123", "healthy");
+        SetupLogs("abc123", "");
+
+        await CreateService().WaitForContainerReadyAsync("abc123", timeoutSeconds: 0);
+
+        _mockExecutor.Verify(e => e.ExecuteAsync("docker",
+            It.Is<string>(a => a.Contains("--since")), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "readiness must not depend on `docker logs --since` -- it returns nothing on long-lived containers");
+    }
 }
