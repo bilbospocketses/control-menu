@@ -275,7 +275,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
   - [ ] Step 1: Container stops (shows truncated container ID)
   - [ ] Step 2: Backup created
   - [ ] Step 3: SQL update runs
-  - [ ] Step 4: Container starts, **waits for "Startup complete"** (should now actually detect it via stderr)
+  - [ ] Step 4: Container starts, then **waits for Jellyfin to be ready** — the container healthcheck reporting `healthy`, or `Startup complete` in logs timestamped *after* this start. Budget 120s. A failure here means "started but never reported ready", which is NOT `docker start` failing — the step text distinguishes the two
   - [ ] Step 5: Old backups cleaned
   - [ ] All steps show green checkmarks on success
 - [ ] If any step fails: error shows immediately (red X), **container is restarted** on failure
@@ -397,7 +397,7 @@ If you're short on time, just hit these:
 4. [ ] Settings > General: SMTP fields save without reverting
 5. [ ] Settings > Cameras: save a camera, verify name shows in sidebar after refresh
 6. [ ] Settings > Dependencies: badges are styled, disabled buttons are dimmed
-7. [ ] Jellyfin > DB Date Update: start a run, verify Step 4 detects "Startup complete"
+7. [ ] Jellyfin > DB Date Update: start a run, verify Step 4 reports Jellyfin online (healthcheck or post-start log marker), not a false "failed to start"
 8. [ ] Edit a device, cancel — verify original values unchanged
 9. [ ] Google TV mirror: clicks work, survive stream refresh
 10. [ ] Cast & Crew update sends email on completion (if notification email set)
