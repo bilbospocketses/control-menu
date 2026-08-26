@@ -11,9 +11,19 @@ namespace ControlMenu.Components.Shared;
 public sealed class TransientNotice : IDisposable
 {
     private readonly Func<Task> _onChange;
+    private readonly TimeProvider _timeProvider;
     private CancellationTokenSource? _cts;
 
-    public TransientNotice(Func<Task> onChange) => _onChange = onChange;
+    /// <param name="onChange">Invoked after an auto-dismiss clears the message, so the owning
+    /// component can re-render.</param>
+    /// <param name="timeProvider">Clock backing the auto-dismiss delay. Defaults to
+    /// <see cref="TimeProvider.System"/>; tests pass a fake clock so they can land assertions
+    /// exactly on a dismiss deadline instead of racing real elapsed time.</param>
+    public TransientNotice(Func<Task> onChange, TimeProvider? timeProvider = null)
+    {
+        _onChange = onChange;
+        _timeProvider = timeProvider ?? TimeProvider.System;
+    }
 
     public string? Message { get; private set; }
     public string CssClass { get; private set; } = "";
@@ -31,13 +41,25 @@ public sealed class TransientNotice : IDisposable
         _cts = new CancellationTokenSource();
         var token = _cts.Token;
 
-        _ = Task.Delay(dismissMs, token).ContinueWith(async _ =>
+        _ = DismissAfterAsync(dismissMs, token);
+    }
+
+    private async Task DismissAfterAsync(int dismissMs, CancellationToken token)
+    {
+        try
         {
-            Message = null;
-            CssClass = "";
-            Icon = "";
-            await _onChange();
-        }, token, TaskContinuationOptions.OnlyOnRanToCompletion, TaskScheduler.Default);
+            await Task.Delay(TimeSpan.FromMilliseconds(dismissMs), _timeProvider, token)
+                      .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return;   // a newer Show() or a Clear() superseded this timer
+        }
+
+        Message = null;
+        CssClass = "";
+        Icon = "";
+        await _onChange().ConfigureAwait(false);
     }
 
     /// <summary>Clears the message immediately and cancels/disposes any pending auto-dismiss.</summary>

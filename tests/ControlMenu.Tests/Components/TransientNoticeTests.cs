@@ -1,13 +1,43 @@
 using ControlMenu.Components.Shared;
+using Microsoft.Extensions.Time.Testing;
 
 namespace ControlMenu.Tests.Components;
 
 public class TransientNoticeTests
 {
+    /// <summary>
+    /// Builds a notice on a fake clock plus a signal that completes the first time the notice asks
+    /// its component to re-render. The auto-dismiss clears the message *before* invoking that
+    /// callback, so awaiting the signal is a deterministic "the dismiss has finished" handle — which
+    /// is what lets every test below drive time explicitly instead of racing real elapsed time.
+    /// </summary>
+    private static (TransientNotice Notice, Task Rerendered) NoticeOn(FakeTimeProvider time)
+    {
+        var rerendered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var notice = new TransientNotice(
+            () => { rerendered.TrySetResult(); return Task.CompletedTask; },
+            time);
+        return (notice, rerendered.Task);
+    }
+
+    /// <summary>
+    /// Asserts no auto-dismiss re-render arrives within a real grace window. A dismiss runs its
+    /// state change on a continuation, so a wrongly-surviving timer fires slightly *after* the
+    /// <see cref="FakeTimeProvider.Advance"/> that released it — asserting instantly would race
+    /// past the very bug these tests exist to catch. Waiting real time is safe here precisely
+    /// because the clock is fake: a correctly-cancelled timer never fires no matter how long we
+    /// wait, since fake time only moves when a test moves it.
+    /// </summary>
+    private static async Task AssertNoRerender(Task rerendered, string because)
+    {
+        var grace = Task.Delay(TimeSpan.FromMilliseconds(250));
+        Assert.False(await Task.WhenAny(rerendered, grace) == rerendered, because);
+    }
+
     [Fact]
     public void Show_SetsMessageClassIconAndVisible()
     {
-        var notice = new TransientNotice(() => Task.CompletedTask);
+        var notice = new TransientNotice(() => Task.CompletedTask, new FakeTimeProvider());
         notice.Show("hello", "status-success", "bi-check", dismissMs: 60_000);
 
         Assert.Equal("hello", notice.Message);
@@ -19,16 +49,17 @@ public class TransientNoticeTests
     [Fact]
     public async Task AutoDismiss_ClearsMessageAndNotifies()
     {
-        var changes = 0;
-        var notice = new TransientNotice(() => { Interlocked.Increment(ref changes); return Task.CompletedTask; });
-        notice.Show("bye", dismissMs: 80);
+        var time = new FakeTimeProvider();
+        var (notice, rerendered) = NoticeOn(time);
 
+        notice.Show("bye", dismissMs: 80);
         Assert.True(notice.IsVisible);
-        await Task.Delay(250);
+
+        time.Advance(TimeSpan.FromMilliseconds(80));
+        await rerendered.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Null(notice.Message);
         Assert.False(notice.IsVisible);
-        Assert.True(changes >= 1, "auto-dismiss should notify the component to re-render");
     }
 
     [Fact]
@@ -36,30 +67,42 @@ public class TransientNoticeTests
     {
         // The bug this helper fixes: the settings pages started a Task.Delay timer with no CTS, so
         // an earlier message's timer would fire and wipe a newer message. Show() must cancel the
-        // prior timer.
-        var notice = new TransientNotice(() => Task.CompletedTask);
+        // prior timer. The fake clock lands the assertions exactly on the two deadlines that matter,
+        // rather than sampling somewhere between them and hoping the scheduler cooperates.
+        var time = new FakeTimeProvider();
+        var (notice, rerendered) = NoticeOn(time);
 
         notice.Show("first", dismissMs: 200);
-        await Task.Delay(100);
+        time.Advance(TimeSpan.FromMilliseconds(100));
         notice.Show("second", dismissMs: 200);   // restarts; the first 200ms timer must be cancelled
 
-        await Task.Delay(180);   // ~280ms: past the first message's 200ms deadline, before the second's (~300ms)
+        // t=200ms — exactly when the *first* message's timer was due. It was cancelled, so the newer
+        // message must still be standing.
+        time.Advance(TimeSpan.FromMilliseconds(100));
+        await AssertNoRerender(rerendered, "the first message's timer was cancelled and must not fire");
         Assert.Equal("second", notice.Message);
 
-        await Task.Delay(180);   // ~460ms: past the second's deadline
+        // t=300ms — the second message's own deadline; now it clears.
+        time.Advance(TimeSpan.FromMilliseconds(100));
+        await rerendered.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Null(notice.Message);
     }
 
     [Fact]
     public async Task Clear_RemovesMessageImmediatelyAndStopsTimer()
     {
-        var notice = new TransientNotice(() => Task.CompletedTask);
+        var time = new FakeTimeProvider();
+        var (notice, rerendered) = NoticeOn(time);
+
         notice.Show("x", dismissMs: 60_000);
         notice.Clear();
 
         Assert.Null(notice.Message);
         Assert.False(notice.IsVisible);
-        await Task.Delay(50);   // the long timer must not fire and clobber state later
+
+        // Advance far past the cancelled timer's deadline: it must never fire and clobber state.
+        time.Advance(TimeSpan.FromMinutes(5));
+        await AssertNoRerender(rerendered, "Clear() cancelled the timer, so it must never fire");
         Assert.Null(notice.Message);
     }
 }
