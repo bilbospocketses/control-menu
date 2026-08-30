@@ -285,13 +285,23 @@ public class JellyfinService : IJellyfinService
 
     public async Task TriggerPersonImageDownloadAsync(string personId, JellyfinApiConfig apiConfig, CancellationToken ct = default)
     {
-        if (apiConfig.UserId is null) return;
-
+        // POST /Items/{id}/Refresh is the only call that makes Jellyfin query its metadata
+        // providers and download an image. This previously issued a GET against
+        // /Users/{userId}/Items/{personId}, which merely READS the item — no provider is ever
+        // contacted, so the job reported success while downloading nothing.
+        //
+        // Two deliberate choices:
+        //  - No UserId guard. Refresh is not user-scoped, and the old guard silently turned the
+        //    entire job into a no-op whenever jellyfin-user-id happened to be unset.
+        //  - replaceAllImages=false so an existing image is never overwritten; this only fills gaps.
         var client = _httpFactory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Emby-Token", apiConfig.ApiKey);
-        var url = $"{apiConfig.BaseUrl}/Users/{Uri.EscapeDataString(apiConfig.UserId)}/Items/{Uri.EscapeDataString(personId)}";
+        var url = $"{apiConfig.BaseUrl}/Items/{Uri.EscapeDataString(personId)}/Refresh"
+                  + "?metadataRefreshMode=FullRefresh"
+                  + "&imageRefreshMode=FullRefresh"
+                  + "&replaceAllImages=false";
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
-        await client.GetAsync(url, timeoutCts.Token);
+        await client.PostAsync(url, content: null, timeoutCts.Token);
     }
 }
