@@ -290,6 +290,18 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Job history table shows completed/failed jobs
 - [ ] If a previous job got stuck in "Running" state — it should now be clearable (fail on cancellation)
 
+> **A run that processes thousands of people and adds almost no images is the expected result — do not
+> file it as a bug.** The job now genuinely asks Jellyfin to fetch (`POST /Items/{id}/Refresh`; it
+> previously issued only a `GET`, which fetched nothing). But measured against a real library, TMDb had
+> a profile photo for **0 of 6,545** in-media people missing one, and Jellyfin's own `/RemoteImages`
+> returned nothing for **0 of 309** sampled — against a control group of known actors that returned 10
+> images each. The people without images are overwhelmingly guest stars and crew with no catalogued
+> headshot anywhere. This job matters for **new** media arriving with photographed cast.
+>
+> To test the *mechanism* rather than the yield: pick one person the job processed and check
+> `GET /Items/{id}/RemoteImages?type=Primary`. If it returns candidates, the job should have downloaded
+> one; if it returns none, there was nothing to fetch and the job behaved correctly.
+
 ## 16. Dependency Version Management (ADB Update Fix)
 
 - [ ] Settings > Dependencies: Check ADB — version appears (not "Not found" if installed locally)
