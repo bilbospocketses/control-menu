@@ -285,4 +285,68 @@ public class JellyfinServiceTests
             Times.Never,
             "readiness must not depend on `docker logs --since` -- it returns nothing on long-lived containers");
     }
+
+    private (JellyfinService Service, List<HttpRequestMessage> Requests) CreateServiceCapturingHttp()
+    {
+        var requests = new List<HttpRequestMessage>();
+        var handler = new PersonRefreshCapturingHandler(requests.Add);
+        _mockHttpFactory.Setup(f => f.CreateClient(It.IsAny<string>()))
+            .Returns(() => new HttpClient(handler, disposeHandler: false));
+        return (CreateService(), requests);
+    }
+
+    [Fact]
+    public async Task TriggerPersonImageDownloadAsync_PostsToTheRefreshEndpoint()
+    {
+        var (service, requests) = CreateServiceCapturingHttp();
+
+        await service.TriggerPersonImageDownloadAsync(
+            "abc-123", new JellyfinApiConfig("http://jf:8096", "key", "user-1"));
+
+        var req = Assert.Single(requests);
+        Assert.Equal(HttpMethod.Post, req.Method);
+        var uri = req.RequestUri!.ToString();
+        Assert.Contains("/Items/abc-123/Refresh", uri);
+        Assert.Contains("imageRefreshMode=FullRefresh", uri);
+        Assert.Contains("replaceAllImages=false", uri);
+    }
+
+    [Fact]
+    public async Task TriggerPersonImageDownloadAsync_NeverJustReadsTheItem()
+    {
+        // The original implementation GET-ed /Users/{userId}/Items/{personId}. That only reads the
+        // item -- no metadata provider is ever contacted -- so the job reported success while
+        // downloading nothing. Pin the regression out.
+        var (service, requests) = CreateServiceCapturingHttp();
+
+        await service.TriggerPersonImageDownloadAsync(
+            "abc-123", new JellyfinApiConfig("http://jf:8096", "key", "user-1"));
+
+        Assert.DoesNotContain(requests, r => r.Method == HttpMethod.Get);
+        Assert.DoesNotContain(requests, r => r.RequestUri!.ToString().Contains("/Users/"));
+    }
+
+    [Fact]
+    public async Task TriggerPersonImageDownloadAsync_StillRefreshes_WhenUserIdIsNotConfigured()
+    {
+        // Refresh is not user-scoped. The old UserId null-guard silently turned the whole job into
+        // a no-op whenever jellyfin-user-id was unset.
+        var (service, requests) = CreateServiceCapturingHttp();
+
+        await service.TriggerPersonImageDownloadAsync(
+            "abc-123", new JellyfinApiConfig("http://jf:8096", "key", null));
+
+        var req = Assert.Single(requests);
+        Assert.Equal(HttpMethod.Post, req.Method);
+        Assert.Contains("/Items/abc-123/Refresh", req.RequestUri!.ToString());
+    }
+}
+
+internal sealed class PersonRefreshCapturingHandler(Action<HttpRequestMessage> capture) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        capture(request);
+        return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NoContent));
+    }
 }
