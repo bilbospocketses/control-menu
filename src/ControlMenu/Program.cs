@@ -117,10 +117,16 @@ var cameraNavScopeFactory = app.Services.GetRequiredService<IServiceScopeFactory
 cameraNotifier.CamerasChanged += () =>
     _ = Task.Run(() => CamerasModule.RefreshEnabledNavAsync(cameraNavScopeFactory, app.Logger));
 
+// Resolve this BEFORE RunAsync. UpdateApplyState is a singleton, so holding the reference across
+// shutdown is fine — resolving it afterwards is not: the provider is already disposed by then and
+// GetRequiredService threw "ObjectDisposedException: Cannot access a disposed object. Object name:
+// 'IServiceProvider'" as the very last thing the process did.
+var updateApplyState = app.Services.GetRequiredService<ControlMenu.Services.Update.UpdateApplyState>();
+
 await app.RunAsync();
 
 // Return the apply-update exit code explicitly — the launcher reads 75 to swap in a downloaded
 // update — instead of relying on a clobberable Environment.ExitCode set deep inside a service.
-return app.Services.GetRequiredService<ControlMenu.Services.Update.UpdateApplyState>().ApplyRequested
+return updateApplyState.ApplyRequested
     ? ControlMenu.Services.Update.VelopackUpdateService.ExitCodeApplyUpdate
     : 0;

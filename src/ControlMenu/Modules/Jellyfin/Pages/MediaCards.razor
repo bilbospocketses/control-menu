@@ -233,6 +233,7 @@ else
     [Inject] private IServiceScopeFactory ScopeFactory { get; set; } = default!;
     [Inject] private ILogger<MediaCards> Logger { get; set; } = default!;
     [Inject] private ControlMenu.Common.Paths.IDataPathResolver Paths { get; set; } = default!;
+    [Inject] private IHostApplicationLifetime Lifetime { get; set; } = default!;
 
     private List<MediaCardTarget>? _targets;
     private readonly HashSet<string> _selected = [];
@@ -247,6 +248,7 @@ else
     private bool _starting;
     private bool _disposed;
     private Timer? _pollTimer;
+    private CancellationTokenRegistration _stoppingRegistration;
 
     // Nothing is ticked by default -- regenerating a card replaces it, so every library is an
     // explicit choice. Select-all covers only what Jellyfin can actually rebuild.
@@ -275,6 +277,19 @@ else
             }
             catch (ObjectDisposedException) { }
         }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+
+        // Blazor does not dispose a circuit's components promptly when the host stops, so this
+        // timer outlives shutdown and keeps resolving scoped services from a provider being torn
+        // down. It kept querying for 28 seconds past "Application is shutting down" and delayed
+        // exit by that much. Stop it the moment shutdown begins.
+        _stoppingRegistration = Lifetime.ApplicationStopping.Register(StopPolling);
+    }
+
+    private void StopPolling()
+    {
+        _disposed = true;
+        _pollTimer?.Dispose();
+        _pollTimer = null;
     }
 
     private async Task LoadLibraries()
@@ -419,7 +434,7 @@ else
 
     public void Dispose()
     {
-        _disposed = true;
-        _pollTimer?.Dispose();
+        _stoppingRegistration.Dispose();
+        StopPolling();
     }
 }

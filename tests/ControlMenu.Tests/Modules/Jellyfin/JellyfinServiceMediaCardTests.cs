@@ -235,7 +235,10 @@ public class JellyfinServiceMediaCardTests : IDisposable
             Assert.Equal(HttpMethod.Post, req.Method);
             Assert.Contains("/Items/lib-movies/Images/Primary", req.RequestUri!.ToString());
             Assert.Equal("image/png", sentMime);
-            Assert.Equal(bytes, sent);
+            // The body is BASE64 TEXT, not raw bytes. The OpenAPI document says `format: binary`,
+            // but ImageController.SetItemImage base64-decodes the body -- raw bytes come back as
+            // 500 "FormatException ... ThrowBase64FormatException at ImageSaver.SaveImageToLocation".
+            Assert.Equal(Convert.ToBase64String(bytes), Encoding.UTF8.GetString(sent!));
         }
         finally
         {

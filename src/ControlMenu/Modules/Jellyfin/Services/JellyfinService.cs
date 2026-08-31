@@ -475,8 +475,13 @@ public class JellyfinService : IJellyfinService
             _ => "application/octet-stream"
         };
 
+        // The body must be BASE64 TEXT, not raw bytes. The OpenAPI document declares this endpoint
+        // as `image/*` with `format: binary`, but ImageController.SetItemImage pipes the body
+        // through a base64 decoder -- posting raw bytes returns 500 with
+        // "System.FormatException ... ThrowBase64FormatException at ImageSaver.SaveImageToLocation".
+        // Verified against the running server, 10.11.11.
         var client = CreateApiClient(apiConfig);
-        using var content = new ByteArrayContent(bytes);
+        using var content = new StringContent(Convert.ToBase64String(bytes));
         content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mimeType);
         using var response = await client.PostAsync(CardUrl(apiConfig, libraryId), content, ct);
         response.EnsureSuccessStatusCode();

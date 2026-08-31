@@ -16,7 +16,7 @@
     {
         <div class="alert alert-warning">
             <i class="bi bi-exclamation-triangle"></i>
-            ws-scrcpy-web isn't reachable at <code>@WsScrcpy.BaseUrl</code>.
+            ws-scrcpy-web isn't reachable at <code>@_baseUrl</code>.
             Verify the URL in Settings &gt; General &gt; External Dependencies, and confirm the ws-scrcpy-web instance is running.
             <button class="btn btn-sm btn-outline-secondary" style="margin-left:1rem" @onclick="ProbeAsync">
                 <i class="bi bi-arrow-clockwise"></i> Re-check
@@ -25,7 +25,7 @@
     }
     else
     {
-        <iframe id="ws-scrcpy-iframe" src="@WsScrcpy.BaseUrl/" class="power-tools-iframe"
+        <iframe id="ws-scrcpy-iframe" src="@(_baseUrl + "/")" class="power-tools-iframe"
                 allow="autoplay; fullscreen; clipboard-read; clipboard-write"
                 title="ws-scrcpy-web"></iframe>
     }
@@ -33,6 +33,7 @@
 
 @code {
     private bool? _reachable;
+    private string _baseUrl = "";
 
     protected override async Task OnInitializedAsync() => await ProbeAsync();
 
@@ -40,6 +41,10 @@
     {
         _reachable = null;
         StateHasChanged();
+
+        // Read the URL on every visit and re-check. It was previously resolved once at startup and
+        // cached, so the iframe kept loading the default port 8000 after the setting was changed.
+        _baseUrl = await WsScrcpy.GetBaseUrlAsync();
         _reachable = await WsScrcpy.ProbeAsync();
     }
 }

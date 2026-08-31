@@ -15,7 +15,13 @@ public class WsScrcpyService : IHostedService
     private readonly ILogger<WsScrcpyService> _logger;
     private bool _serviceReady;
 
-    public string BaseUrl { get; private set; } = "http://localhost:8000";
+    private const string DefaultUrl = "http://localhost:8000";
+
+    /// <summary>
+    /// Last resolved URL. This is a cache for synchronous readers -- call
+    /// <see cref="GetBaseUrlAsync"/> when the value must be current.
+    /// </summary>
+    public string BaseUrl { get; private set; } = DefaultUrl;
 
     /// <summary>True once the service has resolved a URL at startup. Does NOT
     /// guarantee ws-scrcpy-web is currently reachable — call ProbeAsync for that.</summary>
@@ -30,12 +36,24 @@ public class WsScrcpyService : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        using var scope = _scopeFactory.CreateScope();
-        var config = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
-        var url = (await config.GetSettingAsync("wsscrcpy-url")) ?? "http://localhost:8000";
-        BaseUrl = url;
+        var url = await GetBaseUrlAsync(cancellationToken);
         _serviceReady = true;
         _logger.LogInformation("ws-scrcpy-web external URL: {Url}", url);
+    }
+
+    /// <summary>
+    /// Re-reads <c>wsscrcpy-url</c> from configuration and refreshes <see cref="BaseUrl"/>.
+    /// The URL used to be resolved once in <see cref="StartAsync"/> and cached for the life of the
+    /// process, so changing it in Settings had no effect until the app was restarted -- the Power
+    /// Tools page kept pointing at the default port 8000 whatever was configured.
+    /// </summary>
+    public async Task<string> GetBaseUrlAsync(CancellationToken cancellationToken = default)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var config = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
+        var url = (await config.GetSettingAsync("wsscrcpy-url")) ?? DefaultUrl;
+        BaseUrl = url;
+        return url;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
@@ -51,11 +69,14 @@ public class WsScrcpyService : IHostedService
     {
         if (!_serviceReady) return false;
 
+        // Probe whatever is configured right now, not whatever was configured at startup.
+        var baseUrl = await GetBaseUrlAsync(cancellationToken);
+
         using var http = _httpClientFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(2);
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Head, BaseUrl + "/");
+            using var req = new HttpRequestMessage(HttpMethod.Head, baseUrl + "/");
             using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             return true;
         }
