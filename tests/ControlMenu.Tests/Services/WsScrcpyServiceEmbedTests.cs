@@ -285,6 +285,35 @@ public class WsScrcpyServiceEmbedTests
     }
 
     [Fact]
+    public async Task CancelEmbedRequestAsync_PostsToTheCancelRoute()
+    {
+        HttpRequestMessage? captured = null;
+        var service = CreateService(req =>
+        {
+            captured = req;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"id":"abc-123","cancelled":true,"status":"cancelled"}"""),
+            };
+        });
+
+        await service.CancelEmbedRequestAsync("abc-123");
+
+        Assert.Equal(HttpMethod.Post, captured!.Method);
+        Assert.EndsWith("/embed-request/abc-123/cancel", captured.RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task CancelEmbedRequestAsync_SwallowsAFailure()
+    {
+        // Best effort by design: an unreachable server just means the request expires on its own,
+        // and this is called from a UI click that must not surface an error for that.
+        var service = CreateService(_ => throw new HttpRequestException("down"));
+
+        await service.CancelEmbedRequestAsync("abc-123");
+    }
+
+    [Fact]
     public void ApprovalWindow_MatchesTheServerSideTtl()
     {
         // REQUEST_TTL_MS in ws-scrcpy-web is 5 * 60 * 1000. If these drift, this end either

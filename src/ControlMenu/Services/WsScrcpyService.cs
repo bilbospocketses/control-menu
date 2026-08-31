@@ -131,6 +131,33 @@ public class WsScrcpyService : IHostedService
     }
 
     /// <summary>
+    /// Withdraws an embed request we no longer want an answer to, so ws-scrcpy-web can close the
+    /// prompt instead of leaving it counting down for an app that stopped waiting — approving an
+    /// abandoned request would grant permission nobody is asking for any more.
+    /// Only ever retracts: ws-scrcpy-web refuses a cancel for a request already decided.
+    /// </summary>
+    public async Task CancelEmbedRequestAsync(string requestId, CancellationToken cancellationToken = default)
+    {
+        using var http = _httpClientFactory.CreateClient();
+        http.Timeout = TimeSpan.FromSeconds(5);
+        try
+        {
+            var baseUrl = await GetBaseUrlAsync(cancellationToken);
+            var url = $"{baseUrl}/embed-request/{Uri.EscapeDataString(requestId)}/cancel";
+            using var response = await http.PostAsync(url, content: null, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                // Not worth surfacing: the request expires on its own within five minutes.
+                _logger.LogInformation("ws-scrcpy-web did not accept the embed cancellation: {Status}", response.StatusCode);
+            }
+        }
+        catch (Exception ex) when (IsTransportFailure(ex))
+        {
+            _logger.LogInformation(ex, "Could not withdraw the embed request; it will expire on its own");
+        }
+    }
+
+    /// <summary>
     /// Outcome of an embed request: <c>pending</c>, <c>approved</c>, <c>denied</c>,
     /// <c>expired</c>, or <c>unknown</c>. Returns null when the server could not be reached,
     /// which is distinct from a decision and must not be treated as one.

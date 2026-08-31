@@ -285,12 +285,18 @@
         StateHasChanged();
     }
 
-    private void CancelWait()
+    private async Task CancelWait()
     {
-        // Stop waiting here, and stop resuming on the next visit. The request itself is left to
-        // expire in ws-scrcpy-web — there is no way to withdraw it, and cancelling the prompt out
-        // from under someone mid-decision would be worse than letting it lapse.
         StopPolling();
+
+        // Tell ws-scrcpy-web too, so its prompt closes instead of counting down for an app that
+        // stopped waiting — approving it then would grant permission nobody is asking for.
+        // Best effort: if the call fails the request simply expires on its own.
+        if (_requestId is not null)
+        {
+            await WsScrcpy.CancelEmbedRequestAsync(_requestId);
+        }
+
         WsScrcpy.ClearPendingEmbed();
         _requestId = null;
         _state = PageState.EmbeddingBlocked;
