@@ -9,15 +9,32 @@ namespace ControlMenu.Tests.Modules.Jellyfin;
 
 public class JellyfinServiceMediaCardTests : IDisposable
 {
-    private const string VirtualFoldersJson = """
+    // Shaped after the real /UserViews response: libraries are CollectionFolders, Playlists and
+    // Live TV are UserViews. Live TV is the one Jellyfin has no generator for.
+    private const string UserViewsJson = """
+        {
+          "Items": [
+            { "Name": "Movies",      "Id": "lib-movies", "Type": "CollectionFolder", "CollectionType": "movies",   "ImageTags": { "Primary": "aaa" } },
+            { "Name": "TV Shows",    "Id": "lib-tv",     "Type": "CollectionFolder", "CollectionType": "tvshows",  "ImageTags": { "Primary": "bbb" } },
+            { "Name": "Music",       "Id": "lib-music",  "Type": "CollectionFolder", "CollectionType": "music",    "ImageTags": {} },
+            { "Name": "Audiobooks",  "Id": "lib-books",  "Type": "CollectionFolder", "CollectionType": "books",    "ImageTags": {} },
+            { "Name": "Playlists",   "Id": "view-plist", "Type": "UserView",         "CollectionType": "playlists","ImageTags": { "Primary": "ccc" } },
+            { "Name": "Live TV",     "Id": "view-livetv","Type": "UserView",         "CollectionType": "livetv",   "ImageTags": { "Primary": "ddd" } }
+          ],
+          "TotalRecordCount": 6,
+          "StartIndex": 0
+        }
+        """;
+
+    private const string UsersJson = """
         [
-          { "Name": "Movies",      "ItemId": "lib-movies", "CollectionType": "movies",      "PrimaryImageItemId": "lib-movies" },
-          { "Name": "TV Shows",    "ItemId": "lib-tv",     "CollectionType": "tvshows",     "PrimaryImageItemId": "lib-tv" },
-          { "Name": "Collections", "ItemId": "lib-coll",   "CollectionType": "boxsets",     "PrimaryImageItemId": null }
+          { "Id": "user-regular", "Name": "kid",   "Policy": { "IsAdministrator": false } },
+          { "Id": "user-admin",   "Name": "jamie", "Policy": { "IsAdministrator": true  } }
         ]
         """;
 
     private static readonly JellyfinApiConfig ApiConfig = new("http://jf:8096", "secret-key", "user-1");
+    private static readonly JellyfinApiConfig NoUserApiConfig = new("http://jf:8096", "secret-key", null);
 
     private readonly Mock<ICommandExecutor> _mockExecutor = new();
     private readonly Mock<IConfigurationService> _mockConfig = new();
@@ -53,6 +70,15 @@ public class JellyfinServiceMediaCardTests : IDisposable
         return (service, requests);
     }
 
+    /// <summary>Routes /Users and /UserViews the way the real server does.</summary>
+    private static HttpResponseMessage RouteViews(HttpRequestMessage request)
+    {
+        var path = request.RequestUri!.AbsolutePath;
+        if (path.EndsWith("/Users", StringComparison.Ordinal)) return Json(UsersJson);
+        if (path.EndsWith("/UserViews", StringComparison.Ordinal)) return Json(UserViewsJson);
+        return new HttpResponseMessage(HttpStatusCode.NoContent);
+    }
+
     private static HttpResponseMessage Json(string body) =>
         new(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
 
@@ -64,30 +90,87 @@ public class JellyfinServiceMediaCardTests : IDisposable
     }
 
     [Fact]
-    public async Task GetLibrariesAsync_ParsesTheVirtualFolderList()
+    public async Task GetMediaCardTargetsAsync_ReturnsTheWholeMyMediaRow_NotJustLibraries()
     {
-        var (service, _) = CreateService(_ => Json(VirtualFoldersJson));
+        var (service, _) = CreateService(RouteViews);
 
-        var libraries = await service.GetLibrariesAsync(ApiConfig);
+        var targets = await service.GetMediaCardTargetsAsync(ApiConfig);
 
-        Assert.Equal(3, libraries.Count);
-        Assert.Equal("Movies", libraries[0].Name);
-        Assert.Equal("lib-movies", libraries[0].Id);
-        Assert.Equal("movies", libraries[0].CollectionType);
-        Assert.True(libraries[0].HasCard);
-        Assert.False(libraries[2].HasCard);
+        // /Library/VirtualFolders reports only CollectionFolders, which is why Playlists was missing.
+        Assert.Equal(6, targets.Count);
+        Assert.Contains(targets, t => t.Name == "Playlists");
+        Assert.Contains(targets, t => t.Name == "Live TV");
     }
 
     [Fact]
-    public async Task GetLibrariesAsync_SendsTheApiKeyAsAHeaderNeverInTheQueryString()
+    public async Task GetMediaCardTargetsAsync_MarksPlaylistsRegenerable()
     {
-        var (service, requests) = CreateService(_ => Json(VirtualFoldersJson));
+        var (service, _) = CreateService(RouteViews);
 
-        await service.GetLibrariesAsync(ApiConfig);
+        var playlists = (await service.GetMediaCardTargetsAsync(ApiConfig)).Single(t => t.Name == "Playlists");
+
+        Assert.True(playlists.CanRegenerate);
+        Assert.True(playlists.HasCard);
+    }
+
+    [Fact]
+    public async Task GetMediaCardTargetsAsync_MarksLiveTvNotRegenerable()
+    {
+        var (service, _) = CreateService(RouteViews);
+
+        var liveTv = (await service.GetMediaCardTargetsAsync(ApiConfig)).Single(t => t.Name == "Live TV");
+
+        Assert.False(liveTv.CanRegenerate);
+        Assert.Contains("Live TV", liveTv.BlockedReason);
+    }
+
+    [Theory]
+    [InlineData("Music")]
+    [InlineData("Audiobooks")]
+    public async Task GetMediaCardTargetsAsync_MarksEveryLibraryRegenerable(string name)
+    {
+        var (service, _) = CreateService(RouteViews);
+
+        var target = (await service.GetMediaCardTargetsAsync(ApiConfig)).Single(t => t.Name == name);
+
+        // Music, music videos and books/audiobooks are CollectionFolders like any other library, so
+        // they work the day they are added -- no per-type list to keep in sync.
+        Assert.True(target.CanRegenerate);
+        Assert.False(target.HasCard);
+    }
+
+    [Fact]
+    public async Task GetMediaCardTargetsAsync_UsesTheConfiguredUser()
+    {
+        var (service, requests) = CreateService(RouteViews);
+
+        await service.GetMediaCardTargetsAsync(ApiConfig);
+
+        Assert.DoesNotContain(requests, r => r.RequestUri!.AbsolutePath.EndsWith("/Users", StringComparison.Ordinal));
+        Assert.Contains("userId=user-1", requests.Single().RequestUri!.Query);
+    }
+
+    [Fact]
+    public async Task GetMediaCardTargetsAsync_FallsBackToTheAdminWhenNoUserIsConfigured()
+    {
+        var (service, requests) = CreateService(RouteViews);
+
+        await service.GetMediaCardTargetsAsync(NoUserApiConfig);
+
+        // /UserViews needs a user and an API key carries none. Returning nothing when
+        // jellyfin-user-id happens to be unset is the trap the cast & crew job fell into.
+        Assert.Contains("userId=user-admin", requests.Last().RequestUri!.Query);
+    }
+
+    [Fact]
+    public async Task GetMediaCardTargetsAsync_SendsTheApiKeyAsAHeaderNeverInTheQueryString()
+    {
+        var (service, requests) = CreateService(RouteViews);
+
+        await service.GetMediaCardTargetsAsync(ApiConfig);
 
         var req = Assert.Single(requests);
         Assert.Equal("secret-key", req.Headers.GetValues("X-Emby-Token").Single());
-        // Query strings land in proxy logs and request traces.
         Assert.DoesNotContain("secret-key", req.RequestUri!.Query);
     }
 
@@ -170,6 +253,54 @@ public class JellyfinServiceMediaCardTests : IDisposable
 
         var (withoutCard, _) = CreateService(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
         Assert.False(await withoutCard.HasLibraryCardAsync("lib-movies", ApiConfig));
+    }
+}
+
+public class MediaCardSupportTests
+{
+    [Theory]
+    [InlineData("movies")]
+    [InlineData("tvshows")]
+    [InlineData("music")]
+    [InlineData("musicvideos")]
+    [InlineData("books")]
+    [InlineData("boxsets")]
+    [InlineData("homevideos")]
+    [InlineData("photos")]
+    public void EveryLibraryIsRegenerable_WhateverItsCollectionType(string collectionType)
+    {
+        // CollectionFolderImageProvider.Supports is `item is CollectionFolder` -- no type list.
+        var (canRegenerate, reason) = MediaCardSupport.Evaluate("CollectionFolder", collectionType);
+
+        Assert.True(canRegenerate);
+        Assert.Null(reason);
+    }
+
+    [Theory]
+    [InlineData("movies")]
+    [InlineData("tvshows")]
+    [InlineData("playlists")]
+    public void CollectionStripViewsAreRegenerable(string viewType)
+    {
+        Assert.True(MediaCardSupport.Evaluate("UserView", viewType).CanRegenerate);
+    }
+
+    [Fact]
+    public void LiveTvIsNotRegenerable()
+    {
+        // DynamicImageProvider.IsUsingCollectionStrip lists movies, tvshows and playlists only, so
+        // a deleted Live TV card can never be rebuilt by Jellyfin.
+        var (canRegenerate, reason) = MediaCardSupport.Evaluate("UserView", "livetv");
+
+        Assert.False(canRegenerate);
+        Assert.Contains("Live TV", reason);
+    }
+
+    [Fact]
+    public void UnknownItemTypesAreNotRegenerable()
+    {
+        Assert.False(MediaCardSupport.Evaluate("Folder", null).CanRegenerate);
+        Assert.False(MediaCardSupport.Evaluate(null, null).CanRegenerate);
     }
 }
 

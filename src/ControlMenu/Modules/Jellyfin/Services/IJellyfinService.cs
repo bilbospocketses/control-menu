@@ -15,8 +15,11 @@ public interface IJellyfinService
     Task<JellyfinApiConfig> GetApiConfigAsync();
     Task TriggerPersonImageDownloadAsync(string personId, JellyfinApiConfig apiConfig, CancellationToken ct = default);
 
-    /// <summary>Lists the libraries behind the My Media tiles, with whether each has a card today.</summary>
-    Task<IReadOnlyList<JellyfinLibrary>> GetLibrariesAsync(JellyfinApiConfig apiConfig, CancellationToken ct = default);
+    /// <summary>
+    /// Lists the My Media tiles from <c>/UserViews</c> -- libraries and generated views alike --
+    /// with whether each has a card today and whether Jellyfin can rebuild it.
+    /// </summary>
+    Task<IReadOnlyList<MediaCardTarget>> GetMediaCardTargetsAsync(JellyfinApiConfig apiConfig, CancellationToken ct = default);
 
     /// <summary>
     /// Downloads a library's current card into the Jellyfin backup directory. Returns the file

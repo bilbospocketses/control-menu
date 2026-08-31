@@ -322,34 +322,76 @@ public class JellyfinService : IJellyfinService
     private static string CardUrl(JellyfinApiConfig apiConfig, string libraryId) =>
         $"{apiConfig.BaseUrl}/Items/{Uri.EscapeDataString(libraryId)}/Images/Primary";
 
-    public async Task<IReadOnlyList<JellyfinLibrary>> GetLibrariesAsync(JellyfinApiConfig apiConfig, CancellationToken ct = default)
+    public async Task<IReadOnlyList<MediaCardTarget>> GetMediaCardTargetsAsync(JellyfinApiConfig apiConfig, CancellationToken ct = default)
     {
+        // /UserViews is the My Media row itself. /Library/VirtualFolders reports only
+        // CollectionFolders, so it silently omits generated views -- Playlists among them.
+        var userId = await ResolveUserIdAsync(apiConfig, ct)
+            ?? throw new InvalidOperationException("Jellyfin reported no users, so there is no My Media row to read");
+
         var client = CreateApiClient(apiConfig);
-        var json = await client.GetStringAsync($"{apiConfig.BaseUrl}/Library/VirtualFolders", ct);
+        var json = await client.GetStringAsync(
+            $"{apiConfig.BaseUrl}/UserViews?userId={Uri.EscapeDataString(userId)}", ct);
 
-        var libraries = new List<JellyfinLibrary>();
+        var targets = new List<MediaCardTarget>();
         using var doc = System.Text.Json.JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("Items", out var items)) return targets;
 
-        foreach (var item in doc.RootElement.EnumerateArray())
+        foreach (var item in items.EnumerateArray())
         {
-            var id = item.TryGetProperty("ItemId", out var idEl) ? idEl.GetString() : null;
-            var name = item.TryGetProperty("Name", out var nameEl) ? nameEl.GetString() : null;
+            var id = StringProperty(item, "Id");
+            var name = StringProperty(item, "Name");
             if (id is null || name is null) continue;
 
-            var collectionType = item.TryGetProperty("CollectionType", out var typeEl)
-                && typeEl.ValueKind == System.Text.Json.JsonValueKind.String
-                    ? typeEl.GetString()
-                    : null;
+            var itemType = StringProperty(item, "Type");
+            var collectionType = StringProperty(item, "CollectionType");
 
-            var hasCard = item.TryGetProperty("PrimaryImageItemId", out var imageEl)
-                && imageEl.ValueKind == System.Text.Json.JsonValueKind.String
-                && !string.IsNullOrEmpty(imageEl.GetString());
+            var hasCard = item.TryGetProperty("ImageTags", out var tags)
+                && tags.ValueKind == System.Text.Json.JsonValueKind.Object
+                && tags.TryGetProperty("Primary", out _);
 
-            libraries.Add(new JellyfinLibrary(id, name, collectionType, hasCard));
+            var (canRegenerate, reason) = MediaCardSupport.Evaluate(itemType, collectionType);
+            targets.Add(new MediaCardTarget(id, name, collectionType, itemType, hasCard, canRegenerate, reason));
         }
 
-        return libraries;
+        return targets;
     }
+
+    /// <summary>
+    /// /UserViews needs a user, and an API key carries none. Prefer the configured user, then the
+    /// first administrator -- <c>jellyfin-user-id</c> is often unset, and the cast &amp; crew job
+    /// was silently a no-op for exactly that reason.
+    /// </summary>
+    private async Task<string?> ResolveUserIdAsync(JellyfinApiConfig apiConfig, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(apiConfig.UserId)) return apiConfig.UserId;
+
+        var client = CreateApiClient(apiConfig);
+        var json = await client.GetStringAsync($"{apiConfig.BaseUrl}/Users", ct);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+
+        string? firstUser = null;
+        foreach (var user in doc.RootElement.EnumerateArray())
+        {
+            var id = StringProperty(user, "Id");
+            if (id is null) continue;
+            firstUser ??= id;
+
+            if (user.TryGetProperty("Policy", out var policy)
+                && policy.TryGetProperty("IsAdministrator", out var isAdmin)
+                && isAdmin.ValueKind == System.Text.Json.JsonValueKind.True)
+            {
+                return id;
+            }
+        }
+
+        return firstUser;
+    }
+
+    private static string? StringProperty(System.Text.Json.JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     public async Task<string?> BackupLibraryCardAsync(string libraryId, string libraryName,
         JellyfinApiConfig apiConfig, CancellationToken ct = default)

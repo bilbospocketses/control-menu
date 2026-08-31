@@ -170,6 +170,43 @@ public class MediaCardRefreshWorkerTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_RefusesATargetJellyfinCannotRegenerate()
+    {
+        var jobId = SetupRunningJob();
+        _mockJellyfin.Setup(j => j.GetMediaCardTargetsAsync(It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MediaCardTarget[]
+            {
+                new("view-livetv", "Live TV", "livetv", "UserView", true, false, "Jellyfin never generates a Live TV card.")
+            });
+
+        await CreateWorker().ExecuteAsync(jobId, ["view-livetv"], CancellationToken.None);
+
+        // The page disables these, but a stale page could still submit one -- and a deleted Live TV
+        // card cannot be rebuilt by Jellyfin at all.
+        _mockJellyfin.Verify(j => j.BackupLibraryCardAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockJellyfin.Verify(j => j.DeleteLibraryCardAsync(It.IsAny<string>(), It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockJobService.Verify(j => j.FailJobAsync(jobId, It.IsAny<string>(), It.IsAny<string?>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ProceedsForARegenerableTarget()
+    {
+        var jobId = SetupRunningJob();
+        _mockJellyfin.Setup(j => j.GetMediaCardTargetsAsync(It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MediaCardTarget[]
+            {
+                new("view-plist", "Playlists", "playlists", "UserView", true, true, null)
+            });
+
+        await CreateWorker().ExecuteAsync(jobId, ["view-plist"], CancellationToken.None);
+
+        _mockJellyfin.Verify(j => j.RefreshLibraryCardAsync("view-plist", It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()), Times.Once);
+        // The name comes from the target list, not the raw id.
+        _mockJellyfin.Verify(j => j.BackupLibraryCardAsync("view-plist", "Playlists", It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockJobService.Verify(j => j.CompleteJobAsync(jobId, It.IsAny<string>()), Times.Once);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_SendsANotificationNamingWhatChanged()
     {
         var jobId = SetupRunningJob();

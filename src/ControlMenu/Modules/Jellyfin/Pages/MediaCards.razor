@@ -63,6 +63,7 @@ else
                 <p><strong>What this does:</strong> For each library you tick — backs up the current card, deletes it, asks Jellyfin to rebuild it, then waits until the new card actually exists before reporting success.</p>
                 <p><strong>Backups:</strong> every replaced card is saved to <code>media-cards</code> in the Jellyfin backup directory first. A library whose backup fails is skipped rather than left with no card.</p>
                 <p><strong>Duration:</strong> under a minute per library. Only images are refreshed — the library itself is not rescanned.</p>
+                <p><strong>Hand-set tiles:</strong> Jellyfin generates cards for libraries and for the Movies, TV Shows and Playlists views. It has no generator for anything else — Live TV included — so those are listed but cannot be ticked: deleting one would leave the tile blank until you set a new image by hand.</p>
             </div>
         </div>
 
@@ -73,11 +74,11 @@ else
                 <p>@_loadError</p>
             </div>
         }
-        else if (_libraries is null)
+        else if (_targets is null)
         {
             <p>Loading libraries…</p>
         }
-        else if (_libraries.Count == 0)
+        else if (_targets.Count == 0)
         {
             <p>Jellyfin reported no libraries.</p>
         }
@@ -97,18 +98,29 @@ else
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var library in _libraries)
+                    @foreach (var target in _targets)
                     {
                         <tr>
                             <td>
-                                <input type="checkbox" aria-label="@($"Select {library.Name}")"
-                                       checked="@_selected.Contains(library.Id)"
-                                       @onchange="e => ToggleLibrary(library.Id, e.Value is true)" />
+                                <input type="checkbox" aria-label="@($"Select {target.Name}")"
+                                       checked="@_selected.Contains(target.Id)"
+                                       disabled="@(!target.CanRegenerate)"
+                                       @onchange="e => ToggleLibrary(target.Id, e.Value is true)" />
                             </td>
-                            <td>@library.Name</td>
-                            <td style="color:var(--text-secondary);">@(library.CollectionType ?? "—")</td>
                             <td>
-                                @if (library.HasCard)
+                                @target.Name
+                                @if (!target.CanRegenerate)
+                                {
+                                    <div style="font-size:0.8rem;color:var(--text-secondary);">@target.BlockedReason</div>
+                                }
+                            </td>
+                            <td style="color:var(--text-secondary);">@(target.CollectionType ?? "—")</td>
+                            <td>
+                                @if (!target.CanRegenerate)
+                                {
+                                    <span class="status-badge status-running">Hand-set</span>
+                                }
+                                else if (target.HasCard)
                                 {
                                     <span class="status-badge status-ok">Present</span>
                                 }
@@ -202,7 +214,7 @@ else
     [Inject] private ILogger<MediaCards> Logger { get; set; } = default!;
     [Inject] private ControlMenu.Common.Paths.IDataPathResolver Paths { get; set; } = default!;
 
-    private List<JellyfinLibrary>? _libraries;
+    private List<MediaCardTarget>? _targets;
     private readonly HashSet<string> _selected = [];
     private string? _loadError;
 
@@ -214,8 +226,12 @@ else
     private Timer? _pollTimer;
 
     // Nothing is ticked by default -- regenerating a card replaces it, so every library is an
-    // explicit choice.
-    private bool AllSelected => _libraries is { Count: > 0 } && _libraries.All(l => _selected.Contains(l.Id));
+    // explicit choice. Select-all covers only what Jellyfin can actually rebuild.
+    private IEnumerable<MediaCardTarget> Regenerable =>
+        _targets?.Where(t => t.CanRegenerate) ?? [];
+
+    private bool AllSelected =>
+        Regenerable.Any() && Regenerable.All(t => _selected.Contains(t.Id));
 
     protected override async Task OnInitializedAsync()
     {
@@ -243,9 +259,10 @@ else
         try
         {
             var apiConfig = await Jellyfin.GetApiConfigAsync();
-            var libraries = await Jellyfin.GetLibrariesAsync(apiConfig);
-            _libraries = libraries.ToList();
-            _selected.RemoveWhere(id => _libraries.All(l => l.Id != id));
+            var targets = await Jellyfin.GetMediaCardTargetsAsync(apiConfig);
+            _targets = targets.ToList();
+            // Drop selections for anything that vanished or is no longer regenerable.
+            _selected.RemoveWhere(id => !_targets.Any(t => t.Id == id && t.CanRegenerate));
             _loadError = null;
         }
         catch (InvalidOperationException ex)
@@ -260,17 +277,22 @@ else
 
     private void ToggleLibrary(string id, bool selected)
     {
-        if (selected) _selected.Add(id);
-        else _selected.Remove(id);
+        if (selected)
+        {
+            if (_targets?.Any(t => t.Id == id && t.CanRegenerate) == true) _selected.Add(id);
+        }
+        else
+        {
+            _selected.Remove(id);
+        }
     }
 
     private void ToggleAll(bool selected)
     {
         _selected.Clear();
-        if (selected && _libraries is not null)
-        {
-            foreach (var library in _libraries) _selected.Add(library.Id);
-        }
+        if (!selected) return;
+
+        foreach (var target in Regenerable) _selected.Add(target.Id);
     }
 
     private async Task LoadJobs()

@@ -42,8 +42,8 @@ public sealed class MediaCardRefreshWorker
             var apiConfig = await _jellyfin.GetApiConfigAsync();
             _logger?.Ok($"API: {apiConfig.BaseUrl}");
 
-            var libraries = await SafeGetLibrariesAsync(apiConfig, cancellationToken);
-            string NameOf(string id) => libraries.FirstOrDefault(l => l.Id == id)?.Name ?? id;
+            var targets = await SafeGetTargetsAsync(apiConfig, cancellationToken);
+            string NameOf(string id) => targets.FirstOrDefault(t => t.Id == id)?.Name ?? id;
 
             var results = new List<MediaCardResult>();
             var cancelled = false;
@@ -72,7 +72,8 @@ public sealed class MediaCardRefreshWorker
                     (int)((double)i / libraryIds.Count * 100),
                     $"Regenerating {name} ({i + 1} of {libraryIds.Count})");
 
-                results.Add(await RegenerateOneAsync(libraryId, name, apiConfig, cancellationToken));
+                var target = targets.FirstOrDefault(t => t.Id == libraryId);
+                results.Add(await RegenerateOneAsync(libraryId, name, target, apiConfig, cancellationToken));
             }
 
             var regenerated = results.Count(r => r.Regenerated);
@@ -125,8 +126,18 @@ public sealed class MediaCardRefreshWorker
     }
 
     private async Task<MediaCardResult> RegenerateOneAsync(string libraryId, string name,
-        JellyfinApiConfig apiConfig, CancellationToken ct)
+        MediaCardTarget? target, JellyfinApiConfig apiConfig, CancellationToken ct)
     {
+        // Last line of defence for the irreversible case. The page disables these, but a stale page
+        // could still submit one, and a deleted Live TV card cannot be rebuilt by Jellyfin at all.
+        // A target we could not look up is allowed through -- the page already validated it.
+        if (target is { CanRegenerate: false })
+        {
+            var reason = target.BlockedReason ?? "Jellyfin cannot generate this card";
+            _logger?.Fail($"{name}: refused -- {reason}");
+            return new MediaCardResult(libraryId, name, false, null, reason);
+        }
+
         string? backupPath;
         try
         {
@@ -195,16 +206,17 @@ public sealed class MediaCardRefreshWorker
         return false;
     }
 
-    private async Task<IReadOnlyList<JellyfinLibrary>> SafeGetLibrariesAsync(JellyfinApiConfig apiConfig, CancellationToken ct)
+    private async Task<IReadOnlyList<MediaCardTarget>> SafeGetTargetsAsync(JellyfinApiConfig apiConfig, CancellationToken ct)
     {
         try
         {
-            return await _jellyfin.GetLibrariesAsync(apiConfig, ct) ?? [];
+            return await _jellyfin.GetMediaCardTargetsAsync(apiConfig, ct) ?? [];
         }
         catch (Exception ex)
         {
-            // Names are cosmetic here -- the job runs off the ids the page selected.
-            _logger?.Step($"Could not read the library list for names: {ex.Message}");
+            // The job runs off the ids the page selected; this list supplies names and the
+            // can-regenerate guard, both of which degrade gracefully when it is unavailable.
+            _logger?.Step($"Could not read the My Media row: {ex.Message}");
             return [];
         }
     }
