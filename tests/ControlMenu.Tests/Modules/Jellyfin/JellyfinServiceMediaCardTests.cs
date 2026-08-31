@@ -175,21 +175,72 @@ public class JellyfinServiceMediaCardTests : IDisposable
     }
 
     [Fact]
-    public async Task RefreshLibraryCardAsync_RefreshesImagesOnly()
+    public async Task RefreshLibraryCardAsync_NeverReplacesAllImages()
     {
         var (service, requests) = CreateService();
 
         await service.RefreshLibraryCardAsync("lib-movies", ApiConfig);
 
+        // 2026-08-30 incident: replaceAllImages=true on a LIBRARY recurses into its children and
+        // re-fetches every one of their images -- ~2,200 files across D:\Movies, D:\TV_Shows and
+        // the boxset folders, from four ticked libraries. The card is deleted first, so the
+        // provider is filling an empty slot and `true` buys nothing. Never set it again.
+        var uri = Assert.Single(requests).RequestUri!.ToString();
+        Assert.Contains("replaceAllImages=false", uri);
+        Assert.DoesNotContain("replaceAllImages=true", uri);
+    }
+
+    [Fact]
+    public async Task RefreshLibraryCardAsync_NeverUsesMetadataRefreshModeNone()
+    {
+        var (service, requests) = CreateService();
+
+        await service.RefreshLibraryCardAsync("lib-movies", ApiConfig);
+
+        // MetadataService.RefreshMetadata nests the ImageProvider.RefreshImages call inside
+        // `if (MetadataRefreshMode != None)`, so None skips the image refresh outright and the card
+        // can never come back. ValidationOnly clears that gate without running metadata providers,
+        // which require >= Default.
         var req = Assert.Single(requests);
         Assert.Equal(HttpMethod.Post, req.Method);
         var uri = req.RequestUri!.ToString();
         Assert.Contains("/Items/lib-movies/Refresh", uri);
-        // metadataRefreshMode=FullRefresh here would rescan every item in the library and turn a
-        // 30-second card regeneration into an overnight job.
-        Assert.Contains("metadataRefreshMode=None", uri);
+        Assert.Contains("metadataRefreshMode=ValidationOnly", uri);
+        Assert.DoesNotContain("metadataRefreshMode=None", uri);
         Assert.Contains("imageRefreshMode=FullRefresh", uri);
-        Assert.Contains("replaceAllImages=true", uri);
+    }
+
+    [Fact]
+    public async Task RestoreLibraryCardAsync_UploadsTheBackupWithItsRealMimeType()
+    {
+        var backup = Path.Combine(Path.GetTempPath(), $"card-{Guid.NewGuid():N}.png");
+        var bytes = new byte[] { 0x89, 0x50, 0x4E, 0x47, 9, 9 };
+        await File.WriteAllBytesAsync(backup, bytes);
+        try
+        {
+            // The body must be read inside the handler: the service disposes its HttpContent as
+            // soon as the call returns, so reading it afterwards throws ObjectDisposedException.
+            byte[]? sent = null;
+            string? sentMime = null;
+            var (service, requests) = CreateService(req =>
+            {
+                sentMime = req.Content?.Headers.ContentType?.MediaType;
+                sent = req.Content?.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            });
+
+            await service.RestoreLibraryCardAsync("lib-movies", backup, ApiConfig);
+
+            var req = Assert.Single(requests);
+            Assert.Equal(HttpMethod.Post, req.Method);
+            Assert.Contains("/Items/lib-movies/Images/Primary", req.RequestUri!.ToString());
+            Assert.Equal("image/png", sentMime);
+            Assert.Equal(bytes, sent);
+        }
+        finally
+        {
+            File.Delete(backup);
+        }
     }
 
     [Fact]
@@ -243,6 +294,32 @@ public class JellyfinServiceMediaCardTests : IDisposable
 
         // No card is not a failure -- it just means there is nothing to preserve.
         Assert.Null(path);
+    }
+
+    [Fact]
+    public async Task FindLatestCardBackupAsync_ReturnsTheNewestBackupForThatLibrary()
+    {
+        var dir = Path.Combine(_backupDir, "media-cards");
+        Directory.CreateDirectory(dir);
+        var older = Path.Combine(dir, "Movies-20260830-100000.png");
+        var newer = Path.Combine(dir, "Movies-20260830-225459.png");
+        var other = Path.Combine(dir, "Playlists-20260830-224856.png");
+        foreach (var f in new[] { older, newer, other }) await File.WriteAllBytesAsync(f, [1]);
+        File.SetLastWriteTimeUtc(older, DateTime.UtcNow.AddHours(-3));
+        File.SetLastWriteTimeUtc(newer, DateTime.UtcNow);
+
+        var (service, _) = CreateService();
+
+        Assert.Equal(newer, await service.FindLatestCardBackupAsync("Movies"));
+        Assert.Equal(other, await service.FindLatestCardBackupAsync("Playlists"));
+    }
+
+    [Fact]
+    public async Task FindLatestCardBackupAsync_ReturnsNull_WhenNothingWasEverBackedUp()
+    {
+        var (service, _) = CreateService();
+
+        Assert.Null(await service.FindLatestCardBackupAsync("Movies"));
     }
 
     [Fact]

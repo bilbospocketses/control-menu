@@ -73,18 +73,21 @@ public sealed class MediaCardRefreshWorker
                     $"Regenerating {name} ({i + 1} of {libraryIds.Count})");
 
                 var target = targets.FirstOrDefault(t => t.Id == libraryId);
-                results.Add(await RegenerateOneAsync(libraryId, name, target, apiConfig, cancellationToken));
+                results.Add(await RegenerateOneAsync(jobId, libraryId, name, target, apiConfig, cancellationToken));
             }
 
             var regenerated = results.Count(r => r.Regenerated);
             var failed = results.Count(r => !r.Regenerated);
-            var summary = $"{regenerated} regenerated, {failed} failed, out of {libraryIds.Count} selected";
+            var restored = results.Count(r => r.Restored);
+            var summary = $"{regenerated} regenerated, {failed} failed, out of {libraryIds.Count} selected"
+                          + (restored > 0 ? $" ({restored} rolled back to the previous card)" : "");
 
             var resultData = JsonSerializer.Serialize(new
             {
                 Total = libraryIds.Count,
                 Regenerated = regenerated,
                 Failed = failed,
+                Restored = restored,
                 Libraries = results
             });
 
@@ -125,7 +128,7 @@ public sealed class MediaCardRefreshWorker
         }
     }
 
-    private async Task<MediaCardResult> RegenerateOneAsync(string libraryId, string name,
+    private async Task<MediaCardResult> RegenerateOneAsync(Guid jobId, string libraryId, string name,
         MediaCardTarget? target, JellyfinApiConfig apiConfig, CancellationToken ct)
     {
         // Last line of defence for the irreversible case. The page disables these, but a stale page
@@ -163,32 +166,65 @@ public sealed class MediaCardRefreshWorker
         catch (Exception ex)
         {
             _logger?.Fail($"{name}: refresh request failed: {ex.Message}");
-            return new MediaCardResult(libraryId, name, false, backupPath, ex.Message);
+            return await RollBackAsync(libraryId, name, backupPath, ex.Message, apiConfig, ct);
         }
 
-        var reappeared = await WaitForCardAsync(libraryId, apiConfig, ct);
+        var reappeared = await WaitForCardAsync(jobId, libraryId, apiConfig, ct);
         if (reappeared)
         {
             _logger?.Ok($"{name}: new card generated");
             return new MediaCardResult(libraryId, name, true, backupPath, null);
         }
 
-        var timeoutMessage = $"No new card after {_cardTimeout.TotalSeconds:N0}s"
-                             + (backupPath is null ? "" : $" -- restore from {backupPath}");
-        _logger?.Fail($"{name}: {timeoutMessage}");
-        return new MediaCardResult(libraryId, name, false, backupPath, timeoutMessage);
+        return await RollBackAsync(libraryId, name, backupPath,
+            $"No new card after {_cardTimeout.TotalSeconds:N0}s", apiConfig, ct);
+    }
+
+    /// <summary>
+    /// Puts the backup back when regeneration fails, so a tile is never left blank. Without this a
+    /// failed run leaves the card deleted and the only copy sitting in a folder the user has to
+    /// find and re-upload by hand -- which is exactly what happened on 2026-08-30.
+    /// </summary>
+    private async Task<MediaCardResult> RollBackAsync(string libraryId, string name, string? backupPath,
+        string failure, JellyfinApiConfig apiConfig, CancellationToken ct)
+    {
+        if (backupPath is null)
+        {
+            // There was no card to begin with, so there is nothing to put back.
+            _logger?.Fail($"{name}: {failure}");
+            return new MediaCardResult(libraryId, name, false, null, failure);
+        }
+
+        try
+        {
+            await _jellyfin.RestoreLibraryCardAsync(libraryId, backupPath, apiConfig, ct);
+            _logger?.Ok($"{name}: {failure} -- previous card restored");
+            return new MediaCardResult(libraryId, name, false, backupPath, failure, Restored: true);
+        }
+        catch (Exception ex)
+        {
+            var message = $"{failure}; restoring the backup ALSO failed ({ex.Message}). "
+                          + $"The previous card is at {backupPath}";
+            _logger?.Fail($"{name}: {message}");
+            return new MediaCardResult(libraryId, name, false, backupPath, message);
+        }
     }
 
     /// <summary>
     /// The refresh is queued server-side, so the POST returning says nothing about the card. Poll
     /// until it exists -- we deleted it first, so anything present is the new one.
     /// </summary>
-    private async Task<bool> WaitForCardAsync(string libraryId, JellyfinApiConfig apiConfig, CancellationToken ct)
+    private async Task<bool> WaitForCardAsync(Guid jobId, string libraryId, JellyfinApiConfig apiConfig, CancellationToken ct)
     {
         var deadline = DateTimeOffset.UtcNow + _cardTimeout;
         do
         {
             if (ct.IsCancellationRequested) return false;
+
+            // Cancellation is read from the database on EVERY poll, not just between libraries.
+            // Checking only between them meant a Cancel click during a 3-minute wait did nothing
+            // visible, and the next library was backed up and deleted before the flag was seen.
+            if (await IsCancellationRequestedAsync(jobId)) return false;
 
             try
             {
@@ -204,6 +240,19 @@ public sealed class MediaCardRefreshWorker
         while (DateTimeOffset.UtcNow < deadline);
 
         return false;
+    }
+
+    private async Task<bool> IsCancellationRequestedAsync(Guid jobId)
+    {
+        try
+        {
+            return (await _jobService.GetJobAsync(jobId))?.CancellationRequested == true;
+        }
+        catch
+        {
+            // A failed status read must not abort a job that is otherwise fine.
+            return false;
+        }
     }
 
     private async Task<IReadOnlyList<MediaCardTarget>> SafeGetTargetsAsync(JellyfinApiConfig apiConfig, CancellationToken ct)
@@ -228,9 +277,12 @@ public sealed class MediaCardRefreshWorker
             var to = await _config.GetSettingAsync("notification-email");
             if (string.IsNullOrEmpty(to)) return;
 
-            var lines = results.Select(r => r.Regenerated
-                ? $"  OK      {r.LibraryName}"
-                : $"  FAILED  {r.LibraryName} -- {r.Error}");
+            var lines = results.Select(r => (r.Regenerated, r.Restored) switch
+            {
+                (true, _) => $"  OK        {r.LibraryName}",
+                (false, true) => $"  ROLLED BACK  {r.LibraryName} -- {r.Error}; previous card restored",
+                _ => $"  FAILED    {r.LibraryName} -- {r.Error}"
+            });
 
             var body = $"Jellyfin My Media card regeneration has {status.ToLowerInvariant()}.\n\n{details}\n\n"
                        + string.Join("\n", lines);

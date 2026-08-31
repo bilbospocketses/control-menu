@@ -67,6 +67,11 @@ else
             </div>
         </div>
 
+        @if (_restoreMessage is not null)
+        {
+            <div class="alert alert-info">@_restoreMessage</div>
+        }
+
         @if (_loadError is not null)
         {
             <div class="job-failed">
@@ -95,6 +100,7 @@ else
                         <th>Library</th>
                         <th>Type</th>
                         <th>Current card</th>
+                        <th>Previous card</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -127,6 +133,20 @@ else
                                 else
                                 {
                                     <span class="status-badge status-error">Missing</span>
+                                }
+                            </td>
+                            <td>
+                                @if (_backups.TryGetValue(target.Id, out var backup))
+                                {
+                                    <button class="btn btn-secondary" @onclick="() => RestoreCard(target, backup)"
+                                            disabled="@(_restoringId == target.Id)">
+                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                        @(_restoringId == target.Id ? "Restoring…" : "Restore")
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span style="color:var(--text-secondary);">—</span>
                                 }
                             </td>
                         </tr>
@@ -216,6 +236,9 @@ else
 
     private List<MediaCardTarget>? _targets;
     private readonly HashSet<string> _selected = [];
+    private readonly Dictionary<string, string> _backups = [];
+    private string? _restoringId;
+    private string? _restoreMessage;
     private string? _loadError;
 
     private Job? _activeJob;
@@ -263,6 +286,14 @@ else
             _targets = targets.ToList();
             // Drop selections for anything that vanished or is no longer regenerable.
             _selected.RemoveWhere(id => !_targets.Any(t => t.Id == id && t.CanRegenerate));
+
+            _backups.Clear();
+            foreach (var target in _targets)
+            {
+                var backup = await Jellyfin.FindLatestCardBackupAsync(target.Name);
+                if (backup is not null) _backups[target.Id] = backup;
+            }
+
             _loadError = null;
         }
         catch (InvalidOperationException ex)
@@ -272,6 +303,27 @@ else
         catch (Exception ex)
         {
             _loadError = $"Could not reach Jellyfin: {ex.Message}";
+        }
+    }
+
+    private async Task RestoreCard(MediaCardTarget target, string backupPath)
+    {
+        _restoringId = target.Id;
+        _restoreMessage = null;
+        try
+        {
+            var apiConfig = await Jellyfin.GetApiConfigAsync();
+            await Jellyfin.RestoreLibraryCardAsync(target.Id, backupPath, apiConfig);
+            _restoreMessage = $"Restored the previous {target.Name} card.";
+            await LoadLibraries();
+        }
+        catch (Exception ex)
+        {
+            _restoreMessage = $"Could not restore {target.Name}: {ex.Message}";
+        }
+        finally
+        {
+            _restoringId = null;
         }
     }
 

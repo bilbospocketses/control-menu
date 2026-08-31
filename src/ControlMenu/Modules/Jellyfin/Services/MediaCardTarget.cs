@@ -19,8 +19,17 @@ public record MediaCardTarget(
     bool CanRegenerate,
     string? BlockedReason);
 
-/// <summary>Outcome of regenerating one card.</summary>
-public record MediaCardResult(string LibraryId, string LibraryName, bool Regenerated, string? BackupPath, string? Error);
+/// <summary>
+/// Outcome of regenerating one card. <paramref name="Restored"/> is set when regeneration failed
+/// and the backup was put back, so the tile is never left blank.
+/// </summary>
+public record MediaCardResult(
+    string LibraryId,
+    string LibraryName,
+    bool Regenerated,
+    string? BackupPath,
+    string? Error,
+    bool Restored = false);
 
 /// <summary>
 /// Whether Jellyfin will generate a card for a given tile, mirroring the two providers that

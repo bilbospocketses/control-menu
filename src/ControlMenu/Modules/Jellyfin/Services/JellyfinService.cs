@@ -437,18 +437,63 @@ public class JellyfinService : IJellyfinService
 
     public async Task RefreshLibraryCardAsync(string libraryId, JellyfinApiConfig apiConfig, CancellationToken ct = default)
     {
-        // metadataRefreshMode=None is deliberate. FullRefresh there re-reads every item in the
-        // library -- a 30-second card regeneration becomes an overnight scan.
+        // Both parameters are the way they are because of a real incident on 2026-08-30. Do not
+        // "optimise" either one back.
+        //
+        // replaceAllImages=false: a refresh on a LIBRARY recurses into its children, and with
+        // replaceAllImages=true it re-fetches every one of their images. Four ticked libraries
+        // rewrote ~2,200 files across D:\Movies, D:\TV_Shows and the boxset folders. We delete the
+        // card first, so the provider is filling an empty slot -- `true` buys nothing and costs the
+        // whole library. With `false`, children that already have images are left alone.
+        //
+        // metadataRefreshMode=ValidationOnly, not None: in MetadataService.RefreshMetadata the
+        // ImageProvider.RefreshImages call is nested inside `if (MetadataRefreshMode != None)`, so
+        // None skips the image refresh entirely and the card can never come back. ValidationOnly
+        // clears that gate while still not running metadata providers, which need >= Default.
         var url = $"{apiConfig.BaseUrl}/Items/{Uri.EscapeDataString(libraryId)}/Refresh"
-                  + "?metadataRefreshMode=None"
+                  + "?metadataRefreshMode=ValidationOnly"
                   + "&imageRefreshMode=FullRefresh"
-                  + "&replaceAllImages=true";
+                  + "&replaceAllImages=false";
 
         var client = CreateApiClient(apiConfig);
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
         using var response = await client.PostAsync(url, content: null, timeoutCts.Token);
         response.EnsureSuccessStatusCode();
+    }
+
+    public async Task RestoreLibraryCardAsync(string libraryId, string backupPath, JellyfinApiConfig apiConfig, CancellationToken ct = default)
+    {
+        // Deleting the image also removes its BaseItemImageInfos row, so copying the file back into
+        // the metadata folder would leave Jellyfin unaware of it. Uploading re-creates the row.
+        var bytes = await File.ReadAllBytesAsync(backupPath, ct);
+        var mimeType = Path.GetExtension(backupPath).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".webp" => "image/webp",
+            _ => "application/octet-stream"
+        };
+
+        var client = CreateApiClient(apiConfig);
+        using var content = new ByteArrayContent(bytes);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mimeType);
+        using var response = await client.PostAsync(CardUrl(apiConfig, libraryId), content, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<string?> FindLatestCardBackupAsync(string libraryName)
+    {
+        var directory = Path.Combine(await _directoryResolver.GetBackupDirectoryAsync(), "media-cards");
+        if (!Directory.Exists(directory)) return null;
+
+        // Backups are named "<sanitised library>-yyyyMMdd-HHmmss.<ext>".
+        var prefix = SanitiseForFileName(libraryName) + "-";
+        return new DirectoryInfo(directory).GetFiles()
+            .Where(f => f.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(f => f.LastWriteTimeUtc)
+            .Select(f => f.FullName)
+            .FirstOrDefault();
     }
 
     public async Task<bool> HasLibraryCardAsync(string libraryId, JellyfinApiConfig apiConfig, CancellationToken ct = default)

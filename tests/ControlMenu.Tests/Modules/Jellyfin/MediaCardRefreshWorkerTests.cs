@@ -127,6 +127,72 @@ public class MediaCardRefreshWorkerTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_PutsTheBackupBack_WhenTheCardNeverComesBack()
+    {
+        var jobId = SetupRunningJob();
+        _mockJellyfin.Setup(j => j.BackupLibraryCardAsync("lib-1", It.IsAny<string>(), It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("C:/backups/movies.png");
+        _mockJellyfin.Setup(j => j.HasLibraryCardAsync("lib-1", It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await CreateWorker().ExecuteAsync(jobId, ["lib-1"], CancellationToken.None);
+
+        // A failed run must never leave the tile blank with the only copy in a folder the user has
+        // to find and re-upload by hand -- that is what happened on 2026-08-30.
+        _mockJellyfin.Verify(j => j.RestoreLibraryCardAsync("lib-1", "C:/backups/movies.png",
+            It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PutsTheBackupBack_WhenTheRefreshRequestFails()
+    {
+        var jobId = SetupRunningJob();
+        _mockJellyfin.Setup(j => j.RefreshLibraryCardAsync("lib-1", It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("500"));
+
+        await CreateWorker().ExecuteAsync(jobId, ["lib-1"], CancellationToken.None);
+
+        _mockJellyfin.Verify(j => j.RestoreLibraryCardAsync("lib-1", It.IsAny<string>(),
+            It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DoesNotRestore_WhenThereWasNoCardToBeginWith()
+    {
+        var jobId = SetupRunningJob();
+        _mockJellyfin.Setup(j => j.BackupLibraryCardAsync("lib-1", It.IsAny<string>(), It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string?)null);
+        _mockJellyfin.Setup(j => j.HasLibraryCardAsync("lib-1", It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await CreateWorker().ExecuteAsync(jobId, ["lib-1"], CancellationToken.None);
+
+        _mockJellyfin.Verify(j => j.RestoreLibraryCardAsync(It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_StopsMidWait_WhenCancelIsClickedDuringTheWait()
+    {
+        var jobId = Guid.NewGuid();
+        var job = new ControlMenu.Data.Entities.Job
+        {
+            Id = jobId, ModuleId = "jellyfin", JobType = "media-card-refresh", Status = JobStatus.Running
+        };
+        _mockJobService.Setup(j => j.GetJobAsync(jobId)).ReturnsAsync(job);
+
+        // The card never appears; the user clicks Cancel while the first library is still waiting.
+        _mockJellyfin.Setup(j => j.HasLibraryCardAsync(It.IsAny<string>(), It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => { job.CancellationRequested = true; return false; });
+
+        await CreateWorker().ExecuteAsync(jobId, ["lib-1", "lib-2"], CancellationToken.None);
+
+        // Checking the flag only BETWEEN libraries meant a click during a 3-minute wait did nothing
+        // and the next library was deleted anyway.
+        _mockJellyfin.Verify(j => j.DeleteLibraryCardAsync("lib-2", It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ContinuesToTheNextLibrary_AfterOneFails()
     {
         var jobId = SetupRunningJob();
