@@ -128,9 +128,6 @@
 @code {
     private enum PageState { Checking, Unreachable, EmbeddingBlocked, AwaitingApproval, Denied, TimedOut, RequestFailed, Ready }
 
-    // Matches REQUEST_TTL_MS in ws-scrcpy-web: "timed out" here and "expired"
-    // there must mean the same moment, or we would give up on a live request.
-    private static readonly TimeSpan ApprovalWindow = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(10);
 
     private PageState _state = PageState.Checking;
@@ -163,6 +160,23 @@
         // The browser's own origin, so the request names exactly what the frame
         // will load from — this stays correct on a non-default port.
         _selfOrigin = new Uri(Nav.BaseUri).GetLeftPart(UriPartial.Authority);
+
+        // Navigating away disposes this component and its poll timer, but the request keeps
+        // counting down in ws-scrcpy-web. Resume it rather than showing the initial panel again:
+        // otherwise a decision made while we were away is never observed — and a denial, unlike an
+        // approval, leaves no trace anywhere for a later re-check to find.
+        var pending = WsScrcpy.PendingEmbed;
+        if (pending is not null && pending.Origin == _selfOrigin && DateTimeOffset.UtcNow < pending.Deadline)
+        {
+            _baseUrl = await WsScrcpy.GetBaseUrlAsync();
+            _requestId = pending.Id;
+            _waitDeadline = pending.Deadline; // the ORIGINAL deadline, not a fresh five minutes
+            _state = PageState.AwaitingApproval;
+            StartPolling();
+            return;
+        }
+
+        if (pending is not null) WsScrcpy.ClearPendingEmbed();
         await Recheck();
     }
 
@@ -210,8 +224,17 @@
             return;
         }
 
-        _waitDeadline = DateTimeOffset.UtcNow + ApprovalWindow;
+        _waitDeadline = WsScrcpy.PendingEmbed?.Deadline ?? DateTimeOffset.UtcNow + WsScrcpyService.ApprovalWindow;
         _state = PageState.AwaitingApproval;
+        StartPolling();
+    }
+
+    private void StartPolling()
+    {
+        // Never leave an orphan behind: a second timer would keep firing for the life of the
+        // circuit, and its approved-branch Recheck would tear the live iframe out and rebuild it
+        // every ten seconds.
+        StopPolling();
 
         _pollTimer = new Timer(async _ =>
         {
@@ -243,16 +266,19 @@
         if (status == "approved")
         {
             StopPolling();
+            WsScrcpy.ClearPendingEmbed();
             await Recheck();
         }
         else if (status == "denied")
         {
             StopPolling();
+            WsScrcpy.ClearPendingEmbed();
             _state = PageState.Denied;
         }
         else if (status is "expired" or "unknown" || DateTimeOffset.UtcNow >= _waitDeadline)
         {
             StopPolling();
+            WsScrcpy.ClearPendingEmbed();
             _state = PageState.TimedOut;
         }
 
@@ -261,7 +287,12 @@
 
     private void CancelWait()
     {
+        // Stop waiting here, and stop resuming on the next visit. The request itself is left to
+        // expire in ws-scrcpy-web — there is no way to withdraw it, and cancelling the prompt out
+        // from under someone mid-decision would be worse than letting it lapse.
         StopPolling();
+        WsScrcpy.ClearPendingEmbed();
+        _requestId = null;
         _state = PageState.EmbeddingBlocked;
     }
 

@@ -20,6 +20,12 @@ public class WsScrcpyService : IHostedService
     private const string DefaultUrl = "http://localhost:8000";
 
     /// <summary>
+    /// Mirrors REQUEST_TTL_MS in ws-scrcpy-web. "Timed out" here and "expired" there must be the
+    /// same moment, or this end abandons a request the other end still honours.
+    /// </summary>
+    public static readonly TimeSpan ApprovalWindow = TimeSpan.FromMinutes(5);
+
+    /// <summary>
     /// Last resolved URL. This is a cache for synchronous readers -- call
     /// <see cref="GetBaseUrlAsync"/> when the value must be current.
     /// </summary>
@@ -70,6 +76,23 @@ public class WsScrcpyService : IHostedService
         return Task.CompletedTask;
     }
 
+    /// <summary>An embed request that is still awaiting a decision in ws-scrcpy-web.</summary>
+    /// <param name="Id">The request id to poll.</param>
+    /// <param name="Origin">The origin permission was asked for.</param>
+    /// <param name="Deadline">When ws-scrcpy-web will expire it. The ORIGINAL deadline, never restarted.</param>
+    public record PendingEmbedRequest(string Id, string Origin, DateTimeOffset Deadline);
+
+    /// <summary>
+    /// The outstanding embed request, if any. Held here rather than on the page because the page
+    /// is disposed the moment the user navigates away: the request keeps counting down in
+    /// ws-scrcpy-web regardless, and without this the answer — a denial especially, which leaves no
+    /// trace anywhere — could never be observed. Cleared once a decision lands or it expires.
+    /// </summary>
+    public PendingEmbedRequest? PendingEmbed { get; private set; }
+
+    /// <summary>Forget the outstanding request, once it has been decided or has expired.</summary>
+    public void ClearPendingEmbed() => PendingEmbed = null;
+
     /// <summary>
     /// Asks ws-scrcpy-web for permission to embed this app, returning the request id to poll.
     /// The request only raises a prompt there — a human has to approve it — so this grants
@@ -93,7 +116,12 @@ public class WsScrcpyService : IHostedService
 
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             using var doc = JsonDocument.Parse(body);
-            return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+            var requestId = doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
+            if (requestId is not null)
+            {
+                PendingEmbed = new PendingEmbedRequest(requestId, embedderOrigin, DateTimeOffset.UtcNow + ApprovalWindow);
+            }
+            return requestId;
         }
         catch (Exception ex) when (IsTransportFailure(ex) || ex is JsonException)
         {

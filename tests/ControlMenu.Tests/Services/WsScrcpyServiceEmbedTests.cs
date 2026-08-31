@@ -241,6 +241,58 @@ public class WsScrcpyServiceEmbedTests
     }
 
     [Fact]
+    public async Task RequestEmbedPermissionAsync_RecordsThePendingRequestForLaterResumption()
+    {
+        var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("""{"id":"abc-123","status":"pending"}"""),
+        });
+
+        await service.RequestEmbedPermissionAsync(SelfOrigin);
+
+        // Held on the singleton, not the page: navigating away disposes the page while the
+        // request keeps counting down, and a denial leaves no trace for a later re-check to find.
+        Assert.NotNull(service.PendingEmbed);
+        Assert.Equal("abc-123", service.PendingEmbed!.Id);
+        Assert.Equal(SelfOrigin, service.PendingEmbed.Origin);
+        Assert.True(service.PendingEmbed.Deadline > DateTimeOffset.UtcNow.AddMinutes(4));
+        Assert.True(service.PendingEmbed.Deadline <= DateTimeOffset.UtcNow.AddMinutes(5));
+    }
+
+    [Fact]
+    public async Task RequestEmbedPermissionAsync_RecordsNothing_WhenTheServerRefuses()
+    {
+        var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        await service.RequestEmbedPermissionAsync(SelfOrigin);
+
+        Assert.Null(service.PendingEmbed);
+    }
+
+    [Fact]
+    public async Task ClearPendingEmbed_ForgetsTheRequest()
+    {
+        var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("""{"id":"abc-123","status":"pending"}"""),
+        });
+        await service.RequestEmbedPermissionAsync(SelfOrigin);
+
+        service.ClearPendingEmbed();
+
+        // A decided request must not resume on the next visit.
+        Assert.Null(service.PendingEmbed);
+    }
+
+    [Fact]
+    public void ApprovalWindow_MatchesTheServerSideTtl()
+    {
+        // REQUEST_TTL_MS in ws-scrcpy-web is 5 * 60 * 1000. If these drift, this end either
+        // abandons a live request or waits on one the server has already expired.
+        Assert.Equal(TimeSpan.FromMinutes(5), WsScrcpyService.ApprovalWindow);
+    }
+
+    [Fact]
     public async Task GetEmbedRequestStatusAsync_ReturnsTheReportedStatus()
     {
         var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.OK)
