@@ -42,20 +42,29 @@ public class JellyfinModuleTests
     }
 
     [Fact]
-    public void NavEntries_IncludesDbUpdateAndCastCrew()
+    public void NavEntries_IncludesDbUpdateCastCrewAndMediaCards()
     {
         var entries = _module.GetNavEntries().ToList();
         Assert.Contains(entries, e => e.Href == "/jellyfin/db-update");
         Assert.Contains(entries, e => e.Href == "/jellyfin/cast-crew");
+        Assert.Contains(entries, e => e.Href == "/jellyfin/media-cards");
     }
 
     [Fact]
     public void BackgroundJobs_IncludesCastCrewUpdate()
     {
         var jobs = _module.GetBackgroundJobs().ToList();
-        Assert.Single(jobs);
-        Assert.Equal("cast-crew-update", jobs[0].JobType);
-        Assert.True(jobs[0].IsLongRunning);
+        var castCrew = Assert.Single(jobs, j => j.JobType == "cast-crew-update");
+        Assert.True(castCrew.IsLongRunning);
+    }
+
+    [Fact]
+    public void BackgroundJobs_IncludesMediaCardRefresh()
+    {
+        var jobs = _module.GetBackgroundJobs().ToList();
+        var cards = Assert.Single(jobs, j => j.JobType == "media-card-refresh");
+        // Minutes, not hours -- it refreshes images only and never rescans the library.
+        Assert.False(cards.IsLongRunning);
     }
 
     [Fact]

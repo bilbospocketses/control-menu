@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Jellyfin → Media Cards: regenerate the My Media tiles from the app.** A new page at `/jellyfin/media-cards` lists every library reported by `/Library/VirtualFolders`, with whether each has a card today. Tick the ones to rebuild and the job backs up the current card, deletes it, asks Jellyfin to rebuild it, then waits until the new card actually exists before reporting success — with the same progress panel, cancel button, job history and completion email the Cast & Crew job uses.
+
+  Three details are load-bearing. **Delete before refresh:** Jellyfin generates these tiles itself in `StripCollageBuilder` (name baked into the pixels, not overlaid), and its provider only runs when the library has no primary image — so `replaceAllImages=true` alone can decide the existing image is still current and change nothing. **`metadataRefreshMode=None`:** `FullRefresh` there re-reads every item in the library, turning a 30-second card regeneration into an overnight scan; only `imageRefreshMode` is set to `FullRefresh`. **Backup before delete:** each replaced card is downloaded to `media-cards/` under the Jellyfin backup directory first, and a library whose backup fails is skipped rather than left with no card at all — because a hand-made card, once deleted, cannot be recovered from Jellyfin.
+
+  Nothing is ticked by default (a header checkbox selects or clears all) and the button stays disabled until at least one library is chosen. Live TV is unaffected: its tile is a `UserView`, which `/Library/VirtualFolders` does not report.
+
 ### Fixed
 
 - **The cast/crew image job now actually asks Jellyfin to fetch images.** `TriggerPersonImageDownloadAsync` issued a `GET` against `/Users/{userId}/Items/{personId}`, which only *reads* the item — no metadata provider is ever contacted — so the job enumerated the people correctly, reported success for each, and downloaded nothing. It now `POST`s to `/Items/{personId}/Refresh?metadataRefreshMode=FullRefresh&imageRefreshMode=FullRefresh&replaceAllImages=false`, which is the call that makes Jellyfin query its providers. `replaceAllImages=false` means an existing image is never overwritten; this only fills gaps. The method also no longer returns early when `jellyfin-user-id` is unset — `/Refresh` is not user-scoped, and that guard silently turned the entire job into a no-op whenever the setting happened to be empty. Three tests pin the regression: the request must be a POST to `/Refresh`, must never be a `GET` or touch `/Users/`, and must still fire with a null user id.
