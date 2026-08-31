@@ -69,6 +69,13 @@ builder.Services.AddRazorComponents()
 // dataPathResolver roots the SQLite DB and the Data Protection key ring.
 builder.Services.AddControlMenuServices(dataPathResolver);
 
+// Ctrl-C took ~20 seconds. That time is spent between ApplicationStopping firing and the hosted
+// services being stopped -- the web host draining Kestrel and the Blazor SignalR circuit, which a
+// desktop-style local app has no reason to wait 30 seconds for. go2rtc is already killed on
+// ApplicationStopping, so nothing that matters is cut short by capping this.
+builder.Services.Configure<HostOptions>(options =>
+    options.ShutdownTimeout = TimeSpan.FromSeconds(5));
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
@@ -122,6 +129,18 @@ cameraNotifier.CamerasChanged += () =>
 // GetRequiredService threw "ObjectDisposedException: Cannot access a disposed object. Object name:
 // 'IServiceProvider'" as the very last thing the process did.
 var updateApplyState = app.Services.GetRequiredService<ControlMenu.Services.Update.UpdateApplyState>();
+
+// Bracket the shutdown so the next slow exit names its own stage instead of being reasoned about
+// from hosted-service stop order, which has now misled twice.
+var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+var shutdownStarted = System.Diagnostics.Stopwatch.StartNew();
+lifetime.ApplicationStopping.Register(() =>
+{
+    shutdownStarted.Restart();
+    app.Logger.LogInformation("Shutdown: ApplicationStopping");
+});
+lifetime.ApplicationStopped.Register(() =>
+    app.Logger.LogInformation("Shutdown: ApplicationStopped after {Elapsed} ms", shutdownStarted.ElapsedMilliseconds));
 
 await app.RunAsync();
 

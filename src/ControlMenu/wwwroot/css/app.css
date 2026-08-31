@@ -367,3 +367,8 @@ select.form-control { appearance: auto; }
 
 .job-failed { color: var(--danger-text, #721c24); display: flex; align-items: center; gap: 0.5rem; }
 .job-failed i { font-size: 1.5rem; }
+
+/* Ordered steps inside a callout — the DB-date page lists what it is about to
+   do, and the list has to sit in the box like the paragraphs around it. */
+.info-box ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+.info-box li { padding: 0.15rem 0; }
