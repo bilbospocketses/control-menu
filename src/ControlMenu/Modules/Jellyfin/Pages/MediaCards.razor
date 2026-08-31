@@ -62,7 +62,7 @@ else
             <div>
                 <p><strong>What this does:</strong> For each library you tick — backs up the current card, deletes it, asks Jellyfin to rebuild it, then waits until the new card actually exists before reporting success.</p>
                 <p><strong>Backups:</strong> every replaced card is saved to <code>media-cards</code> in the Jellyfin backup directory first. A library whose backup fails is skipped rather than left with no card.</p>
-                <p><strong>Duration:</strong> under a minute per library. Only images are refreshed — the library itself is not rescanned.</p>
+                <p><strong>Duration:</strong> the card itself appears within seconds. But Jellyfin always walks the whole library behind a refresh — there is no way to ask it not to — and for a real media library that takes around ten minutes. Its refresh queue is serial, so if you tick several, each one waits for the previous library's walk before its own card is rebuilt, and its tile stays blank until then. Ticking one large library at a time is the calmer option.</p>
                 <p><strong>Hand-set tiles:</strong> Jellyfin generates cards for libraries and for the Movies, TV Shows and Playlists views. It has no generator for anything else — Live TV included — so those are listed but cannot be ticked: deleting one would leave the tile blank until you set a new image by hand.</p>
             </div>
         </div>

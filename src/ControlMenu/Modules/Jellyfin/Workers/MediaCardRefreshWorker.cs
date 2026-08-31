@@ -11,7 +11,28 @@ namespace ControlMenu.Modules.Jellyfin.Workers;
 public sealed class MediaCardRefreshWorker
 {
     private static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan DefaultCardTimeout = TimeSpan.FromMinutes(3);
+
+    /// <summary>
+    /// A backstop, NOT the mechanism. The card appearing is the real signal: Jellyfin writes the
+    /// folder's own image at the start of processing its refresh, so the card showing up proves our
+    /// request reached the front of the queue.
+    /// <para>
+    /// That queue is serial (<c>LimitedConcurrencyLibraryScheduler</c>) and every library refresh
+    /// drags a full recursive child walk behind it —
+    /// <c>ProviderManager.RefreshCollectionFolderChildren</c> iterates every physical folder and
+    /// calls <c>ValidateChildren</c>, unconditionally, with no parameter to switch it off. A real
+    /// media library takes ~10 minutes. So the second library in a batch waits out the first one's
+    /// walk before its own refresh even starts.
+    /// </para>
+    /// <para>
+    /// At the old 3 minutes this expired mid-queue and reported a spurious failure — Movies
+    /// regenerated in 3s while TV Shows "failed" having never been processed at all.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan DefaultCardTimeout = TimeSpan.FromMinutes(20);
+
+    /// <summary>How often to refresh the "still waiting" progress message.</summary>
+    private static readonly TimeSpan ProgressUpdateInterval = TimeSpan.FromSeconds(15);
 
     private readonly IJellyfinService _jellyfin;
     private readonly IBackgroundJobService _jobService;
@@ -68,12 +89,12 @@ public sealed class MediaCardRefreshWorker
                 var libraryId = libraryIds[i];
                 var name = NameOf(libraryId);
 
-                await _jobService.UpdateProgressAsync(jobId,
-                    (int)((double)i / libraryIds.Count * 100),
+                var percent = (int)((double)i / libraryIds.Count * 100);
+                await _jobService.UpdateProgressAsync(jobId, percent,
                     $"Regenerating {name} ({i + 1} of {libraryIds.Count})");
 
                 var target = targets.FirstOrDefault(t => t.Id == libraryId);
-                results.Add(await RegenerateOneAsync(jobId, libraryId, name, target, apiConfig, cancellationToken));
+                results.Add(await RegenerateOneAsync(jobId, libraryId, name, target, percent, apiConfig, cancellationToken));
             }
 
             var regenerated = results.Count(r => r.Regenerated);
@@ -129,7 +150,7 @@ public sealed class MediaCardRefreshWorker
     }
 
     private async Task<MediaCardResult> RegenerateOneAsync(Guid jobId, string libraryId, string name,
-        MediaCardTarget? target, JellyfinApiConfig apiConfig, CancellationToken ct)
+        MediaCardTarget? target, int percent, JellyfinApiConfig apiConfig, CancellationToken ct)
     {
         // Last line of defence for the irreversible case. The page disables these, but a stale page
         // could still submit one, and a deleted Live TV card cannot be rebuilt by Jellyfin at all.
@@ -169,7 +190,7 @@ public sealed class MediaCardRefreshWorker
             return await RollBackAsync(libraryId, name, backupPath, ex.Message, apiConfig, ct);
         }
 
-        var reappeared = await WaitForCardAsync(jobId, libraryId, apiConfig, ct);
+        var reappeared = await WaitForCardAsync(jobId, libraryId, name, percent, apiConfig, ct);
         if (reappeared)
         {
             _logger?.Ok($"{name}: new card generated");
@@ -214,12 +235,31 @@ public sealed class MediaCardRefreshWorker
     /// The refresh is queued server-side, so the POST returning says nothing about the card. Poll
     /// until it exists -- we deleted it first, so anything present is the new one.
     /// </summary>
-    private async Task<bool> WaitForCardAsync(Guid jobId, string libraryId, JellyfinApiConfig apiConfig, CancellationToken ct)
+    private async Task<bool> WaitForCardAsync(Guid jobId, string libraryId, string name, int percent,
+        JellyfinApiConfig apiConfig, CancellationToken ct)
     {
-        var deadline = DateTimeOffset.UtcNow + _cardTimeout;
+        var started = DateTimeOffset.UtcNow;
+        var deadline = started + _cardTimeout;
+        var nextProgressUpdate = started + ProgressUpdateInterval;
+
         do
         {
             if (ct.IsCancellationRequested) return false;
+
+            // Most of this wait is queue time behind another library's child walk, which can run
+            // for minutes. Say so, rather than looking hung.
+            var now = DateTimeOffset.UtcNow;
+            if (now >= nextProgressUpdate)
+            {
+                nextProgressUpdate = now + ProgressUpdateInterval;
+                var waited = (int)(now - started).TotalSeconds;
+                try
+                {
+                    await _jobService.UpdateProgressAsync(jobId, percent,
+                        $"Waiting for Jellyfin to rebuild {name} — {waited}s (queued behind its library scan)");
+                }
+                catch { /* a progress write must not fail the job */ }
+            }
 
             // Cancellation is read from the database on EVERY poll, not just between libraries.
             // Checking only between them meant a Cancel click during a 3-minute wait did nothing
