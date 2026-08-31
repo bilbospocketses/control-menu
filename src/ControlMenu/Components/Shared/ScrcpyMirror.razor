@@ -1,5 +1,6 @@
 @* src/ControlMenu/Components/Shared/ScrcpyMirror.razor *@
 @inject WsScrcpyService WsScrcpy
+@inject NavigationManager Nav
 @inject IJSRuntime JS
 
 <div class="scrcpy-mirror">
@@ -8,6 +9,16 @@
         <div class="alert alert-warning">
             <i class="bi bi-exclamation-triangle"></i>
             Screen mirroring unavailable — configure ws-scrcpy-web path in Settings
+        </div>
+    }
+    else if (_embedBlocked)
+    {
+        @* IsRunning only means "a URL was resolved at startup" — never "framing is allowed".
+           Without this the mirror was a blank "refused to connect" frame with nothing to act on. *@
+        <div class="alert alert-warning">
+            <i class="bi bi-shield-lock"></i>
+            ws-scrcpy-web won't allow this page to embed it, so mirroring can't display.
+            <a href="/android-power-tools">Request permission on the Power Tools page</a>, then reload.
         </div>
     }
     else if (Loading)
@@ -48,6 +59,25 @@
     public bool Loading { get; set; }
 
     private int _renderKey;
+    private bool _embedBlocked;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!WsScrcpy.IsRunning) return;
+        try
+        {
+            var selfOrigin = new Uri(Nav.BaseUri).GetLeftPart(UriPartial.Authority);
+            var check = await WsScrcpy.CheckEmbedAsync(selfOrigin);
+            // Only a definite refusal blocks. An unreachable server keeps the existing behaviour
+            // (the iframe shows its own error) rather than hiding mirroring behind a wrong message.
+            _embedBlocked = check.Reachable && !check.CanEmbed;
+        }
+        catch
+        {
+            // Never let a diagnostic check break mirroring itself.
+            _embedBlocked = false;
+        }
+    }
     private ElementReference _iframeRef;
 
     private string StreamUrl

@@ -83,6 +83,67 @@ public class WsScrcpyServiceEmbedTests
     }
 
     [Fact]
+    public async Task CheckEmbedAsync_TreatsAnErrorStatusAsNotEmbeddable()
+    {
+        // An error body says nothing about framing, so reading headers off it defaulted to
+        // "embeddable" — a host-allowlist 403 then rendered as an iframe full of JSON error.
+        var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent("""{"error":"forbidden"}"""),
+        });
+
+        var result = await service.CheckEmbedAsync(SelfOrigin);
+
+        Assert.True(result.Reachable);
+        Assert.False(result.CanEmbed);
+        Assert.Contains("403", result.Reason);
+    }
+
+    [Fact]
+    public async Task CheckEmbedAsync_ReportsUnreachable_ForAMalformedConfiguredUrl()
+    {
+        // A relative URI with no BaseAddress makes HttpClient throw InvalidOperationException,
+        // which is not HttpRequestException — the old filter let it escape into the Blazor
+        // circuit instead of showing this page's own "not reachable" panel.
+        // (A scheme-typo like "localhost:8000" throws NotSupportedException on the same path in
+        // production; it cannot be reproduced here because a stubbed handler bypasses
+        // HttpClient's scheme validation. IsTransportFailure covers both.)
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-url", It.IsAny<string?>()))
+            .ReturnsAsync("not a url at all");
+        var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.OK));
+
+        var result = await service.CheckEmbedAsync(SelfOrigin);
+
+        Assert.False(result.Reachable);
+        Assert.False(result.CanEmbed);
+    }
+
+    [Theory]
+    [InlineData("http://localhost:8000/", "http://localhost:8000")]
+    [InlineData("  http://localhost:8000  ", "http://localhost:8000")]
+    [InlineData("", "http://localhost:8000")]
+    [InlineData("   ", "http://localhost:8000")]
+    public async Task GetBaseUrlAsync_NormalisesTheStoredValue(string stored, string expected)
+    {
+        // Consumers concatenate onto this, so a trailing slash produces "//embed-request" — a
+        // different path server-side, and one Node's URL parser rejects outright.
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-url", It.IsAny<string?>())).ReturnsAsync(stored);
+        var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.OK));
+
+        Assert.Equal(expected, await service.GetBaseUrlAsync());
+    }
+
+    [Fact]
+    public async Task RequestEmbedPermissionAsync_ReturnsNull_WhenTheUrlIsMalformed()
+    {
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-url", It.IsAny<string?>()))
+            .ReturnsAsync("not a url at all");
+        var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.OK));
+
+        Assert.Null(await service.RequestEmbedPermissionAsync(SelfOrigin));
+    }
+
+    [Fact]
     public async Task CheckEmbedAsync_AllowsWhenNoFramingHeadersAreSent()
     {
         var service = CreateService(_ => WithHeaders());

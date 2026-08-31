@@ -53,7 +53,13 @@ public class WsScrcpyService : IHostedService
     {
         using var scope = _scopeFactory.CreateScope();
         var config = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
-        var url = (await config.GetSettingAsync("wsscrcpy-url")) ?? DefaultUrl;
+        var stored = await config.GetSettingAsync("wsscrcpy-url");
+
+        // Repair rather than propagate. Every consumer concatenates onto this ("{base}/embed-request",
+        // base + "/"), so a stored trailing slash produces "//embed-request" — which is a different
+        // path to the server and which Node's URL parser rejects outright. `?? DefaultUrl` also did
+        // not cover an empty or whitespace-only stored value.
+        var url = string.IsNullOrWhiteSpace(stored) ? DefaultUrl : stored.Trim().TrimEnd('/');
         BaseUrl = url;
         return url;
     }
@@ -71,12 +77,11 @@ public class WsScrcpyService : IHostedService
     /// </summary>
     public async Task<string?> RequestEmbedPermissionAsync(string embedderOrigin, CancellationToken cancellationToken = default)
     {
-        var baseUrl = await GetBaseUrlAsync(cancellationToken);
-
         using var http = _httpClientFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(10);
         try
         {
+            var baseUrl = await GetBaseUrlAsync(cancellationToken);
             var payload = JsonSerializer.Serialize(new { origin = embedderOrigin, appName = "Control Menu" });
             using var content = new StringContent(payload, Encoding.UTF8, "application/json");
             using var response = await http.PostAsync($"{baseUrl}/embed-request", content, cancellationToken);
@@ -90,7 +95,7 @@ public class WsScrcpyService : IHostedService
             using var doc = JsonDocument.Parse(body);
             return doc.RootElement.TryGetProperty("id", out var id) ? id.GetString() : null;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        catch (Exception ex) when (IsTransportFailure(ex) || ex is JsonException)
         {
             _logger.LogWarning(ex, "Could not ask ws-scrcpy-web for embed permission");
             return null;
@@ -104,22 +109,38 @@ public class WsScrcpyService : IHostedService
     /// </summary>
     public async Task<string?> GetEmbedRequestStatusAsync(string requestId, CancellationToken cancellationToken = default)
     {
-        var baseUrl = await GetBaseUrlAsync(cancellationToken);
-
         using var http = _httpClientFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(5);
         try
         {
+            var baseUrl = await GetBaseUrlAsync(cancellationToken);
             var url = $"{baseUrl}/embed-request/{Uri.EscapeDataString(requestId)}";
             var body = await http.GetStringAsync(url, cancellationToken);
             using var doc = JsonDocument.Parse(body);
             return doc.RootElement.TryGetProperty("status", out var status) ? status.GetString() : null;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        catch (Exception ex) when (IsTransportFailure(ex) || ex is JsonException)
         {
+            // Null is "we could not find out", never a decision — see the caller.
             return null;
         }
     }
+
+    /// <summary>
+    /// Everything HttpClient throws for a request that cannot be made or completed, including the
+    /// URI-shaped failures a hand-typed setting produces: an unparseable value
+    /// (<see cref="UriFormatException"/>), an unsupported scheme such as <c>localhost:8000</c> read
+    /// as scheme <c>localhost</c> (<see cref="NotSupportedException"/>), and a relative URI with no
+    /// BaseAddress (<see cref="InvalidOperationException"/>). Filtering on HttpRequestException
+    /// alone let those escape into the Blazor circuit.
+    /// </summary>
+    private static bool IsTransportFailure(Exception ex) =>
+        ex is HttpRequestException
+            or TaskCanceledException
+            or OperationCanceledException
+            or UriFormatException
+            or NotSupportedException
+            or InvalidOperationException;
 
     /// <summary>
     /// Whether ws-scrcpy-web will let <paramref name="embedderOrigin"/> put it in an iframe,
@@ -138,23 +159,34 @@ public class WsScrcpyService : IHostedService
     /// </summary>
     public async Task<EmbedCheck> CheckEmbedAsync(string embedderOrigin, CancellationToken cancellationToken = default)
     {
-        var baseUrl = await GetBaseUrlAsync(cancellationToken);
-
+        var baseUrl = BaseUrl;
+        HttpResponseMessage response;
         using var http = _httpClientFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(5);
-        HttpResponseMessage response;
         try
         {
+            // Inside the try: resolving the URL touches the database, and building the request
+            // throws for a malformed one — neither was covered when this sat above the try.
+            baseUrl = await GetBaseUrlAsync(cancellationToken);
             using var request = new HttpRequestMessage(HttpMethod.Get, baseUrl + "/");
             response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (IsTransportFailure(ex))
         {
-            return new EmbedCheck(false, false, $"ws-scrcpy-web did not respond at {baseUrl}.");
+            return new EmbedCheck(false, false, $"ws-scrcpy-web did not respond at {baseUrl} ({ex.Message}).");
         }
 
         using (response)
         {
+            // An error status says nothing about framing, and reading headers off it would default
+            // to "embeddable" — so a 403 from the host allowlist, a 404, or a 500 all rendered as a
+            // working iframe full of an error body. Report the status instead.
+            if (!response.IsSuccessStatusCode)
+            {
+                return new EmbedCheck(true, false,
+                    $"ws-scrcpy-web answered {(int)response.StatusCode} ({response.ReasonPhrase}) at {baseUrl}/.");
+            }
+
             var csp = FirstHeader(response, "Content-Security-Policy");
             var xfo = FirstHeader(response, "X-Frame-Options");
 
@@ -216,18 +248,18 @@ public class WsScrcpyService : IHostedService
     {
         if (!_serviceReady) return false;
 
-        // Probe whatever is configured right now, not whatever was configured at startup.
-        var baseUrl = await GetBaseUrlAsync(cancellationToken);
-
         using var http = _httpClientFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(2);
         try
         {
+            // Probe whatever is configured right now, not whatever was configured at startup —
+            // and inside the try, since both resolving and parsing it can throw.
+            var baseUrl = await GetBaseUrlAsync(cancellationToken);
             using var req = new HttpRequestMessage(HttpMethod.Head, baseUrl + "/");
             using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             return true;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (IsTransportFailure(ex))
         {
             return false;
         }

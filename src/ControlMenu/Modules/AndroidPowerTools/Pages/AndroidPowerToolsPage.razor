@@ -2,6 +2,7 @@
 @using ControlMenu.Services
 @inject WsScrcpyService WsScrcpy
 @inject NavigationManager Nav
+@inject ILogger<AndroidPowerToolsPage> Logger
 @implements IDisposable
 
 <PageTitle>Android Power Tools</PageTitle>
@@ -44,7 +45,10 @@
                 </button>
                 <details style="margin-top:1rem;">
                     <summary>Or set it by hand</summary>
-                    <p style="margin-top:0.5rem;">Add this to ws-scrcpy-web's <code>config.json</code> and restart it:</p>
+                    <p style="margin-top:0.5rem;">
+                        Add this key to ws-scrcpy-web's <em>existing</em> <code>config.json</code> — keep the
+                        settings already in the file — then restart it:
+                    </p>
                     <pre style="white-space:pre-wrap;">@ManualConfigSnippet</pre>
                 </details>
             </div>
@@ -102,7 +106,9 @@
                 <p><strong>ws-scrcpy-web wouldn't accept the request.</strong></p>
                 <p>
                     That version may predate this feature, or it may be running on another machine —
-                    requests are only accepted from the computer ws-scrcpy-web is running on. Set it by hand instead:
+                    requests are only accepted from the computer ws-scrcpy-web is running on.
+                    Add this key to its <em>existing</em> <code>config.json</code> instead, keeping the settings
+                    already in the file, and restart it:
                 </p>
                 <pre style="white-space:pre-wrap;">@ManualConfigSnippet</pre>
                 <button class="btn btn-secondary" @onclick="Recheck">
@@ -146,8 +152,11 @@
         }
     }
 
+    // A FRAGMENT, deliberately not a whole document. Shown under "add this key to your existing
+    // config.json" — a complete `{ ... }` here invites the user to replace the file, dropping
+    // webPort / installMode / firstRunComplete and restarting ws-scrcpy-web on a different port.
     private string ManualConfigSnippet =>
-        "{\n  \"frameAncestors\": [\"" + _selfOrigin + "\"]\n}";
+        "\"frameAncestors\": [\"" + _selfOrigin + "\"]";
 
     protected override async Task OnInitializedAsync()
     {
@@ -163,21 +172,32 @@
         _state = PageState.Checking;
         StateHasChanged();
 
-        _baseUrl = await WsScrcpy.GetBaseUrlAsync();
-        var check = await WsScrcpy.CheckEmbedAsync(_selfOrigin);
+        try
+        {
+            _baseUrl = await WsScrcpy.GetBaseUrlAsync();
+            var check = await WsScrcpy.CheckEmbedAsync(_selfOrigin);
 
-        if (!check.Reachable)
+            if (!check.Reachable)
+            {
+                _state = PageState.Unreachable;
+            }
+            else if (!check.CanEmbed)
+            {
+                _blockedReason = check.Reason;
+                _state = PageState.EmbeddingBlocked;
+            }
+            else
+            {
+                _state = PageState.Ready;
+            }
+        }
+        catch (Exception ex)
         {
+            // Recheck runs from OnInitializedAsync, where an escaping exception is a component
+            // lifecycle failure that tears down the circuit — the user gets Blazor's generic error
+            // instead of this page's own diagnosis of a problem it can actually describe.
+            Logger.LogWarning(ex, "Could not determine ws-scrcpy-web embed state");
             _state = PageState.Unreachable;
-        }
-        else if (!check.CanEmbed)
-        {
-            _blockedReason = check.Reason;
-            _state = PageState.EmbeddingBlocked;
-        }
-        else
-        {
-            _state = PageState.Ready;
         }
     }
 
@@ -200,7 +220,15 @@
             {
                 await InvokeAsync(PollOnce);
             }
-            catch (ObjectDisposedException) { }
+            catch (Exception ex)
+            {
+                // This lambda is async void (TimerCallback returns void), so anything that escapes
+                // is rethrown on a thread-pool thread with no synchronization context — an
+                // unhandled exception that takes the whole process down, not just this circuit.
+                // Catching only ObjectDisposedException was not enough: a transient database or
+                // URI failure inside PollOnce would have killed the app mid-wait.
+                Logger.LogWarning(ex, "Embed-request poll failed");
+            }
         }, null, PollInterval, PollInterval);
     }
 
