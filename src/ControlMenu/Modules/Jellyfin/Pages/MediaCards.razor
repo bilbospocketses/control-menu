@@ -1,0 +1,440 @@
+@page "/jellyfin/media-cards"
+@using ControlMenu.Data.Entities
+@using ControlMenu.Data.Enums
+@using ControlMenu.Services
+@using ControlMenu.Modules.Jellyfin.Services
+@using Microsoft.Extensions.DependencyInjection
+@using Microsoft.Extensions.Logging
+@implements IDisposable
+
+<PageTitle>Jellyfin — Media Cards</PageTitle>
+
+<h1><i class="bi bi-images"></i> My Media Card Refresh</h1>
+<p class="page-subtitle">Regenerates the library tiles on the Jellyfin home screen. Jellyfin builds each card itself as a collage with the library name baked into the image, so a card is only rebuilt once the old one is removed.</p>
+
+@if (_activeJob is not null)
+{
+    <div class="job-panel">
+        <div class="job-header">
+            <span class="job-status-badge @_activeJob.Status.ToString().ToLower()">
+                @_activeJob.Status
+            </span>
+            @if (_activeJob.StartedAt.HasValue)
+            {
+                <span class="job-time">Started: @_activeJob.StartedAt.Value.ToLocalTime().ToString("g")</span>
+            }
+        </div>
+
+        @if (_activeJob.Status == JobStatus.Running || _activeJob.Status == JobStatus.Queued)
+        {
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" style="width: @(_activeJob.Progress ?? 0)%"></div>
+            </div>
+            <div class="progress-info">
+                <span>@(_activeJob.Progress ?? 0)%</span>
+                <span>@(_activeJob.ProgressMessage ?? "Waiting...")</span>
+            </div>
+            <button class="btn btn-danger" @onclick="CancelJob">
+                <i class="bi bi-stop-circle"></i> Cancel
+            </button>
+        }
+        else if (_activeJob.Status == JobStatus.Completed)
+        {
+            <div class="job-complete">
+                <i class="bi bi-check-circle-fill"></i>
+                <p>Cards regenerated at @_activeJob.CompletedAt?.ToLocalTime().ToString("g").</p>
+            </div>
+        }
+        else if (_activeJob.Status == JobStatus.Failed)
+        {
+            <div class="job-failed">
+                <i class="bi bi-x-circle-fill"></i>
+                <p>@_activeJob.ErrorMessage</p>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="start-panel">
+        <div class="info-box">
+            <i class="bi bi-info-circle"></i>
+            <div>
+                <p><strong>What this does:</strong> For each library you tick — backs up the current card, deletes it, asks Jellyfin to rebuild it, then waits until the new card actually exists before reporting success.</p>
+                <p><strong>Backups:</strong> every replaced card is saved to <code>media-cards</code> in the Jellyfin backup directory first. A library whose backup fails is skipped rather than left with no card.</p>
+                <p><strong>Duration:</strong> the card itself appears within seconds. But Jellyfin always walks the whole library behind a refresh — there is no way to ask it not to — and for a real media library that takes around ten minutes. Its refresh queue is serial, so if you tick several, each one waits for the previous library's walk before its own card is rebuilt, and its tile stays blank until then. Ticking one large library at a time is the calmer option.</p>
+                <p><strong>Hand-set tiles:</strong> Jellyfin generates cards for libraries and for the Movies, TV Shows and Playlists views. It has no generator for anything else — Live TV included — so those are listed but cannot be ticked: deleting one would leave the tile blank until you set a new image by hand.</p>
+            </div>
+        </div>
+
+        @if (_restoreMessage is not null)
+        {
+            <div class="alert alert-info">@_restoreMessage</div>
+        }
+
+        @if (_loadError is not null)
+        {
+            <div class="job-failed">
+                <i class="bi bi-x-circle-fill"></i>
+                <p>@_loadError</p>
+            </div>
+        }
+        else if (_targets is null)
+        {
+            <p>Loading libraries…</p>
+        }
+        else if (_targets.Count == 0)
+        {
+            <p>Jellyfin reported no libraries.</p>
+        }
+        else
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th style="width:2.5rem;">
+                            <input type="checkbox" aria-label="Select all libraries"
+                                   checked="@AllSelected"
+                                   @onchange="e => ToggleAll(e.Value is true)" />
+                        </th>
+                        <th>Library</th>
+                        <th>Type</th>
+                        <th>Current card</th>
+                        <th>Previous card</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var target in _targets)
+                    {
+                        <tr>
+                            <td>
+                                <input type="checkbox" aria-label="@($"Select {target.Name}")"
+                                       checked="@_selected.Contains(target.Id)"
+                                       disabled="@(!target.CanRegenerate)"
+                                       @onchange="e => ToggleLibrary(target.Id, e.Value is true)" />
+                            </td>
+                            <td>
+                                @target.Name
+                                @if (!target.CanRegenerate)
+                                {
+                                    <div style="font-size:0.8rem;color:var(--text-secondary);">@target.BlockedReason</div>
+                                }
+                            </td>
+                            <td style="color:var(--text-secondary);">@(target.CollectionType ?? "—")</td>
+                            <td>
+                                @if (!target.CanRegenerate)
+                                {
+                                    <span class="status-badge status-running">Hand-set</span>
+                                }
+                                else if (target.HasCard)
+                                {
+                                    <span class="status-badge status-ok">Present</span>
+                                }
+                                else
+                                {
+                                    <span class="status-badge status-error">Missing</span>
+                                }
+                            </td>
+                            <td>
+                                @if (_backups.TryGetValue(target.Id, out var backup))
+                                {
+                                    <button class="btn btn-secondary" @onclick="() => RestoreCard(target, backup)"
+                                            disabled="@(_restoringId == target.Id)">
+                                        <i class="bi bi-arrow-counterclockwise"></i>
+                                        @(_restoringId == target.Id ? "Restoring…" : "Restore")
+                                    </button>
+                                }
+                                else
+                                {
+                                    <span style="color:var(--text-secondary);">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <button class="btn btn-primary btn-lg" @onclick="StartJob" disabled="@(_starting || _selected.Count == 0)">
+                <i class="bi bi-arrow-clockwise"></i>
+                @(_selected.Count == 0 ? "Select a library" : $"Regenerate {_selected.Count} card{(_selected.Count == 1 ? "" : "s")}")
+            </button>
+        }
+    </div>
+}
+
+@if (_recentJobs.Count > 0)
+{
+    <h2>Job History</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Status</th>
+                <th>Started</th>
+                <th>Completed</th>
+                <th>Result</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var job in _recentJobs)
+            {
+                <tr>
+                    <td><span class="job-status-badge @job.Status.ToString().ToLower()">@job.Status</span></td>
+                    <td>@(job.StartedAt?.ToLocalTime().ToString("g") ?? "—")</td>
+                    <td>@(job.CompletedAt?.ToLocalTime().ToString("g") ?? "—")</td>
+                    <td style="font-size:0.85rem;color:var(--text-secondary);">@(job.ErrorMessage ?? "All cards regenerated")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (_recentLogs.Count > 0)
+{
+    <h2>Recent Logs</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Summary</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var log in _recentLogs)
+            {
+                <tr>
+                    <td>@log.Timestamp.ToLocalTime().ToString("g")</td>
+                    <td>
+                        @if (log.Status == OperationLogStatus.InProgress)
+                        {
+                            <span class="status-badge status-running">Running</span>
+                        }
+                        else if (log.Status == OperationLogStatus.Success)
+                        {
+                            <span class="status-badge status-ok">Success</span>
+                        }
+                        else
+                        {
+                            <span class="status-badge status-error">Failed</span>
+                        }
+                    </td>
+                    <td style="font-size:0.85rem;color:var(--text-secondary);">@log.Summary</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private const string JobType = "media-card-refresh";
+
+    [Inject] private IBackgroundJobService JobService { get; set; } = default!;
+    [Inject] private IJellyfinService Jellyfin { get; set; } = default!;
+    [Inject] private IServiceScopeFactory ScopeFactory { get; set; } = default!;
+    [Inject] private ILogger<MediaCards> Logger { get; set; } = default!;
+    [Inject] private ControlMenu.Common.Paths.IDataPathResolver Paths { get; set; } = default!;
+    [Inject] private IHostApplicationLifetime Lifetime { get; set; } = default!;
+
+    private List<MediaCardTarget>? _targets;
+    private readonly HashSet<string> _selected = [];
+    private readonly Dictionary<string, string> _backups = [];
+    private string? _restoringId;
+    private string? _restoreMessage;
+    private string? _loadError;
+
+    private Job? _activeJob;
+    private List<Job> _recentJobs = [];
+    private List<OperationLogEntry> _recentLogs = [];
+    private bool _starting;
+    private bool _disposed;
+    private Timer? _pollTimer;
+    private CancellationTokenRegistration _stoppingRegistration;
+
+    // Nothing is ticked by default -- regenerating a card replaces it, so every library is an
+    // explicit choice. Select-all covers only what Jellyfin can actually rebuild.
+    private IEnumerable<MediaCardTarget> Regenerable =>
+        _targets?.Where(t => t.CanRegenerate) ?? [];
+
+    private bool AllSelected =>
+        Regenerable.Any() && Regenerable.All(t => _selected.Contains(t.Id));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLibraries();
+        await LoadJobs();
+
+        _pollTimer = new Timer(async _ =>
+        {
+            if (_disposed) return;
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    if (_disposed) return;
+                    await LoadJobs();
+                    StateHasChanged();
+                });
+            }
+            catch (ObjectDisposedException) { }
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+
+        // Blazor does not dispose a circuit's components promptly when the host stops, so this
+        // timer outlives shutdown and keeps resolving scoped services from a provider being torn
+        // down. It kept querying for 28 seconds past "Application is shutting down" and delayed
+        // exit by that much. Stop it the moment shutdown begins.
+        _stoppingRegistration = Lifetime.ApplicationStopping.Register(StopPolling);
+    }
+
+    private void StopPolling()
+    {
+        _disposed = true;
+        _pollTimer?.Dispose();
+        _pollTimer = null;
+    }
+
+    private async Task LoadLibraries()
+    {
+        try
+        {
+            var apiConfig = await Jellyfin.GetApiConfigAsync();
+            var targets = await Jellyfin.GetMediaCardTargetsAsync(apiConfig);
+            _targets = targets.ToList();
+            // Drop selections for anything that vanished or is no longer regenerable.
+            _selected.RemoveWhere(id => !_targets.Any(t => t.Id == id && t.CanRegenerate));
+
+            _backups.Clear();
+            foreach (var target in _targets)
+            {
+                var backup = await Jellyfin.FindLatestCardBackupAsync(target.Name);
+                if (backup is not null) _backups[target.Id] = backup;
+            }
+
+            _loadError = null;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _loadError = $"{ex.Message}. Set it in Settings > Jellyfin.";
+        }
+        catch (Exception ex)
+        {
+            _loadError = $"Could not reach Jellyfin: {ex.Message}";
+        }
+    }
+
+    private async Task RestoreCard(MediaCardTarget target, string backupPath)
+    {
+        _restoringId = target.Id;
+        _restoreMessage = null;
+        try
+        {
+            var apiConfig = await Jellyfin.GetApiConfigAsync();
+            await Jellyfin.RestoreLibraryCardAsync(target.Id, backupPath, apiConfig);
+            _restoreMessage = $"Restored the previous {target.Name} card.";
+            await LoadLibraries();
+        }
+        catch (Exception ex)
+        {
+            _restoreMessage = $"Could not restore {target.Name}: {ex.Message}";
+        }
+        finally
+        {
+            _restoringId = null;
+        }
+    }
+
+    private void ToggleLibrary(string id, bool selected)
+    {
+        if (selected)
+        {
+            if (_targets?.Any(t => t.Id == id && t.CanRegenerate) == true) _selected.Add(id);
+        }
+        else
+        {
+            _selected.Remove(id);
+        }
+    }
+
+    private void ToggleAll(bool selected)
+    {
+        _selected.Clear();
+        if (!selected) return;
+
+        foreach (var target in Regenerable) _selected.Add(target.Id);
+    }
+
+    private async Task LoadJobs()
+    {
+        var allJobs = await JobService.GetJobsByModuleAsync("jellyfin");
+        var cardJobs = allJobs.Where(j => j.JobType == JobType).ToList();
+
+        var wasRunning = _activeJob is not null;
+
+        _activeJob = cardJobs.FirstOrDefault(j =>
+            j.Status == JobStatus.Running || j.Status == JobStatus.Queued);
+
+        _recentJobs = cardJobs
+            .Where(j => j.Status == JobStatus.Completed || j.Status == JobStatus.Failed || j.Status == JobStatus.Cancelled)
+            .Take(10)
+            .ToList();
+
+        _recentLogs = OperationLogger.GetRecentLogs(10, Paths)
+            .Where(l => l.Operation == JobType)
+            .ToList();
+
+        // The job just finished -- re-read the libraries so the card column reflects reality.
+        if (wasRunning && _activeJob is null) await LoadLibraries();
+    }
+
+    private async Task StartJob()
+    {
+        if (_selected.Count == 0) return;
+
+        _starting = true;
+        var libraryIds = _selected.ToList();
+        var job = await JobService.CreateJobAsync("jellyfin", JobType);
+        _activeJob = job;
+        var jobId = job.Id;
+
+        // Own DI scope, no component-level CancellationToken -- the worker re-reads cancellation
+        // from the database, so it survives circuit disconnects and page navigations.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                Logger.LogInformation("Media card refresh starting for job {JobId}", jobId);
+                using var scope = ScopeFactory.CreateScope();
+                var config = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
+                var scopePaths = scope.ServiceProvider.GetRequiredService<ControlMenu.Common.Paths.IDataPathResolver>();
+                var tzSetting = await config.GetSettingAsync("app-timezone");
+                var utcOffset = OperationLogger.ParseTimezoneOffset(tzSetting);
+                using var opLog = OperationLogger.Create(JobType, utcOffset, scopePaths);
+                var jellyfinService = scope.ServiceProvider.GetRequiredService<IJellyfinService>();
+                var jobService = scope.ServiceProvider.GetRequiredService<IBackgroundJobService>();
+                var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+
+                await jobService.StartJobAsync(jobId, Environment.ProcessId);
+                var worker = new Workers.MediaCardRefreshWorker(jellyfinService, jobService, emailService, config, opLog);
+                await worker.ExecuteAsync(jobId, libraryIds, CancellationToken.None);
+                Logger.LogInformation("Media card refresh finished for job {JobId}", jobId);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Media card refresh failed for job {JobId}", jobId);
+            }
+        });
+
+        _starting = false;
+    }
+
+    private async Task CancelJob()
+    {
+        if (_activeJob is null) return;
+        await JobService.RequestCancellationAsync(_activeJob.Id);
+    }
+
+    public void Dispose()
+    {
+        _stoppingRegistration.Dispose();
+        StopPolling();
+    }
+}

@@ -304,4 +304,209 @@ public class JellyfinService : IJellyfinService
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
         await client.PostAsync(url, content: null, timeoutCts.Token);
     }
+
+    // ---- My Media card regeneration -------------------------------------------------------
+    //
+    // The card is a collage Jellyfin builds itself (StripCollageBuilder), with the library name
+    // baked into the pixels. Its provider only runs when the library has no primary image, which
+    // is why regenerating one means delete-then-refresh rather than refresh alone.
+
+    private HttpClient CreateApiClient(JellyfinApiConfig apiConfig)
+    {
+        var client = _httpFactory.CreateClient();
+        // Header, never the query string -- query strings land in proxy logs and request traces.
+        client.DefaultRequestHeaders.Add("X-Emby-Token", apiConfig.ApiKey);
+        return client;
+    }
+
+    private static string CardUrl(JellyfinApiConfig apiConfig, string libraryId) =>
+        $"{apiConfig.BaseUrl}/Items/{Uri.EscapeDataString(libraryId)}/Images/Primary";
+
+    public async Task<IReadOnlyList<MediaCardTarget>> GetMediaCardTargetsAsync(JellyfinApiConfig apiConfig, CancellationToken ct = default)
+    {
+        // /UserViews is the My Media row itself. /Library/VirtualFolders reports only
+        // CollectionFolders, so it silently omits generated views -- Playlists among them.
+        var userId = await ResolveUserIdAsync(apiConfig, ct)
+            ?? throw new InvalidOperationException("Jellyfin reported no users, so there is no My Media row to read");
+
+        var client = CreateApiClient(apiConfig);
+        var json = await client.GetStringAsync(
+            $"{apiConfig.BaseUrl}/UserViews?userId={Uri.EscapeDataString(userId)}", ct);
+
+        var targets = new List<MediaCardTarget>();
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("Items", out var items)) return targets;
+
+        foreach (var item in items.EnumerateArray())
+        {
+            var id = StringProperty(item, "Id");
+            var name = StringProperty(item, "Name");
+            if (id is null || name is null) continue;
+
+            var itemType = StringProperty(item, "Type");
+            var collectionType = StringProperty(item, "CollectionType");
+
+            var hasCard = item.TryGetProperty("ImageTags", out var tags)
+                && tags.ValueKind == System.Text.Json.JsonValueKind.Object
+                && tags.TryGetProperty("Primary", out _);
+
+            var (canRegenerate, reason) = MediaCardSupport.Evaluate(itemType, collectionType);
+            targets.Add(new MediaCardTarget(id, name, collectionType, itemType, hasCard, canRegenerate, reason));
+        }
+
+        return targets;
+    }
+
+    /// <summary>
+    /// /UserViews needs a user, and an API key carries none. Prefer the configured user, then the
+    /// first administrator -- <c>jellyfin-user-id</c> is often unset, and the cast &amp; crew job
+    /// was silently a no-op for exactly that reason.
+    /// </summary>
+    private async Task<string?> ResolveUserIdAsync(JellyfinApiConfig apiConfig, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(apiConfig.UserId)) return apiConfig.UserId;
+
+        var client = CreateApiClient(apiConfig);
+        var json = await client.GetStringAsync($"{apiConfig.BaseUrl}/Users", ct);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+
+        string? firstUser = null;
+        foreach (var user in doc.RootElement.EnumerateArray())
+        {
+            var id = StringProperty(user, "Id");
+            if (id is null) continue;
+            firstUser ??= id;
+
+            if (user.TryGetProperty("Policy", out var policy)
+                && policy.TryGetProperty("IsAdministrator", out var isAdmin)
+                && isAdmin.ValueKind == System.Text.Json.JsonValueKind.True)
+            {
+                return id;
+            }
+        }
+
+        return firstUser;
+    }
+
+    private static string? StringProperty(System.Text.Json.JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    public async Task<string?> BackupLibraryCardAsync(string libraryId, string libraryName,
+        JellyfinApiConfig apiConfig, CancellationToken ct = default)
+    {
+        var client = CreateApiClient(apiConfig);
+        using var response = await client.GetAsync(CardUrl(apiConfig, libraryId), ct);
+        if (!response.IsSuccessStatusCode) return null;
+
+        var bytes = await response.Content.ReadAsByteArrayAsync(ct);
+        if (bytes.Length == 0) return null;
+
+        var backupDir = Path.Combine(await _directoryResolver.GetBackupDirectoryAsync(), "media-cards");
+        Directory.CreateDirectory(backupDir);
+
+        var extension = response.Content.Headers.ContentType?.MediaType switch
+        {
+            "image/png" => ".png",
+            "image/jpeg" => ".jpg",
+            "image/webp" => ".webp",
+            _ => ".img"
+        };
+
+        var fileName = $"{SanitiseForFileName(libraryName)}-{DateTimeOffset.Now:yyyyMMdd-HHmmss}{extension}";
+        var path = Path.Combine(backupDir, fileName);
+        await File.WriteAllBytesAsync(path, bytes, ct);
+        return path;
+    }
+
+    /// <summary>A library name is server-supplied text, so it never becomes a path component.</summary>
+    private static string SanitiseForFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var cleaned = string.Concat(name.Select(c => invalid.Contains(c) ? '_' : c)).Trim();
+        return string.IsNullOrEmpty(cleaned.Trim('.', '_')) ? "library" : cleaned;
+    }
+
+    public async Task DeleteLibraryCardAsync(string libraryId, JellyfinApiConfig apiConfig, CancellationToken ct = default)
+    {
+        var client = CreateApiClient(apiConfig);
+        using var response = await client.DeleteAsync(CardUrl(apiConfig, libraryId), ct);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task RefreshLibraryCardAsync(string libraryId, JellyfinApiConfig apiConfig, CancellationToken ct = default)
+    {
+        // Both parameters are the way they are because of a real incident on 2026-08-30. Do not
+        // "optimise" either one back.
+        //
+        // replaceAllImages=false: a refresh on a LIBRARY recurses into its children, and with
+        // replaceAllImages=true it re-fetches every one of their images. Four ticked libraries
+        // rewrote ~2,200 files across D:\Movies, D:\TV_Shows and the boxset folders. We delete the
+        // card first, so the provider is filling an empty slot -- `true` buys nothing and costs the
+        // whole library. With `false`, children that already have images are left alone.
+        //
+        // metadataRefreshMode=ValidationOnly, not None: in MetadataService.RefreshMetadata the
+        // ImageProvider.RefreshImages call is nested inside `if (MetadataRefreshMode != None)`, so
+        // None skips the image refresh entirely and the card can never come back. ValidationOnly
+        // clears that gate while still not running metadata providers, which need >= Default.
+        var url = $"{apiConfig.BaseUrl}/Items/{Uri.EscapeDataString(libraryId)}/Refresh"
+                  + "?metadataRefreshMode=ValidationOnly"
+                  + "&imageRefreshMode=FullRefresh"
+                  + "&replaceAllImages=false";
+
+        var client = CreateApiClient(apiConfig);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+        using var response = await client.PostAsync(url, content: null, timeoutCts.Token);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task RestoreLibraryCardAsync(string libraryId, string backupPath, JellyfinApiConfig apiConfig, CancellationToken ct = default)
+    {
+        // Deleting the image also removes its BaseItemImageInfos row, so copying the file back into
+        // the metadata folder would leave Jellyfin unaware of it. Uploading re-creates the row.
+        var bytes = await File.ReadAllBytesAsync(backupPath, ct);
+        var mimeType = Path.GetExtension(backupPath).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".webp" => "image/webp",
+            _ => "application/octet-stream"
+        };
+
+        // The body must be BASE64 TEXT, not raw bytes. The OpenAPI document declares this endpoint
+        // as `image/*` with `format: binary`, but ImageController.SetItemImage pipes the body
+        // through a base64 decoder -- posting raw bytes returns 500 with
+        // "System.FormatException ... ThrowBase64FormatException at ImageSaver.SaveImageToLocation".
+        // Verified against the running server, 10.11.11.
+        var client = CreateApiClient(apiConfig);
+        using var content = new StringContent(Convert.ToBase64String(bytes));
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mimeType);
+        using var response = await client.PostAsync(CardUrl(apiConfig, libraryId), content, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<string?> FindLatestCardBackupAsync(string libraryName)
+    {
+        var directory = Path.Combine(await _directoryResolver.GetBackupDirectoryAsync(), "media-cards");
+        if (!Directory.Exists(directory)) return null;
+
+        // Backups are named "<sanitised library>-yyyyMMdd-HHmmss.<ext>".
+        var prefix = SanitiseForFileName(libraryName) + "-";
+        return new DirectoryInfo(directory).GetFiles()
+            .Where(f => f.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(f => f.LastWriteTimeUtc)
+            .Select(f => f.FullName)
+            .FirstOrDefault();
+    }
+
+    public async Task<bool> HasLibraryCardAsync(string libraryId, JellyfinApiConfig apiConfig, CancellationToken ct = default)
+    {
+        var client = CreateApiClient(apiConfig);
+        // HEAD: we only care that the image exists, not what it contains.
+        using var request = new HttpRequestMessage(HttpMethod.Head, CardUrl(apiConfig, libraryId));
+        using var response = await client.SendAsync(request, ct);
+        return response.IsSuccessStatusCode;
+    }
 }

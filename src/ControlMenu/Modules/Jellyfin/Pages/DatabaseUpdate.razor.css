@@ -1,20 +1,6 @@
-.start-panel {
-    background: var(--card-bg, #fff);
-    border: 1px solid var(--border-color, #dee2e6);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    max-width: 600px;
-}
-
-.start-panel ol {
-    margin: 1rem 0;
-    padding-left: 1.5rem;
-}
-
-.start-panel li {
-    padding: 0.25rem 0;
-    color: var(--text-muted, #6c757d);
-}
+/* The panel's own card treatment is gone: the .info-box in app.css is the
+   container now, matching Cast & Crew and Media Cards. List styling for the
+   steps lives with .info-box so every page's callout renders the same. */
 
 .progress-panel {
     max-width: 600px;

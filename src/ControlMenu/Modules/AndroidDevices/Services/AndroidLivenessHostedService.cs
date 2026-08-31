@@ -109,15 +109,35 @@ public class AndroidLivenessHostedService : BackgroundService
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(timeout);
+        var client = new TcpClient();
         try
         {
-            using var client = new TcpClient();
-            await client.ConnectAsync(ip, port, cts.Token);
+            // CancelAfter alone does not bound this. A TCP connect to an address that drops SYNs --
+            // a device that is off, rather than one refusing the port -- sits in the OS retransmit
+            // path for ~21s on Windows, and ConnectAsync does not reliably abort on the token.
+            // Disposing the socket is what actually tears the attempt down. Left unbounded, one
+            // powered-off device stalls the whole tick, and at shutdown it held the host for 22
+            // seconds after "Application is shutting down" (2026-08-31).
+            var connect = client.ConnectAsync(ip, port, cts.Token).AsTask();
+            var finished = await Task.WhenAny(connect, Task.Delay(timeout, ct));
+            if (finished != connect)
+            {
+                client.Dispose();
+                return false;
+            }
+
+            await connect;
             return client.Connected;
         }
         catch
         {
             return false;
+        }
+        finally
+        {
+            // Not a `using`: the timeout path disposes early, on purpose, to abort the connect.
+            // Dispose is idempotent, so covering every path here is safe.
+            client.Dispose();
         }
     }
 }

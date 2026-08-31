@@ -69,6 +69,13 @@ builder.Services.AddRazorComponents()
 // dataPathResolver roots the SQLite DB and the Data Protection key ring.
 builder.Services.AddControlMenuServices(dataPathResolver);
 
+// Ctrl-C took ~20 seconds. That time is spent between ApplicationStopping firing and the hosted
+// services being stopped -- the web host draining Kestrel and the Blazor SignalR circuit, which a
+// desktop-style local app has no reason to wait 30 seconds for. go2rtc is already killed on
+// ApplicationStopping, so nothing that matters is cut short by capping this.
+builder.Services.Configure<HostOptions>(options =>
+    options.ShutdownTimeout = TimeSpan.FromSeconds(5));
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
@@ -117,10 +124,28 @@ var cameraNavScopeFactory = app.Services.GetRequiredService<IServiceScopeFactory
 cameraNotifier.CamerasChanged += () =>
     _ = Task.Run(() => CamerasModule.RefreshEnabledNavAsync(cameraNavScopeFactory, app.Logger));
 
+// Resolve this BEFORE RunAsync. UpdateApplyState is a singleton, so holding the reference across
+// shutdown is fine — resolving it afterwards is not: the provider is already disposed by then and
+// GetRequiredService threw "ObjectDisposedException: Cannot access a disposed object. Object name:
+// 'IServiceProvider'" as the very last thing the process did.
+var updateApplyState = app.Services.GetRequiredService<ControlMenu.Services.Update.UpdateApplyState>();
+
+// Bracket the shutdown so the next slow exit names its own stage instead of being reasoned about
+// from hosted-service stop order, which has now misled twice.
+var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+var shutdownStarted = System.Diagnostics.Stopwatch.StartNew();
+lifetime.ApplicationStopping.Register(() =>
+{
+    shutdownStarted.Restart();
+    app.Logger.LogInformation("Shutdown: ApplicationStopping");
+});
+lifetime.ApplicationStopped.Register(() =>
+    app.Logger.LogInformation("Shutdown: ApplicationStopped after {Elapsed} ms", shutdownStarted.ElapsedMilliseconds));
+
 await app.RunAsync();
 
 // Return the apply-update exit code explicitly — the launcher reads 75 to swap in a downloaded
 // update — instead of relying on a clobberable Environment.ExitCode set deep inside a service.
-return app.Services.GetRequiredService<ControlMenu.Services.Update.UpdateApplyState>().ApplyRequested
+return updateApplyState.ApplyRequested
     ? ControlMenu.Services.Update.VelopackUpdateService.ExitCodeApplyUpdate
     : 0;

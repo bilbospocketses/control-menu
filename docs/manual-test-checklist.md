@@ -427,7 +427,9 @@ If you're short on time, just hit these:
 - [ ] Theme buttons toggle theme immediately.
 - [ ] Email (SMTP) renders as 4-row 2-col grid; per-field auto-save still works.
 - [ ] Test Email button alone in the bottom row.
-- [ ] ws-scrcpy-web URL field is editable; blur saves with "Restart to apply" notification.
+- [ ] ws-scrcpy-web URL field is editable; blur saves with "ws-scrcpy-web URL saved." (no restart — the Power Tools page re-reads the setting on each visit).
+- [ ] A value with no scheme (e.g. `localhost:8000`) is rejected with "Enter a full URL including http:// or https:// — for example http://localhost:8000".
+- [ ] A pasted trailing slash is stripped before storing.
 - [ ] Docker executable path field is editable; blur saves with "Docker path saved." notification (or "Docker path cleared." when emptied).
 - [ ] Hover over any settings row — background-color transition is subtle (~280ms ease-out, partial opacity); no abrupt color flip.
 
@@ -455,7 +457,9 @@ If you're short on time, just hit these:
 - [ ] Settings → General page has an **External Dependencies** section (was: "ws-scrcpy-web deployment").
 - [ ] Section intro paragraph mentions scanning features need ws-scrcpy-web running.
 - [ ] **No** Managed/External radio toggle.
-- [ ] ws-scrcpy-web URL field is editable; blur saves with "Restart to apply" notification.
+- [ ] ws-scrcpy-web URL field is editable; blur saves with "ws-scrcpy-web URL saved." (no restart — the Power Tools page re-reads the setting on each visit).
+- [ ] A value with no scheme (e.g. `localhost:8000`) is rejected with "Enter a full URL including http:// or https:// — for example http://localhost:8000".
+- [ ] A pasted trailing slash is stripped before storing.
 - [ ] Docker executable path field is editable; blur saves with "Docker path saved." notification (or "Docker path cleared." if emptied).
 
 ### Dependencies page

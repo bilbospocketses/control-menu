@@ -1,45 +1,318 @@
 @page "/android-power-tools"
 @using ControlMenu.Services
 @inject WsScrcpyService WsScrcpy
+@inject NavigationManager Nav
+@inject ILogger<AndroidPowerToolsPage> Logger
+@implements IDisposable
 
 <PageTitle>Android Power Tools</PageTitle>
 
 <div class="power-tools-page">
-    @if (_reachable is null)
+    @if (_state == PageState.Checking)
     {
         <div class="alert alert-info">
             <i class="bi bi-hourglass-split"></i>
             Checking ws-scrcpy-web reachability…
         </div>
     }
-    else if (_reachable == false)
+    else if (_state == PageState.Unreachable)
     {
         <div class="alert alert-warning">
             <i class="bi bi-exclamation-triangle"></i>
-            ws-scrcpy-web isn't reachable at <code>@WsScrcpy.BaseUrl</code>.
+            ws-scrcpy-web isn't reachable at <code>@_baseUrl</code>.
             Verify the URL in Settings &gt; General &gt; External Dependencies, and confirm the ws-scrcpy-web instance is running.
-            <button class="btn btn-sm btn-outline-secondary" style="margin-left:1rem" @onclick="ProbeAsync">
+            <button class="btn btn-sm btn-outline-secondary" style="margin-left:1rem" @onclick="Recheck">
                 <i class="bi bi-arrow-clockwise"></i> Re-check
             </button>
         </div>
     }
+    else if (_state == PageState.EmbeddingBlocked)
+    {
+        <div class="alert alert-warning">
+            <i class="bi bi-shield-lock"></i>
+            <div>
+                <p><strong>ws-scrcpy-web is running, but won't allow this page to embed it.</strong></p>
+                <p>@_blockedReason</p>
+                <p>
+                    It only accepts frames from origins you have approved. Ask it for permission —
+                    a prompt appears in the ws-scrcpy-web window, and approving saves the permission there.
+                </p>
+                <button class="btn btn-primary" @onclick="RequestPermission">
+                    <i class="bi bi-hand-thumbs-up"></i> Request permission
+                </button>
+                <button class="btn btn-secondary" style="margin-left:0.5rem" @onclick="Recheck">
+                    <i class="bi bi-arrow-clockwise"></i> Re-check
+                </button>
+                <details style="margin-top:1rem;">
+                    <summary>Or set it by hand</summary>
+                    <p style="margin-top:0.5rem;">
+                        Add this key to ws-scrcpy-web's <em>existing</em> <code>config.json</code> — keep the
+                        settings already in the file — then restart it:
+                    </p>
+                    <pre style="white-space:pre-wrap;">@ManualConfigSnippet</pre>
+                </details>
+            </div>
+        </div>
+    }
+    else if (_state == PageState.AwaitingApproval)
+    {
+        <div class="alert alert-info">
+            <i class="bi bi-hourglass-split"></i>
+            <div>
+                <p><strong>Waiting for approval in ws-scrcpy-web.</strong></p>
+                <p>Switch to the ws-scrcpy-web window and approve the request from <code>@_selfOrigin</code>. This page checks every 3 seconds.</p>
+                <p>Time remaining: <strong>@FormattedRemaining</strong></p>
+                <button class="btn btn-secondary" @onclick="CancelWait">Stop waiting</button>
+            </div>
+        </div>
+    }
+    else if (_state == PageState.Denied)
+    {
+        <div class="alert alert-warning">
+            <i class="bi bi-x-circle"></i>
+            <div>
+                <p><strong>The request was denied in ws-scrcpy-web.</strong></p>
+                <p>Nothing was changed. You can ask again if that was a mistake.</p>
+                <button class="btn btn-primary" @onclick="RequestPermission">
+                    <i class="bi bi-hand-thumbs-up"></i> Request again
+                </button>
+            </div>
+        </div>
+    }
+    else if (_state == PageState.TimedOut)
+    {
+        <div class="alert alert-warning">
+            <i class="bi bi-clock-history"></i>
+            <div>
+                <p><strong>Timed out after 5 minutes — nobody answered in ws-scrcpy-web.</strong></p>
+                <p>
+                    The request expired without a decision. If you approved it just as the window closed,
+                    re-check rather than asking again.
+                </p>
+                <button class="btn btn-primary" @onclick="Recheck">
+                    <i class="bi bi-arrow-clockwise"></i> Re-check
+                </button>
+                <button class="btn btn-secondary" style="margin-left:0.5rem" @onclick="RequestPermission">
+                    <i class="bi bi-hand-thumbs-up"></i> Request again
+                </button>
+            </div>
+        </div>
+    }
+    else if (_state == PageState.RequestFailed)
+    {
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle"></i>
+            <div>
+                <p><strong>ws-scrcpy-web wouldn't accept the request.</strong></p>
+                <p>
+                    That version may predate this feature, or it may be running on another machine —
+                    requests are only accepted from the computer ws-scrcpy-web is running on.
+                    Add this key to its <em>existing</em> <code>config.json</code> instead, keeping the settings
+                    already in the file, and restart it:
+                </p>
+                <pre style="white-space:pre-wrap;">@ManualConfigSnippet</pre>
+                <button class="btn btn-secondary" @onclick="Recheck">
+                    <i class="bi bi-arrow-clockwise"></i> Re-check
+                </button>
+            </div>
+        </div>
+    }
     else
     {
-        <iframe id="ws-scrcpy-iframe" src="@WsScrcpy.BaseUrl/" class="power-tools-iframe"
+        <iframe id="ws-scrcpy-iframe" src="@(_baseUrl + "/")" class="power-tools-iframe"
                 allow="autoplay; fullscreen; clipboard-read; clipboard-write"
                 title="ws-scrcpy-web"></iframe>
     }
 </div>
 
 @code {
-    private bool? _reachable;
+    private enum PageState { Checking, Unreachable, EmbeddingBlocked, AwaitingApproval, Denied, TimedOut, RequestFailed, Ready }
 
-    protected override async Task OnInitializedAsync() => await ProbeAsync();
+    // 3s to match the interval the ws-scrcpy-web prompt polls its own status at, so both ends
+    // react to a decision at the same pace rather than this side lagging by up to ten seconds.
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
 
-    private async Task ProbeAsync()
+    private PageState _state = PageState.Checking;
+    private string _baseUrl = "";
+    private string _selfOrigin = "";
+    private string? _blockedReason;
+    private string? _requestId;
+    private DateTimeOffset _waitDeadline;
+    private Timer? _pollTimer;
+    private bool _disposed;
+
+    private string FormattedRemaining
     {
-        _reachable = null;
+        get
+        {
+            var remaining = _waitDeadline - DateTimeOffset.UtcNow;
+            if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
+            return $"{(int)remaining.TotalMinutes}:{remaining.Seconds:D2}";
+        }
+    }
+
+    // A FRAGMENT, deliberately not a whole document. Shown under "add this key to your existing
+    // config.json" — a complete `{ ... }` here invites the user to replace the file, dropping
+    // webPort / installMode / firstRunComplete and restarting ws-scrcpy-web on a different port.
+    private string ManualConfigSnippet =>
+        "\"frameAncestors\": [\"" + _selfOrigin + "\"]";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The browser's own origin, so the request names exactly what the frame
+        // will load from — this stays correct on a non-default port.
+        _selfOrigin = new Uri(Nav.BaseUri).GetLeftPart(UriPartial.Authority);
+
+        // Navigating away disposes this component and its poll timer, but the request keeps
+        // counting down in ws-scrcpy-web. Resume it rather than showing the initial panel again:
+        // otherwise a decision made while we were away is never observed — and a denial, unlike an
+        // approval, leaves no trace anywhere for a later re-check to find.
+        var pending = WsScrcpy.PendingEmbed;
+        if (pending is not null && pending.Origin == _selfOrigin && DateTimeOffset.UtcNow < pending.Deadline)
+        {
+            _baseUrl = await WsScrcpy.GetBaseUrlAsync();
+            _requestId = pending.Id;
+            _waitDeadline = pending.Deadline; // the ORIGINAL deadline, not a fresh five minutes
+            _state = PageState.AwaitingApproval;
+            StartPolling();
+            return;
+        }
+
+        if (pending is not null) WsScrcpy.ClearPendingEmbed();
+        await Recheck();
+    }
+
+    private async Task Recheck()
+    {
+        StopPolling();
+        _state = PageState.Checking;
         StateHasChanged();
-        _reachable = await WsScrcpy.ProbeAsync();
+
+        try
+        {
+            _baseUrl = await WsScrcpy.GetBaseUrlAsync();
+            var check = await WsScrcpy.CheckEmbedAsync(_selfOrigin);
+
+            if (!check.Reachable)
+            {
+                _state = PageState.Unreachable;
+            }
+            else if (!check.CanEmbed)
+            {
+                _blockedReason = check.Reason;
+                _state = PageState.EmbeddingBlocked;
+            }
+            else
+            {
+                _state = PageState.Ready;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Recheck runs from OnInitializedAsync, where an escaping exception is a component
+            // lifecycle failure that tears down the circuit — the user gets Blazor's generic error
+            // instead of this page's own diagnosis of a problem it can actually describe.
+            Logger.LogWarning(ex, "Could not determine ws-scrcpy-web embed state");
+            _state = PageState.Unreachable;
+        }
+    }
+
+    private async Task RequestPermission()
+    {
+        _requestId = await WsScrcpy.RequestEmbedPermissionAsync(_selfOrigin);
+        if (_requestId is null)
+        {
+            _state = PageState.RequestFailed;
+            return;
+        }
+
+        _waitDeadline = WsScrcpy.PendingEmbed?.Deadline ?? DateTimeOffset.UtcNow + WsScrcpyService.ApprovalWindow;
+        _state = PageState.AwaitingApproval;
+        StartPolling();
+    }
+
+    private void StartPolling()
+    {
+        // Never leave an orphan behind: a second timer would keep firing for the life of the
+        // circuit, and its approved-branch Recheck would tear the live iframe out and rebuild it
+        // every ten seconds.
+        StopPolling();
+
+        _pollTimer = new Timer(async _ =>
+        {
+            if (_disposed) return;
+            try
+            {
+                await InvokeAsync(PollOnce);
+            }
+            catch (Exception ex)
+            {
+                // This lambda is async void (TimerCallback returns void), so anything that escapes
+                // is rethrown on a thread-pool thread with no synchronization context — an
+                // unhandled exception that takes the whole process down, not just this circuit.
+                // Catching only ObjectDisposedException was not enough: a transient database or
+                // URI failure inside PollOnce would have killed the app mid-wait.
+                Logger.LogWarning(ex, "Embed-request poll failed");
+            }
+        }, null, PollInterval, PollInterval);
+    }
+
+    private async Task PollOnce()
+    {
+        if (_disposed || _requestId is null) return;
+
+        var status = await WsScrcpy.GetEmbedRequestStatusAsync(_requestId);
+
+        // A null status is an unreachable server, not a decision — keep waiting
+        // rather than reporting an outcome nobody made.
+        if (status == "approved")
+        {
+            StopPolling();
+            WsScrcpy.ClearPendingEmbed();
+            await Recheck();
+        }
+        else if (status == "denied")
+        {
+            StopPolling();
+            WsScrcpy.ClearPendingEmbed();
+            _state = PageState.Denied;
+        }
+        else if (status is "expired" or "unknown" || DateTimeOffset.UtcNow >= _waitDeadline)
+        {
+            StopPolling();
+            WsScrcpy.ClearPendingEmbed();
+            _state = PageState.TimedOut;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task CancelWait()
+    {
+        StopPolling();
+
+        // Tell ws-scrcpy-web too, so its prompt closes instead of counting down for an app that
+        // stopped waiting — approving it then would grant permission nobody is asking for.
+        // Best effort: if the call fails the request simply expires on its own.
+        if (_requestId is not null)
+        {
+            await WsScrcpy.CancelEmbedRequestAsync(_requestId);
+        }
+
+        WsScrcpy.ClearPendingEmbed();
+        _requestId = null;
+        _state = PageState.EmbeddingBlocked;
+    }
+
+    private void StopPolling()
+    {
+        _pollTimer?.Dispose();
+        _pollTimer = null;
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        StopPolling();
     }
 }

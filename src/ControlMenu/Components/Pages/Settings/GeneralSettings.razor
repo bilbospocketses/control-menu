@@ -155,7 +155,7 @@
                        @onblur="SaveWsScrcpyUrl"
                        placeholder="http://localhost:8000" />
             </ChildContent>
-            <Hint>e.g. <code>http://localhost:8000</code> or <code>http://ws-scrcpy:8000</code>. Restart the app after changing.</Hint>
+            <Hint>e.g. <code>http://localhost:8000</code> or <code>http://ws-scrcpy:8000</code>. Applies immediately — the Power Tools page re-reads it on each visit.</Hint>
         </SettingsGridCell>
 
         <SettingsGridCell FullRow="true">
@@ -340,8 +340,22 @@
 
     private async Task SaveWsScrcpyUrl()
     {
+        // Normalise before storing. Every consumer concatenates onto this value, so a pasted
+        // trailing slash yields "//embed-request" — a different path server-side, and one Node's
+        // URL parser rejects. Validating the scheme here also keeps a typo like "localhost:8000"
+        // (parsed as scheme "localhost") from reaching HttpClient as an unsupported URI.
+        _wsscrcpyUrl = (_wsscrcpyUrl ?? string.Empty).Trim().TrimEnd('/');
+        if (!Uri.TryCreate(_wsscrcpyUrl, UriKind.Absolute, out var parsed)
+            || (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps))
+        {
+            ShowMessage("Enter a full URL including http:// or https:// — for example http://localhost:8000", true);
+            return;
+        }
+
         await Config.SetSettingAsync("wsscrcpy-url", _wsscrcpyUrl);
-        ShowMessage("ws-scrcpy-web URL saved. Restart to apply.", false);
+        // No restart needed since WsScrcpyService re-reads the setting per call
+        // rather than caching it at startup.
+        ShowMessage("ws-scrcpy-web URL saved.", false);
     }
 
     private async Task SaveDockerPath()

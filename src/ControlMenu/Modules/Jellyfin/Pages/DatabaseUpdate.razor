@@ -10,14 +10,20 @@
 @if (!_running && !_completed)
 {
     <div class="start-panel">
-        <p>This will:</p>
-        <ol>
-            <li>Stop the Jellyfin Docker container</li>
-            <li>Create a database backup</li>
-            <li>Run the SQL update</li>
-            <li>Restart the container</li>
-            <li>Clean up backups older than 5 days</li>
-        </ol>
+        <div class="info-box">
+            <i class="bi bi-info-circle"></i>
+            <div>
+                <p><strong>What this does:</strong> sets each item's <code>DateCreated</code> to its premiere date, so Recently Added orders by when a show aired rather than when the file landed.</p>
+                <ol>
+                    <li>Stops the Jellyfin Docker container</li>
+                    <li>Creates a database backup</li>
+                    <li>Runs the SQL update</li>
+                    <li>Restarts the container</li>
+                    <li>Cleans up backups older than 5 days</li>
+                </ol>
+                <p><strong>Jellyfin is offline</strong> while this runs — the container has to be stopped to write to its database safely.</p>
+            </div>
+        </div>
         <button class="btn btn-primary btn-lg" @onclick="RunUpdate">
             <i class="bi bi-play-circle"></i> Start Update
         </button>

@@ -1,6 +1,11 @@
+/* height, not min-height: a floor lets the sidebar grow past the viewport when its nav list is
+   long, which drags the whole page into scrolling and pushes the sidebar footer below the fold.
+   A hard ceiling keeps the page itself unscrollable and makes the inner regions (nav list, main
+   content) scroll independently. */
 .app-layout {
     display: flex;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
 }
 
 .app-main {
@@ -8,6 +13,9 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+    /* A flex item defaults to min-height:auto and refuses to shrink below its content, which
+       would defeat the scrolling on .app-content below. */
+    min-height: 0;
 }
 
 .app-content {
@@ -15,4 +23,5 @@
     padding: 24px;
     overflow-y: auto;
     background-color: var(--content-bg);
+    min-height: 0; /* same reason — without it this grows instead of scrolling */
 }

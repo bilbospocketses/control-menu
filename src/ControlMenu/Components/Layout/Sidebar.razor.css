@@ -1,8 +1,11 @@
+/* Three fixed bands: header pinned top, nav scrolling in the middle, footer pinned bottom.
+   height (from .app-layout's 100vh ceiling) rather than min-height, so a long nav list scrolls
+   inside .sidebar-nav instead of stretching the sidebar and pushing Settings off-screen. */
 .sidebar {
     display: flex;
     flex-direction: column;
     width: 260px;
-    min-height: 100vh;
+    height: 100%;
     background-color: var(--sidebar-bg);
     border-right: 1px solid var(--border-color);
     transition: width 0.2s ease;
@@ -21,6 +24,7 @@
     padding: 16px 12px;
     border-bottom: 1px solid var(--border-color);
     position: relative;
+    flex-shrink: 0; /* never compressed by a long nav list */
 }
 
 .sidebar-title-link {
@@ -72,6 +76,10 @@
     flex: 1;
     overflow-y: auto;
     padding: 8px 0;
+    /* Load-bearing. A flex item defaults to min-height:auto and refuses to shrink below its
+       content, so without this the list grows and pushes the footer out instead of scrolling —
+       overflow-y:auto alone never engages. */
+    min-height: 0;
 }
 
 .sidebar-empty {
@@ -193,9 +201,12 @@
     color: var(--accent-color);
 }
 
+/* Pinned to the bottom of the sidebar and always visible, however long the nav list gets. */
 .sidebar-footer {
     border-top: 1px solid var(--border-color);
     padding: 8px 0;
+    flex-shrink: 0;
+    margin-top: auto;
 }
 
 ::deep .sidebar-footer .sidebar-link {

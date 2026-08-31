@@ -63,6 +63,7 @@ public class JellyfinModule : IToolModule
     [
         new NavEntry("DB Date Update", "/jellyfin/db-update", "🗃️", 0),
         new NavEntry("Cast & Crew", "/jellyfin/cast-crew", "🎭", 1),
+        new NavEntry("Media Cards", "/jellyfin/media-cards", "🖼️", 2),
         // Jellyfin settings are under main Settings > Jellyfin tab
     ];
 
@@ -70,6 +71,9 @@ public class JellyfinModule : IToolModule
     [
         new BackgroundJobDefinition("cast-crew-update", "Cast & Crew Image Update",
             "Updates images for all cast members, directors, and producers in Jellyfin media libraries.",
-            IsLongRunning: true)
+            IsLongRunning: true),
+        new BackgroundJobDefinition("media-card-refresh", "My Media Card Refresh",
+            "Backs up and regenerates the My Media library tiles on the Jellyfin home screen.",
+            IsLongRunning: false)
     ];
 }

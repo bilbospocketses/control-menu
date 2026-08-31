@@ -139,6 +139,7 @@ else
     [Inject] private IServiceScopeFactory ScopeFactory { get; set; } = default!;
     [Inject] private ILogger<CastCrewUpdate> Logger { get; set; } = default!;
     [Inject] private ControlMenu.Common.Paths.IDataPathResolver Paths { get; set; } = default!;
+    [Inject] private IHostApplicationLifetime Lifetime { get; set; } = default!;
 
     private Job? _activeJob;
     private List<Job> _recentJobs = [];
@@ -146,6 +147,7 @@ else
     private bool _starting;
     private bool _disposed;
     private Timer? _pollTimer;
+    private CancellationTokenRegistration _stoppingRegistration;
 
     protected override async Task OnInitializedAsync()
     {
@@ -165,6 +167,18 @@ else
             }
             catch (ObjectDisposedException) { }
         }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+
+        // Blazor does not dispose a circuit's components promptly when the host stops, so this
+        // timer outlives shutdown and keeps resolving scoped services from a provider being torn
+        // down, delaying exit by however long it takes to notice. Stop it as shutdown begins.
+        _stoppingRegistration = Lifetime.ApplicationStopping.Register(StopPolling);
+    }
+
+    private void StopPolling()
+    {
+        _disposed = true;
+        _pollTimer?.Dispose();
+        _pollTimer = null;
     }
 
     private async Task LoadJobs()
@@ -232,7 +246,7 @@ else
 
     public void Dispose()
     {
-        _disposed = true;
-        _pollTimer?.Dispose();
+        _stoppingRegistration.Dispose();
+        StopPolling();
     }
 }
