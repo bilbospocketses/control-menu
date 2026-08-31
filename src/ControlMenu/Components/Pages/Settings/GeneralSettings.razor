@@ -155,7 +155,7 @@
                        @onblur="SaveWsScrcpyUrl"
                        placeholder="http://localhost:8000" />
             </ChildContent>
-            <Hint>e.g. <code>http://localhost:8000</code> or <code>http://ws-scrcpy:8000</code>. Restart the app after changing.</Hint>
+            <Hint>e.g. <code>http://localhost:8000</code> or <code>http://ws-scrcpy:8000</code>. Applies immediately — the Power Tools page re-reads it on each visit.</Hint>
         </SettingsGridCell>
 
         <SettingsGridCell FullRow="true">
@@ -341,7 +341,9 @@
     private async Task SaveWsScrcpyUrl()
     {
         await Config.SetSettingAsync("wsscrcpy-url", _wsscrcpyUrl);
-        ShowMessage("ws-scrcpy-web URL saved. Restart to apply.", false);
+        // No restart needed since WsScrcpyService re-reads the setting per call
+        // rather than caching it at startup.
+        ShowMessage("ws-scrcpy-web URL saved.", false);
     }
 
     private async Task SaveDockerPath()
