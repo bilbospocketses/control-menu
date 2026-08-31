@@ -60,7 +60,7 @@
             <i class="bi bi-hourglass-split"></i>
             <div>
                 <p><strong>Waiting for approval in ws-scrcpy-web.</strong></p>
-                <p>Switch to the ws-scrcpy-web window and approve the request from <code>@_selfOrigin</code>. This page checks every 10 seconds.</p>
+                <p>Switch to the ws-scrcpy-web window and approve the request from <code>@_selfOrigin</code>. This page checks every 3 seconds.</p>
                 <p>Time remaining: <strong>@FormattedRemaining</strong></p>
                 <button class="btn btn-secondary" @onclick="CancelWait">Stop waiting</button>
             </div>
@@ -128,7 +128,9 @@
 @code {
     private enum PageState { Checking, Unreachable, EmbeddingBlocked, AwaitingApproval, Denied, TimedOut, RequestFailed, Ready }
 
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(10);
+    // 3s to match the interval the ws-scrcpy-web prompt polls its own status at, so both ends
+    // react to a decision at the same pace rather than this side lagging by up to ten seconds.
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
 
     private PageState _state = PageState.Checking;
     private string _baseUrl = "";
