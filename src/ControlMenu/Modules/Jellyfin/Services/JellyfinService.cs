@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using ControlMenu.Services;
 
 namespace ControlMenu.Modules.Jellyfin.Services;
@@ -231,7 +232,41 @@ public class JellyfinService : IJellyfinService
         }
 
         logger?.Ok($"Removed {removed} backup(s) older than {retentionDays} days");
+
+        // Card backups are pruned by count, never by age. The newest is the only route back from
+        // a bad regeneration and a library regenerated once a year must still have it; the older
+        // ones exist in case the newest is itself a bad card. Before this they were invisible to
+        // retention -- the glob above is *.db at the root -- and accumulated forever.
+        var cardsDir = Path.Combine(backupDir, IJellyfinDirectoryResolver.MediaCardsFolder);
+        if (!Directory.Exists(cardsDir)) return;
+
+        var removedCards = 0;
+        var byLibrary = new DirectoryInfo(cardsDir).GetFiles()
+            .GroupBy(f => CardBackupLibraryKey(f.Name), StringComparer.OrdinalIgnoreCase);
+        foreach (var library in byLibrary)
+        {
+            foreach (var stale in library.OrderByDescending(f => f.LastWriteTimeUtc).Skip(CardBackupsKeptPerLibrary))
+            {
+                stale.Delete();
+                removedCards++;
+            }
+        }
+
+        logger?.Ok($"Removed {removedCards} card backup(s) beyond the newest {CardBackupsKeptPerLibrary} per library");
     }
+
+    /// <summary>How many card backups retention keeps for each library.</summary>
+    public const int CardBackupsKeptPerLibrary = 3;
+
+    /// <summary>Card backups are named <c>&lt;sanitised library&gt;-yyyyMMdd-HHmmss.&lt;ext&gt;</c>.</summary>
+    private static readonly Regex CardBackupStamp = new(@"-\d{8}-\d{6}$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The library a card backup belongs to, from its file name. A file without the timestamp
+    /// suffix forms a group of its own, so retention never deletes something it did not write.
+    /// </summary>
+    private static string CardBackupLibraryKey(string fileName) =>
+        CardBackupStamp.Replace(Path.GetFileNameWithoutExtension(fileName), "");
 
     public async Task<IReadOnlyList<JellyfinPerson>> GetPersonsMissingImagesAsync(CancellationToken ct = default)
     {
@@ -403,7 +438,7 @@ public class JellyfinService : IJellyfinService
         var bytes = await response.Content.ReadAsByteArrayAsync(ct);
         if (bytes.Length == 0) return null;
 
-        var backupDir = Path.Combine(await _directoryResolver.GetBackupDirectoryAsync(), "media-cards");
+        var backupDir = Path.Combine(await _directoryResolver.GetBackupDirectoryAsync(), IJellyfinDirectoryResolver.MediaCardsFolder);
         Directory.CreateDirectory(backupDir);
 
         var extension = response.Content.Headers.ContentType?.MediaType switch
@@ -489,7 +524,7 @@ public class JellyfinService : IJellyfinService
 
     public async Task<string?> FindLatestCardBackupAsync(string libraryName)
     {
-        var directory = Path.Combine(await _directoryResolver.GetBackupDirectoryAsync(), "media-cards");
+        var directory = Path.Combine(await _directoryResolver.GetBackupDirectoryAsync(), IJellyfinDirectoryResolver.MediaCardsFolder);
         if (!Directory.Exists(directory)) return null;
 
         // Backups are named "<sanitised library>-yyyyMMdd-HHmmss.<ext>".

@@ -3,6 +3,7 @@
 @inject WsScrcpyService WsScrcpy
 @inject NavigationManager Nav
 @inject ILogger<AndroidPowerToolsPage> Logger
+@inject TimeProvider Clock
 @implements IDisposable
 
 <PageTitle>Android Power Tools</PageTitle>
@@ -145,13 +146,14 @@
     private string? _requestId;
     private DateTimeOffset _waitDeadline;
     private Timer? _pollTimer;
+    private ITimer? _countdownTimer;
     private bool _disposed;
 
     private string FormattedRemaining
     {
         get
         {
-            var remaining = _waitDeadline - DateTimeOffset.UtcNow;
+            var remaining = _waitDeadline - Clock.GetUtcNow();
             if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
             return $"{(int)remaining.TotalMinutes}:{remaining.Seconds:D2}";
         }
@@ -174,7 +176,7 @@
         // otherwise a decision made while we were away is never observed — and a denial, unlike an
         // approval, leaves no trace anywhere for a later re-check to find.
         var pending = WsScrcpy.PendingEmbed;
-        if (pending is not null && pending.Origin == _selfOrigin && DateTimeOffset.UtcNow < pending.Deadline)
+        if (pending is not null && pending.Origin == _selfOrigin && Clock.GetUtcNow() < pending.Deadline)
         {
             _baseUrl = await WsScrcpy.GetBaseUrlAsync();
             _requestId = pending.Id;
@@ -232,7 +234,7 @@
             return;
         }
 
-        _waitDeadline = WsScrcpy.PendingEmbed?.Deadline ?? DateTimeOffset.UtcNow + WsScrcpyService.ApprovalWindow;
+        _waitDeadline = WsScrcpy.PendingEmbed?.Deadline ?? Clock.GetUtcNow() + WsScrcpyService.ApprovalWindow;
         _state = PageState.AwaitingApproval;
         StartPolling();
     }
@@ -261,6 +263,24 @@
                 Logger.LogWarning(ex, "Embed-request poll failed");
             }
         }, null, PollInterval, PollInterval);
+
+        // The countdown re-renders once a second on its own. @FormattedRemaining is recomputed
+        // only when the component renders, and while waiting the only other trigger is the
+        // poll -- so the clock stepped every three seconds beside ws-scrcpy-web's own true
+        // one-second countdown. Nothing else happens here: polling stays on its own timer.
+        _countdownTimer = Clock.CreateTimer(async _ =>
+        {
+            if (_disposed) return;
+            try
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex)
+            {
+                // Same reasoning as the poll callback: async void, so nothing may escape.
+                Logger.LogDebug(ex, "Countdown re-render failed");
+            }
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
 
     private async Task PollOnce()
@@ -283,7 +303,7 @@
             WsScrcpy.ClearPendingEmbed();
             _state = PageState.Denied;
         }
-        else if (status is "expired" or "unknown" || DateTimeOffset.UtcNow >= _waitDeadline)
+        else if (status is "expired" or "unknown" || Clock.GetUtcNow() >= _waitDeadline)
         {
             StopPolling();
             WsScrcpy.ClearPendingEmbed();
@@ -314,6 +334,8 @@
     {
         _pollTimer?.Dispose();
         _pollTimer = null;
+        _countdownTimer?.Dispose();
+        _countdownTimer = null;
     }
 
     public void Dispose()

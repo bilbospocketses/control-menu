@@ -80,4 +80,37 @@ public sealed class JellyfinDirectoryResolver : IJellyfinDirectoryResolver
 
         return Task.FromResult(DirectoryMigrationResult.Ok(moved, failed));
     }
+
+    public async Task<DirectoryMigrationResult> MigrateBackupsAsync(string oldDir, string newDir)
+    {
+        var databases = await MigrateFilesAsync(oldDir, newDir, "*.db");
+        if (!databases.Success) return databases;
+
+        // Only when there is something to move: MigrateFilesAsync creates its target first, and
+        // an empty media-cards/ under the new path would be noise.
+        var oldCards = Path.Combine(oldDir, IJellyfinDirectoryResolver.MediaCardsFolder);
+        if (!Directory.Exists(oldCards)) return databases;
+
+        var cards = await MigrateFilesAsync(oldCards, Path.Combine(newDir, IJellyfinDirectoryResolver.MediaCardsFolder), "*");
+        if (!cards.Success) return cards;
+
+        return DirectoryMigrationResult.Ok(
+            databases.MovedCount + cards.MovedCount,
+            [.. databases.FailedFiles, .. cards.FailedFiles.Select(f => Path.Combine(IJellyfinDirectoryResolver.MediaCardsFolder, f))]);
+    }
+
+    public BackupDirectoryStats GetBackupStats(string backupDir)
+    {
+        if (!Directory.Exists(backupDir)) return new BackupDirectoryStats(0, 0);
+
+        var cardsDir = Path.Combine(backupDir, IJellyfinDirectoryResolver.MediaCardsFolder);
+        var files = Directory.GetFiles(backupDir, "*.db")
+            .Concat(Directory.Exists(cardsDir) ? Directory.GetFiles(cardsDir) : [])
+            .ToArray();
+
+        // A file can vanish between the listing and the stat (retention runs on its own
+        // schedule); a missing one simply contributes nothing.
+        var bytes = files.Sum(f => { try { return new FileInfo(f).Length; } catch (IOException) { return 0L; } });
+        return new BackupDirectoryStats(files.Length, bytes);
+    }
 }

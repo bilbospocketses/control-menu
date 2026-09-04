@@ -183,6 +183,8 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Base URL, User ID, Cast/Crew email — save and persist correctly
 - [ ] Backup retention setting saves
 - [ ] Managed directories section shows stats (if dirs exist)
+- [ ] The Backups stat counts card backups too: with a `media-cards/` folder under the backup directory, the file count and size include its files, not only the `*.db` backups
+- [ ] Backups path migration moves `media-cards/` along with the `.db` files: change the path to a new empty dir → both arrive, and **Jellyfin > Media Cards > Restore** still finds the previous card afterwards
 
 ## 8. Settings > Dependencies
 
@@ -192,6 +194,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] If an update is available: "Update" button appears
 - [ ] **Update dialog** has proper overlay + centered layout (not unstyled)
 - [ ] **Disabled buttons** appear visually dimmed (not identical to enabled)
+- [ ] **potrace** (pinned DirectUrl, no version-check URL) reads Installed `1.16` / Latest `1.16` after **Check**. A stale Latest such as `1.16.` corrects itself on a single Check — the column is derived from the download URL on every check, not remembered
 
 ## 9. Setup Wizard (re-run from Settings > General)
 
@@ -239,6 +242,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Full ws-scrcpy-web home page loads inside an iframe: device cards, Available Network Devices / Scan Network / Manually Add Device panel, Dependencies panel
 - [ ] Iframe fills the content area below TopBar without introducing its own scrollbar (body scroll is locked, page-level scroll lives inside the iframe only when content actually overflows)
 - [ ] If ws-scrcpy-web is not reachable: the readiness check on page init suppresses the iframe and shows a warning alert ("ws-scrcpy-web isn't reachable at <url>") with a Re-check button. Clicking Re-check re-runs it. One `GET` decides both reachability and framing (`CheckEmbedAsync`) — a refused frame lands on the separate "won't allow this page to embed it" panel instead, never on this one.
+- [ ] While **Waiting for approval**, the `Time remaining` clock counts down once per second — not in 3-second steps at the poll interval — and keeps pace with the countdown in ws-scrcpy-web's own prompt
 - [ ] Clicking `shell` on a device card opens the xterm modal inside the iframe; terminal is interactive (typing reaches the device, output renders)
 - [ ] Clicking `list files` opens the file browser modal inside the iframe; sticky header stays pinned on scroll; hover icons scale with the size picker
 - [ ] Clicking `config stream` opens ConfigureScrcpy; codec / encoder dropdowns filter correctly; Connect opens ConnectModal and the stream plays inside the iframe
@@ -276,10 +280,15 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
   - [ ] Step 2: Backup created
   - [ ] Step 3: SQL update runs
   - [ ] Step 4: Container starts, then **waits for Jellyfin to be ready** — the container healthcheck reporting `healthy`, or `Startup complete` in logs timestamped *after* this start. Budget 120s. A failure here means "started but never reported ready", which is NOT `docker start` failing — the step text distinguishes the two
-  - [ ] Step 5: Old backups cleaned
+  - [ ] Step 5: Old `.db` backups cleaned (older than the retention window), and card backups under `media-cards/` pruned to the newest three per library
   - [ ] All steps show green checkmarks on success
 - [ ] If any step fails: error shows immediately (red X), **container is restarted** on failure
 - [ ] Recent Operations table shows styled status badges
+
+## 14b. Jellyfin > Media Cards
+
+- [ ] When a run finishes (success, with failures, or cancelled from the page), card backups under `media-cards/` are pruned to the **newest three per library**: older ones go however recent they are, the newest stays however old it is. The operation log reads `Removed N card backup(s) beyond the newest 3 per library`
+- [ ] With more than three backups for one library and a single old backup for another, only the first library loses files
 
 ## 15. Jellyfin > Cast & Crew Update
 
@@ -447,7 +456,7 @@ If you're short on time, just hit these:
 - [ ] Section title reads "Logging, Backup & Retention".
 - [ ] Three rows: Backups path, Logs path, Retention day count. Path/value changes auto-save on blur.
 - [ ] Stats show file count + total size for Backups, file count for Logs.
-- [ ] Backups path migration: change path to a new empty dir → existing `.db` files move; notification confirms count.
+- [ ] Backups path migration: change path to a new empty dir → existing `.db` files **and the `media-cards/` folder** move; notification confirms the combined count.
 - [ ] Logs path migration: at least one log file likely locked → partial-success notification mentions the locked file by name.
 - [ ] Retry-after-restart-or-rotation: re-blur the path field to migrate remaining files.
 - [ ] Retention day count persists on blur.

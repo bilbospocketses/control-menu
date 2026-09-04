@@ -364,7 +364,7 @@ The Jellyfin module manages a Jellyfin media server running in Docker. It handle
 | `WaitForContainerReadyAsync(id, timeout)` | Poll until container is healthy |
 | `BackupDatabaseAsync(logger)` | Copy `jellyfin.db` to timestamped backup |
 | `UpdateDateCreatedAsync(logger)` | Update DateCreated fields in Jellyfin DB |
-| `CleanupOldBackupsAsync(logger)` | Remove backups exceeding retention count |
+| `CleanupOldBackupsAsync(logger)` | Remove `*.db` backups older than the retention window, and card backups under `media-cards/` beyond the newest three per library — by count, never by age, since the newest card backup is the only route back from a bad regeneration. Runs from the DB Date Update routine and at the end of every Media Cards run |
 | `ParseComposeFileAsync()` | Extract container info from docker-compose.yml |
 | `GetPersonsMissingImagesAsync()` | Query Jellyfin API for persons without images |
 | `TriggerPersonImageDownloadAsync(id, config)` | Refresh a single person's images via API |
@@ -776,7 +776,7 @@ Manages the lifecycle of external tool dependencies: version checking, downloadi
 9. Restart dependent services
 
 **Runtime download integrity** (`IArtifactVerifier`): the updater executes freshly-downloaded third-party binaries, so every asset is verified *before* it is extracted or run. The gate is tiered — the first tier that can render a verdict wins:
-- **T1 — pinned SHA-256.** `KnownHashes` maps `name@version` to a known-good SHA-256; an exact match passes. Seeded for the current binaries and refreshed via `scripts/update-dependency-hashes.ps1` as upstream releases (a newer-than-seeded version falls through to T2/Tier-4 by design). The version key must match the resolved `LatestKnownVersion` string exactly (GitHub tags are stored `TrimStart('v')`), or T1 silently misses.
+- **T1 — pinned SHA-256.** `KnownHashes` maps `name@version` to a known-good SHA-256; an exact match passes. Seeded for the current binaries and refreshed via `scripts/update-dependency-hashes.ps1` as upstream releases (a newer-than-seeded version falls through to T2/Tier-4 by design). The version key must match the resolved `LatestKnownVersion` string exactly (GitHub tags are stored `TrimStart('v')`), or T1 silently misses. A pinned `DirectUrl` dependency — one with no `VersionCheckUrl` — derives `LatestKnownVersion` from the version in its download URL on every check (`VersionFromFileName`: digits and interior dots only), so the key for `potrace-1.16.win64.zip` is `1.16`, not the `1.16.` the previous filename pattern produced.
 - **T2 — upstream-published checksum.** sqlite's SHA3-256 download-page value; ImageMagick's `.intoto.jsonl` (in-toto attestation) SHA-256.
 - **T3 — Authenticode.** `adb.exe` is Authenticode-signed by Google; the chain is verified and the leaf pinned to `CN=Google LLC`. Revocation is **offline-tolerant** (`WTD_REVOKE_WHOLECHAIN`): a definitively-revoked cert is rejected, but an unreachable revocation server still trusts the signature so legitimate offline updates work (`WindowsAuthenticodeInspector`).
 - **Tier-4 — explicit user confirmation.** Assets with no verifiable provenance (go2rtc and vtracer are `NotSigned`) require a confirmation dialog before install.

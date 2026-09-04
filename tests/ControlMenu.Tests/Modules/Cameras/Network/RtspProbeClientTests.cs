@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -35,6 +36,38 @@ public class RtspProbeClientTests
         // Port 1 is privileged + virtually never open
         var result = await _sut.ProbeTcpAsync("127.0.0.1", 1, TimeSpan.FromMilliseconds(500), default);
         Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ProbeTcpAsync_GivesUpAtTheTimeout_WhenTheHostDropsSyns()
+    {
+        // 192.0.2.1 is RFC 5737 TEST-NET-1: nothing answers, so the SYN is dropped rather than
+        // refused, and a raw connect sits in the OS retransmit path for ~21s on Windows (measured
+        // 2026-09-04). The liveness tick probes cameras one after another, so a probe that ran to
+        // that limit would stall the whole tick for every powered-off camera. This pins the
+        // timeout as the bound: on net10 the token cancels ConnectAsync at 0.5s, 15 runs of 15.
+        var sw = Stopwatch.StartNew();
+        var result = await _sut.ProbeTcpAsync("192.0.2.1", 554, TimeSpan.FromMilliseconds(500), default);
+        sw.Stop();
+
+        Assert.False(result);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(3),
+            $"probe took {sw.Elapsed.TotalSeconds:F1}s against a 0.5s timeout");
+    }
+
+    [Fact]
+    public async Task DescribeAsync_GivesUpAtTheTimeout_WhenTheHostDropsSyns()
+    {
+        // Same connect, two methods down: a scan that DESCRIBEs a camera that has since gone
+        // dark must fail at the timeout, not at the OS's retransmit limit. Pinned for the same
+        // reason as the probe above.
+        var sw = Stopwatch.StartNew();
+        var result = await _sut.DescribeAsync("rtsp://192.0.2.1:554/stream", TimeSpan.FromMilliseconds(500), default);
+        sw.Stop();
+
+        Assert.False(result.Success);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(3),
+            $"describe took {sw.Elapsed.TotalSeconds:F1}s against a 0.5s timeout");
     }
 
     [Fact]
