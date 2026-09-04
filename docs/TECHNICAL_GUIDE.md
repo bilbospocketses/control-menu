@@ -1122,9 +1122,9 @@ tests/ControlMenu.Tests/
     SecretStoreTests.cs
   Modules/
     AndroidDevices/               # AdbService, liveness tests
-    AndroidPowerTools/            # AndroidPowerToolsPage (bUnit; the approval countdown on a FakeTimeProvider)
+    AndroidPowerTools/            # AndroidPowerToolsPage (bUnit; the approval countdown and the status poll, both on a FakeTimeProvider)
     Cameras/                      # CameraService, CamerasModule, CameraProxyMiddleware tests
-    Jellyfin/                     # JellyfinService (+ media cards), JellyfinDirectoryResolver, ComposeParser, CastCrewUpdateWorker, MediaCardRefreshWorker tests
+    Jellyfin/                     # JellyfinService (+ media cards), JellyfinDirectoryResolver, ComposeParser, CastCrewUpdateWorker, MediaCardRefreshWorker, DatabaseUpdate page tests
     Imaging/                      # ImageService (real-magick integration), TracingService, page render, ImagingModule (68 tests)
     Utilities/                    # FileUnblockService tests
     Fakes/                        # Test doubles
