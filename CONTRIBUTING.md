@@ -107,7 +107,7 @@ Do not add a bare `await Task.Delay(...)` to a test to "let things settle". That
 
 ## Tests
 
-Tests use **xUnit** and live in `tests/`. Target coverage is the service layer — DB interactions, command execution, module discovery, network scanning. UI is smoke-tested manually via `docs/manual-test-checklist.md`.
+Tests use **xUnit** and live in `tests/`. Target coverage is the service layer — DB interactions, command execution, module discovery, network scanning. UI behaviour worth pinning has **bUnit** tests (`tests/ControlMenu.Tests/Components/` and `Modules/**/*PageTests.cs` — the mirror's focus path, the approval countdown, the imaging pages' temp-file cleanup); everything else in the UI is smoke-tested manually via `docs/manual-test-checklist.md`.
 
 Any PR that changes persistence, external command execution, or inter-service contracts MUST include or update a test.
 

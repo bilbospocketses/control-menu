@@ -33,6 +33,8 @@ Security fixes target the latest commit on `master`. Older commits are not maint
 
 In scope: the ASP.NET Core / Blazor Server app, its SQLite store, ADB / go2rtc / ws-scrcpy-web orchestration, the Imaging Tools' invocation of the bundled image binaries (ImageMagick, vtracer, potrace), email notification delivery, and the first-run wizard flow.
 
+> **Cross-origin framing of ws-scrcpy-web.** Control Menu frames ws-scrcpy-web from a different origin. It never edits ws-scrcpy-web's configuration: it asks (`POST /embed-request`, naming Control Menu's own origin), a human approves the prompt inside ws-scrcpy-web, and ws-scrcpy-web writes the grant to its own `frameAncestors`. ws-scrcpy-web additionally refuses every request from a host name it does not list in `allowedHosts` (a DNS-rebinding guard; `localhost` and IP literals pass). A way to obtain a framing grant without a human approving it in ws-scrcpy-web, or to make Control Menu request one for an origin it does not own, is in scope — please report it.
+>
 > The bundled ImageMagick is shipped with a hardened `policy.xml` (deny-by-default coders + a small format allowlist, known-CVE-historical coders denied explicitly, and resource caps) staged next to `magick.exe`. If you find a way to bypass that policy or to make the Imaging Tools process attacker-controlled input unsafely, that is in scope — please report it.
 
 Out of scope:

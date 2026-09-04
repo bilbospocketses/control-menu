@@ -44,6 +44,10 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Collapsed sidebar (pill mode): expand/collapse all button is hidden
 - [ ] App icon visible in sidebar header when expanded
 - [ ] "Control Menu" title in sidebar is a clickable link to home
+- [ ] **Settings stays pinned to the bottom of the sidebar** whatever the window height — it never sits below the fold
+- [ ] With every group expanded and a short window (nav list taller than the viewport): the nav list scrolls **as its own region** between the pinned header and the pinned Settings link; the page itself does not grow a scrollbar and the sidebar does not scroll away with the content
+- [ ] Main content scrolls independently of the sidebar (scroll a long page — the sidebar stays put)
+- [ ] Collapsed 56 px rail: a group's fly-out renders past the rail's edge, unclipped, and its items are clickable (hit-test a link at the far right of the fly-out)
 
 ## 4. Settings > General
 
@@ -242,6 +246,14 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Full ws-scrcpy-web home page loads inside an iframe: device cards, Available Network Devices / Scan Network / Manually Add Device panel, Dependencies panel
 - [ ] Iframe fills the content area below TopBar without introducing its own scrollbar (body scroll is locked, page-level scroll lives inside the iframe only when content actually overflows)
 - [ ] If ws-scrcpy-web is not reachable: the readiness check on page init suppresses the iframe and shows a warning alert ("ws-scrcpy-web isn't reachable at <url>") with a Re-check button. Clicking Re-check re-runs it. One `GET` decides both reachability and framing (`CheckEmbedAsync`) — a refused frame lands on the separate "won't allow this page to embed it" panel instead, never on this one.
+- [ ] **Refused embed → request flow.** With ws-scrcpy-web running but this origin not yet in its `frameAncestors` (fresh install, or revoke it in ws-scrcpy-web's settings): the page shows "ws-scrcpy-web is running, but won't allow this page to embed it." with the reason (the `X-Frame-Options` value or the `frame-ancestors` list it *does* allow), a **Request permission** button and **Re-check** — and no iframe element at all, not a blank frame
+- [ ] Click **Request permission** → "Waiting for approval in ws-scrcpy-web." names this page's origin, says it checks every 3 seconds, shows `Time remaining` starting at 5:00 and a **Stop waiting** button. A prompt appears in the ws-scrcpy-web window within ~5 s (that is its own poll interval)
+- [ ] Approve in ws-scrcpy-web → within 3 s the panel is replaced by the working iframe, with no reload
+- [ ] Deny in ws-scrcpy-web → "The request was denied in ws-scrcpy-web. Nothing was changed." with **Request again**; a second request raises a fresh prompt
+- [ ] Let it expire → "Timed out after 5 minutes — nobody answered in ws-scrcpy-web." (the wait ends when ws-scrcpy-web reports the request expired, or at the original deadline)
+- [ ] **Stop waiting** → back to the refused panel, and the prompt in ws-scrcpy-web closes (the request is withdrawn, so approving it later grants nothing)
+- [ ] Navigate away mid-wait and come back → the wait resumes with the **original** countdown, not a fresh 5:00; a decision made while away (approve or deny) is reflected on return
+- [ ] Against an older ws-scrcpy-web (before v0.1.30-beta.83) or one on another machine: **Request permission** lands on "ws-scrcpy-web wouldn't accept the request." with the `"frameAncestors": [...]` fragment to add by hand and the `allowedHosts` note
 - [ ] While **Waiting for approval**, the `Time remaining` clock counts down once per second — not in 3-second steps at the poll interval — and keeps pace with the countdown in ws-scrcpy-web's own prompt
 - [ ] Clicking `shell` on a device card opens the xterm modal inside the iframe; terminal is interactive (typing reaches the device, output renders)
 - [ ] Clicking `list files` opens the file browser modal inside the iframe; sticky header stays pinned on scroll; hover icons scale with the size picker
@@ -280,13 +292,29 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
   - [ ] Step 2: Backup created
   - [ ] Step 3: SQL update runs
   - [ ] Step 4: Container starts, then **waits for Jellyfin to be ready** — the container healthcheck reporting `healthy`, or `Startup complete` in logs timestamped *after* this start. Budget 120s. A failure here means "started but never reported ready", which is NOT `docker start` failing — the step text distinguishes the two
-  - [ ] Step 5: Old `.db` backups cleaned (older than the retention window), and card backups under `media-cards/` pruned to the newest three per library
+  - [ ] Step 5: Old `.db` backups cleaned (older than the retention window), and card backups under `media-cards/` pruned to the newest three per library. Both the steps overview and the step-5 detail name the **configured** retention (Settings > Jellyfin), not a hard-coded 5 — change the setting to 9 and reload: "older than 9 days"
   - [ ] All steps show green checkmarks on success
 - [ ] If any step fails: error shows immediately (red X), **container is restarted** on failure
 - [ ] Recent Operations table shows styled status badges
 
 ## 14b. Jellyfin > Media Cards
 
+This feature **deletes library artwork** and asks Jellyfin to rebuild it, and a library refresh drags a full recursive walk of that library behind it (~10 minutes on a real library, serially queued). Test against a disposable Jellyfin, one small library at a time. Backups are taken first, but do not run this against a library whose cards were set by hand unless you want them replaced.
+
+- [ ] Page loads the whole My Media row from `/UserViews`: every library **and** the generated views — **Playlists** must be present (`/Library/VirtualFolders` omits it, which is why the page does not use that endpoint). Columns: Library, Type, Current card (Present / Missing / Hand-set), Previous card (Restore or —)
+- [ ] **Live TV** is listed with its checkbox disabled, a **Hand-set** badge, and the reason under the name: "Jellyfin never generates a Live TV card. Deleting this one would leave the tile blank…". Any other non-generatable view shows its own reason the same way
+- [ ] Nothing is ticked on load; the button reads **Select a library** and is disabled. The header checkbox ticks every regenerable row (never a disabled one); the button then reads **Regenerate N cards** (singular for one)
+- [ ] Start with one small library ticked: the job panel appears with a status badge, progress bar, the message "Regenerating <name> (1 of 1)" and a **Cancel** button. The operation log (Jellyfin log directory, operation `media-card-refresh`) shows, in order: `Backing up the <name> card` → `backed up to <backups>/media-cards/<name>-yyyyMMdd-HHmmss.png` → the card is deleted and the refresh requested → `new card generated`
+- [ ] Within seconds the tile on Jellyfin's home screen shows a **new** collage (different from the backed-up file) with the library name baked in — Jellyfin generated it, not Control Menu
+- [ ] While waiting, the progress message reads "Waiting for Jellyfin to rebuild <name> — Ns (queued behind its library scan)" and updates about every 15 s. The cap is 20 minutes, not 3 — a library queued behind another's walk must not be reported as failed while it has not been processed
+- [ ] Tick **two** libraries: the second's card is rebuilt only after the first library's walk finishes (its tile stays blank meanwhile); both end up Present; result "2 regenerated, 0 failed, out of 2 selected"
+- [ ] **Cancel mid-wait** (during the second library's wait): the cancellation takes effect on the next 3-second poll — not only between libraries — the job ends as **Failed** with "Cancelled after N of M libraries…", the library being waited on gets its backup **restored** (never left blank), and no further library is backed up or deleted
+- [ ] **Backup fails** (e.g. make the backup directory read-only): the library is **skipped with its card untouched** — log `Backup failed, card left untouched` — rather than deleted with no way back
+- [ ] **Regeneration fails** (refresh request errors, or no card inside the cap): the previous card is put back via the API — log `… — previous card restored`, result "Completed with failures (1 rolled back to the previous card)" — and the tile is never blank afterwards. Restoring goes through `POST /Items/{id}/Images/Primary` (base64 body), not a file copy
+- [ ] **Restore** button: for a library with a backup, the Previous card column shows **Restore** ("Restoring…" while it runs). Click → "Restored the previous <name> card." and the Jellyfin tile shows the old collage again
+- [ ] Completion: "Cards regenerated at <time>", a **Job History** row, and the completion email (to `notification-email`) listing per-library results; failures use the "Completed with failures" subject
+- [ ] Leave the page and come back during a run: the panel resumes from the job record (progress and Cancel still work — the worker runs in its own scope and reads cancellation from the database)
+- [ ] `replaceAllImages` is **never** `true` and `metadataRefreshMode` is **ValidationOnly**: a run against a library must not rewrite any artwork inside it — spot-check a few movie/episode image mtimes before and after (the 2026-08-30 incident rewrote ~2,200 files with `true`)
 - [ ] When a run finishes (success, with failures, or cancelled from the page), card backups under `media-cards/` are pruned to the **newest three per library**: older ones go however recent they are, the newest stays however old it is. The operation log reads `Removed N card backup(s) beyond the newest 3 per library`
 - [ ] With more than three backups for one library and a single old backup for another, only the first library loses files
 
