@@ -145,7 +145,7 @@
     private string? _blockedReason;
     private string? _requestId;
     private DateTimeOffset _waitDeadline;
-    private Timer? _pollTimer;
+    private ITimer? _pollTimer;
     private ITimer? _countdownTimer;
     private bool _disposed;
 
@@ -246,7 +246,9 @@
         // every ten seconds.
         StopPolling();
 
-        _pollTimer = new Timer(async _ =>
+        // On the injected clock like the countdown below it: a wall-clock timer here left the
+        // page half on TimeProvider, and made the poll the one thing a test could not drive.
+        _pollTimer = Clock.CreateTimer(async _ =>
         {
             if (_disposed) return;
             try
