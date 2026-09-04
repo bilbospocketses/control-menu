@@ -97,6 +97,19 @@ public sealed class MediaCardRefreshWorker
                 results.Add(await RegenerateOneAsync(jobId, libraryId, name, target, percent, apiConfig, cancellationToken));
             }
 
+            // Prune backups now the run is over: the newest three card backups per library stay and
+            // older ones go (JellyfinService.CleanupOldBackupsAsync). Retention otherwise runs only
+            // from the DB Date Update routine, which a user who only regenerates cards may never
+            // touch. Best effort -- a failure here must not turn a successful run into a failed one.
+            try
+            {
+                await _jellyfin.CleanupOldBackupsAsync(_logger, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger?.Fail($"Backup cleanup skipped: {ex.Message}");
+            }
+
             var regenerated = results.Count(r => r.Regenerated);
             var failed = results.Count(r => !r.Regenerated);
             var restored = results.Count(r => r.Restored);

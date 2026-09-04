@@ -325,6 +325,64 @@ public class DependencyManagerServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CheckDependencyAsync_PinnedDirectUrl_DerivesLatestFromTheDownloadUrl()
+    {
+        // A pinned DirectUrl dependency has no VersionCheckUrl, so nothing ever recomputed
+        // LatestKnownVersion: a bad value written once ("1.16.", from the old greedy banner
+        // pattern) stayed on the row forever and the UI presented it as current fact -- a
+        // mismatch against the corrected installed value that no longer existed in the code.
+        var (installDir, localExe) = MakeLocalInstall("potrace-install", "potrace");
+        var module = new FakeModule("imaging", "Imaging",
+        [
+            new ModuleDependency
+            {
+                Name = "potrace",
+                ExecutableName = "potrace",
+                VersionCommand = "potrace --version",
+                VersionPattern = @"potrace\s+(\d+(?:\.\d+)*)",
+                SourceType = UpdateSourceType.DirectUrl,
+                DownloadUrl = "https://potrace.sourceforge.net/download/1.16/potrace-1.16.win64.zip",
+                InstallPath = installDir
+            }
+        ]);
+        _mockExecutor.Setup(e => e.ExecuteAsync(localExe, "--version", null, default))
+            .ReturnsAsync(new CommandResult(0, "potrace 1.16. Copyright (C) 2001-2019 Peter Selinger.", "", false));
+
+        var depId = Guid.NewGuid();
+        using var setupDb = _dbFactory.CreateDbContext();
+        setupDb.Dependencies.Add(new Dependency
+        {
+            Id = depId,
+            ModuleId = "imaging",
+            Name = "potrace",
+            SourceType = UpdateSourceType.DirectUrl,
+            Status = DependencyStatus.UpToDate,
+            InstalledVersion = "1.16",
+            LatestKnownVersion = "1.16."   // the stale literal observed live in the dev DB
+        });
+        await setupDb.SaveChangesAsync();
+
+        var result = await CreateService(module).CheckDependencyAsync(depId);
+
+        Assert.Equal("1.16", result.InstalledVersion);
+        Assert.Equal("1.16", result.LatestVersion);
+        Assert.Equal(DependencyStatus.UpToDate, result.Status);
+    }
+
+    [Theory]
+    [InlineData("potrace-1.16.win64.zip", "1.16")]
+    [InlineData("https://potrace.sourceforge.net/download/1.16/potrace-1.16.win64.zip", "1.16")]
+    [InlineData("adb-36.0.0-windows.zip", "36.0.0")]
+    [InlineData("go2rtc_win64.zip", null)]
+    public void VersionFromFileName_TakesDottedDigitsOnly(string input, string? expected)
+    {
+        // The old fallback pattern, (\d+\.\d+[\.\d]*), swallowed the dot before "win64" and
+        // produced "1.16." -- which is also not a KnownHashes key, so the integrity check
+        // fell through to Unverified for a version it did in fact have a hash for.
+        Assert.Equal(expected, DependencyManagerService.VersionFromFileName(input));
+    }
+
+    [Fact]
     public async Task CheckDependencyAsync_Manual_StaysUpToDate()
     {
         var (installDir, localExe) = MakeLocalInstall("docker-install", "docker");

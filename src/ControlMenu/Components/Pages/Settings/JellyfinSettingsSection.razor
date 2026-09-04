@@ -247,7 +247,9 @@
             return;
         }
 
-        var migration = await DirectoryResolver.MigrateFilesAsync(oldPath, newPath, "*.db");
+        // The whole directory, not just *.db: media-cards/ used to stay behind, where the Media
+        // Cards page's Restore -- which reads the current path -- could no longer find it.
+        var migration = await DirectoryResolver.MigrateBackupsAsync(oldPath, newPath);
         if (!migration.Success)
         {
             ShowMessage($"Could not save: {migration.ErrorMessage}", true);
@@ -305,18 +307,11 @@
     {
         try
         {
-            var backupDir = await DirectoryResolver.GetBackupDirectoryAsync();
-            if (Directory.Exists(backupDir))
-            {
-                var files = Directory.GetFiles(backupDir, "*.db");
-                _backupCount = files.Length;
-                _backupSize = files.Sum(f => { try { return new FileInfo(f).Length; } catch { return 0L; } });
-            }
-            else
-            {
-                _backupCount = 0;
-                _backupSize = 0;
-            }
+            // Database backups plus the card backups under media-cards/, which a *.db glob
+            // here used to leave out of both the count and the size.
+            var stats = DirectoryResolver.GetBackupStats(await DirectoryResolver.GetBackupDirectoryAsync());
+            _backupCount = stats.FileCount;
+            _backupSize = stats.TotalBytes;
 
             var logDir = await DirectoryResolver.GetLogDirectoryAsync();
             _logCount = Directory.Exists(logDir) ? Directory.GetFiles(logDir, "*.log").Length : 0;

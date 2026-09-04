@@ -53,6 +53,18 @@ public class MediaCardRefreshWorkerTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_PrunesBackupsOnceTheRunHasEnded()
+    {
+        // Retention otherwise runs only from the DB Date Update routine. A user who regenerates
+        // cards but never runs that routine would keep every card backup ever written.
+        var jobId = SetupRunningJob();
+
+        await CreateWorker().ExecuteAsync(jobId, ["lib-1"], CancellationToken.None);
+
+        _mockJellyfin.Verify(j => j.CleanupOldBackupsAsync(It.IsAny<OperationLogger?>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_BacksUpThenDeletesThenRefreshes_ForEachSelectedLibrary()
     {
         var jobId = SetupRunningJob();

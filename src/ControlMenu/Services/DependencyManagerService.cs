@@ -577,7 +577,20 @@ public class DependencyManagerService : IDependencyManagerService
 
     private async Task CheckDirectUrlVersionAsync(Dependency entity, ModuleDependency moduleDep)
     {
-        if (moduleDep.VersionCheckUrl is null || moduleDep.VersionCheckPattern is null) return;
+        if (moduleDep.VersionCheckUrl is null || moduleDep.VersionCheckPattern is null)
+        {
+            // Pinned: the download URL names the only version that will ever be installed, so that
+            // IS the latest. Derived on every check rather than remembered -- LatestKnownVersion
+            // was written only by an install or a version-check scrape, and a pinned dependency
+            // has neither, so a wrong value written once ("1.16.") sat on the row indefinitely
+            // and the UI presented it as fact. No version in the URL leaves the column empty.
+            var pinned = moduleDep.DownloadUrl is null ? null : VersionFromFileName(moduleDep.DownloadUrl);
+            entity.LatestKnownVersion = pinned;
+            entity.Status = pinned is not null && CompareVersions(entity.InstalledVersion, pinned) < 0
+                ? DependencyStatus.UpdateAvailable
+                : DependencyStatus.UpToDate;
+            return;
+        }
 
         var client = _httpFactory.CreateClient("dependency-updates");
         var content = await client.GetStringAsync(moduleDep.VersionCheckUrl);
@@ -855,11 +868,23 @@ public class DependencyManagerService : IDependencyManagerService
             return entity.LatestKnownVersion;
 
         // Fallback: parse the version from the asset filename (e.g., "adb-36.0.0-windows.zip").
-        var versionInName = Regex.Match(asset.FileName, @"(\d+\.\d+[\.\d]*)");
-        if (versionInName.Success)
-            return versionInName.Groups[1].Value;
+        if (VersionFromFileName(asset.FileName) is { } versionInName)
+            return versionInName;
 
         // Last resort: the installed (old) version — will fail-closed to Unverified for a new version.
         return entity.InstalledVersion ?? "unknown";
+    }
+
+    /// <summary>
+    /// The dotted version embedded in an asset file name or download URL -- "36.0.0" from
+    /// <c>adb-36.0.0-windows.zip</c>, "1.16" from <c>potrace-1.16.win64.zip</c> -- or null when
+    /// there is none. Digits and interior dots only: the previous pattern, <c>\d+\.\d+[\.\d]*</c>,
+    /// also took the dot before <c>win64</c> and produced "1.16.", which is not a KnownHashes
+    /// key, so the integrity check fell through to Unverified for a version it had a hash for.
+    /// </summary>
+    internal static string? VersionFromFileName(string fileNameOrUrl)
+    {
+        var match = Regex.Match(fileNameOrUrl, @"(\d+(?:\.\d+)+)");
+        return match.Success ? match.Groups[1].Value : null;
     }
 }

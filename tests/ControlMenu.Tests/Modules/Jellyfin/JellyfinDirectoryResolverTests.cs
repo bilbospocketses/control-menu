@@ -40,6 +40,46 @@ public class JellyfinDirectoryResolverTests
     }
 
     [Fact]
+    public async Task MigrateBackupsAsync_MovesTheMediaCardsFolderWithTheDatabases()
+    {
+        // The Settings page migrated *.db and left media-cards/ behind at the old path, so the
+        // Media Cards page's Restore button -- which reads from the *current* path -- found nothing.
+        using var temp = new TempDir();
+        var oldDir = Path.Combine(temp.Path, "old");
+        var newDir = Path.Combine(temp.Path, "new");
+        Directory.CreateDirectory(Path.Combine(oldDir, "media-cards"));
+        File.WriteAllText(Path.Combine(oldDir, "jellyfin_a.db"), "db");
+        File.WriteAllText(Path.Combine(oldDir, "media-cards", "Movies-20260101-000000.png"), "png");
+
+        var resolver = new JellyfinDirectoryResolver(ConfigReturning().Object, new TestPathResolver(temp.Path));
+        var result = await resolver.MigrateBackupsAsync(oldDir, newDir);
+
+        Assert.True(result.Success);
+        Assert.Equal(2, result.MovedCount);
+        Assert.True(File.Exists(Path.Combine(newDir, "jellyfin_a.db")));
+        Assert.True(File.Exists(Path.Combine(newDir, "media-cards", "Movies-20260101-000000.png")));
+        Assert.False(File.Exists(Path.Combine(oldDir, "media-cards", "Movies-20260101-000000.png")));
+    }
+
+    [Fact]
+    public void GetBackupStats_CountsCardBackupsAlongsideTheDatabases()
+    {
+        // The Backups stat globbed *.db at the root, so the disk the card backups occupied
+        // was invisible in the UI.
+        using var temp = new TempDir();
+        Directory.CreateDirectory(Path.Combine(temp.Path, "media-cards"));
+        File.WriteAllText(Path.Combine(temp.Path, "jellyfin_a.db"), "12345");
+        File.WriteAllText(Path.Combine(temp.Path, "media-cards", "Movies-20260101-000000.png"), "1234567");
+        File.WriteAllText(Path.Combine(temp.Path, "unrelated.txt"), "x");   // never counted
+
+        var resolver = new JellyfinDirectoryResolver(ConfigReturning().Object, new TestPathResolver(temp.Path));
+        var stats = resolver.GetBackupStats(temp.Path);
+
+        Assert.Equal(2, stats.FileCount);
+        Assert.Equal(12, stats.TotalBytes);
+    }
+
+    [Fact]
     public async Task GetLogDirectory_NoOverride_ReturnsDefault()
     {
         using var temp = new TempDir();

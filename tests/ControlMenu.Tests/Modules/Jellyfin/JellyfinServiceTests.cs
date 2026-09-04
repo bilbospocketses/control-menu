@@ -132,6 +132,48 @@ public class JellyfinServiceTests
     }
 
     [Fact]
+    public async Task CleanupOldBackupsAsync_KeepsTheNewestThreeCardBackupsPerLibrary_RegardlessOfAge()
+    {
+        // Card backups live in media-cards/ and were invisible to retention, which globbed *.db
+        // at the root -- several hundred KB per regeneration, accumulating forever. They are
+        // pruned by count, never by age: the newest backup is the only route back from a bad
+        // regeneration, and a library regenerated once a year must still have it.
+        var backupDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var cardDir = Path.Combine(backupDir, "media-cards");
+        _mockDirectoryResolver.Setup(r => r.GetBackupDirectoryAsync()).ReturnsAsync(backupDir);
+        _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-backup-retention-days", null)).ReturnsAsync("5");
+        try
+        {
+            Directory.CreateDirectory(cardDir);
+            // Five Movies backups, oldest first, every one older than the retention window.
+            var movies = Enumerable.Range(1, 5)
+                .Select(i => Path.Combine(cardDir, $"Movies-2026010{i}-000000.png")).ToArray();
+            for (var i = 0; i < movies.Length; i++)
+            {
+                File.WriteAllText(movies[i], "png");
+                File.SetLastWriteTimeUtc(movies[i], DateTime.UtcNow.AddDays(-30 + i));
+            }
+            // One lone TV Shows backup, far older still.
+            var tv = Path.Combine(cardDir, "TV Shows-20250101-000000.png");
+            File.WriteAllText(tv, "png");
+            File.SetLastWriteTimeUtc(tv, DateTime.UtcNow.AddDays(-400));
+
+            await CreateService().CleanupOldBackupsAsync();
+
+            Assert.False(File.Exists(movies[0]));
+            Assert.False(File.Exists(movies[1]));
+            Assert.True(File.Exists(movies[2]));
+            Assert.True(File.Exists(movies[3]));
+            Assert.True(File.Exists(movies[4]));
+            Assert.True(File.Exists(tv));   // the only backup its library has: kept, however old
+        }
+        finally
+        {
+            if (Directory.Exists(backupDir)) Directory.Delete(backupDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task CleanupOldBackupsAsync_RemovesOldFiles()
     {
         var backupDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
