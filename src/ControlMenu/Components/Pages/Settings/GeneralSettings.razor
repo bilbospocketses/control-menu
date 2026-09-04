@@ -155,7 +155,14 @@
                        @onblur="SaveWsScrcpyUrl"
                        placeholder="http://localhost:8000" />
             </ChildContent>
-            <Hint>e.g. <code>http://localhost:8000</code> or <code>http://ws-scrcpy:8000</code>. Applies immediately — the Power Tools page re-reads it on each visit.</Hint>
+            <Hint>
+                e.g. <code>http://localhost:8000</code> or <code>http://192.168.1.20:8000</code>.
+                Applies immediately — every page resolves it per request, so no restart.
+                A named host such as <code>http://ws-scrcpy:8000</code> additionally has to be
+                listed in <code>allowedHosts</code> in ws-scrcpy-web's own <code>config.json</code>:
+                its host guard is a DNS-rebinding defence that accepts only <code>localhost</code>
+                and IP addresses by default, and answers <code>403</code> to everything else.
+            </Hint>
         </SettingsGridCell>
 
         <SettingsGridCell FullRow="true">

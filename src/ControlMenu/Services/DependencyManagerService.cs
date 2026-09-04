@@ -137,7 +137,10 @@ public class DependencyManagerService : IDependencyManagerService
         // No install-path or version check makes sense when the node server lives elsewhere.
         if (entity.Name == "ws-scrcpy-web")
         {
-            var url = (await _config.GetSettingAsync("wsscrcpy-url")) ?? "http://localhost:8000";
+            // Through WsScrcpyService rather than reading the setting again: it repairs a stored
+            // blank or trailing slash and `?? default` here did not -- a blank value reached
+            // HttpClient as a relative URI and threw InvalidOperationException past the catch below.
+            var url = await _wsScrcpy.GetBaseUrlAsync();
             try
             {
                 var http = _httpFactory.CreateClient();

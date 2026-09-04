@@ -238,7 +238,7 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Breadcrumb in TopBar reads **"Android Power Tools"** (not "Android Devices" — page-title switch has a specific case above the `android` fallback)
 - [ ] Full ws-scrcpy-web home page loads inside an iframe: device cards, Available Network Devices / Scan Network / Manually Add Device panel, Dependencies panel
 - [ ] Iframe fills the content area below TopBar without introducing its own scrollbar (body scroll is locked, page-level scroll lives inside the iframe only when content actually overflows)
-- [ ] If ws-scrcpy-web is not reachable: an HTTP probe runs on page init, the iframe is suppressed, and a warning alert is shown ("ws-scrcpy-web isn't reachable at <url>") with a Re-check button. Clicking Re-check re-runs the probe.
+- [ ] If ws-scrcpy-web is not reachable: the readiness check on page init suppresses the iframe and shows a warning alert ("ws-scrcpy-web isn't reachable at <url>") with a Re-check button. Clicking Re-check re-runs it. One `GET` decides both reachability and framing (`CheckEmbedAsync`) — a refused frame lands on the separate "won't allow this page to embed it" panel instead, never on this one.
 - [ ] Clicking `shell` on a device card opens the xterm modal inside the iframe; terminal is interactive (typing reaches the device, output renders)
 - [ ] Clicking `list files` opens the file browser modal inside the iframe; sticky header stays pinned on scroll; hover icons scale with the size picker
 - [ ] Clicking `config stream` opens ConfigureScrcpy; codec / encoder dropdowns filter correctly; Connect opens ConnectModal and the stream plays inside the iframe
@@ -393,7 +393,9 @@ Top-level sidebar section (after Cameras). All six tools accept an image via dra
 
 - [ ] If ws-scrcpy-web is configured and running: "Screen mirroring unavailable" does NOT show
 - [ ] If ws-scrcpy-web crashes: mirror shows unavailable (not stale "running" state)
-- [ ] ws-scrcpy-web is external — CM does not spawn or restart it; after you restart your own ws-scrcpy-web instance, the mirror reflects reachability via the HTTP probe (`ProbeAsync`), with no CM-side readiness wait
+- [ ] ws-scrcpy-web is external — CM does not spawn or restart it; after you restart your own ws-scrcpy-web instance, the mirror reflects reachability on its next render (`CheckEmbedAsync`), with no CM-side readiness wait
+- [ ] **Changing the URL applies everywhere without a restart.** With mirroring working, edit **Settings > General > ws-scrcpy-web URL** to a port with nothing on it and save. Every surface must follow the new value, not just Power Tools: the inline mirror stops showing a working stream, **Scan Network** reports it cannot reach ws-scrcpy-web at the *new* URL (not the old one), and **Dependencies > Check** reports ws-scrcpy-web unreachable at the *new* URL. Set it back and confirm all three recover — still with no restart
+- [ ] **A blank URL does not break the Dependencies page.** Clear the ws-scrcpy-web URL field entirely and save, then run **Dependencies > Check All**: the sweep completes and ws-scrcpy-web reports against the default `http://localhost:8000`. It must not error out or leave other dependencies unchecked
 - [ ] **Stream quality refresh does not kill mouse input** (race condition fixed)
 - [ ] **Offline devices do not crash ws-scrcpy-web** (WebSocket close reason truncated)
 

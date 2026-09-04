@@ -451,6 +451,28 @@ public class DependencyManagerServiceTests : IDisposable
         Assert.Contains("unreachable", result.ErrorMessage ?? "");
     }
 
+    [Fact]
+    public async Task CheckDependency_WsScrcpyWeb_BlankUrlSetting_PingsTheDefault_InsteadOfThrowing()
+    {
+        // The health check read the raw setting and guarded it with `?? default`, which a stored
+        // blank does not trigger: HttpClient then got a relative URI with no BaseAddress and threw
+        // InvalidOperationException straight out of the check -- past the catch, which filtered on
+        // HttpRequestException. One blank Settings field took the whole dependency sweep with it.
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-mode", It.IsAny<string?>())).ReturnsAsync("external");
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-url", It.IsAny<string?>())).ReturnsAsync("   ");
+        string? captured = null;
+        _mockHttpFactory.Setup(f => f.CreateClient(It.IsAny<string>()))
+            .Returns(() => new HttpClient(new CapturingHttpHandler(req => captured = req.RequestUri?.ToString())));
+
+        var module = new FakeModule("android-devices", "Android", [WsScrcpyModuleDep()]);
+        var dep = await SeedWsScrcpyWebDependencyAsync();
+
+        var result = await CreateService(module).CheckDependencyAsync(dep.Id);
+
+        Assert.Equal("http://localhost:8000/", captured);
+        Assert.Equal(DependencyStatus.CheckFailed, result.Status);   // the capturing handler answers 404
+    }
+
     // NOTE: CheckDependency_WsScrcpyWeb_ManagedMode_SkipsExternalBranch removed in Task 1 —
     // WsScrcpyService is now always External; the Managed-mode branch no longer exists.
     // Task 5 will add a replacement test covering the always-external HTTP-ping path.

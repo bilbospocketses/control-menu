@@ -111,6 +111,12 @@
                     already in the file, and restart it:
                 </p>
                 <pre style="white-space:pre-wrap;">@ManualConfigSnippet</pre>
+                <p>
+                    If the URL in Settings names a host rather than <code>localhost</code> or an IP
+                    address, add that name to <code>allowedHosts</code> in the same file as well.
+                    ws-scrcpy-web's host guard is a DNS-rebinding defence, and until the name is
+                    listed it answers <code>403</code> to every request — this one included.
+                </p>
                 <button class="btn btn-secondary" @onclick="Recheck">
                     <i class="bi bi-arrow-clockwise"></i> Re-check
                 </button>

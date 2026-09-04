@@ -25,24 +25,24 @@ public class WsScrcpyServiceTests
     }
 
     [Fact]
-    public async Task StartAsync_SetsBaseUrlFromSetting_AndReadyFlag()
+    public async Task StartAsync_ResolvesUrlFromSetting_AndSetsReadyFlag()
     {
         _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-url", It.IsAny<string?>()))
             .ReturnsAsync("http://ws-scrcpy:8000");
         var svc = CreateService();
         await svc.StartAsync(CancellationToken.None);
-        Assert.Equal("http://ws-scrcpy:8000", svc.BaseUrl);
+        Assert.Equal("http://ws-scrcpy:8000", await svc.GetBaseUrlAsync());
         Assert.True(svc.IsRunning);
     }
 
     [Fact]
-    public async Task StartAsync_DefaultsBaseUrl_WhenUrlSettingMissing()
+    public async Task StartAsync_DefaultsUrl_WhenUrlSettingMissing()
     {
         _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-url", It.IsAny<string?>()))
             .ReturnsAsync((string?)null);
         var svc = CreateService();
         await svc.StartAsync(CancellationToken.None);
-        Assert.Equal("http://localhost:8000", svc.BaseUrl);
+        Assert.Equal("http://localhost:8000", await svc.GetBaseUrlAsync());
         Assert.True(svc.IsRunning);
     }
 

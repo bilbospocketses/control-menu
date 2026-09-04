@@ -33,7 +33,9 @@ public class SubnetDetectionClient
             var http = _httpFactory.CreateClient();
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(5));
-            var url = $"{_wsscrcpy.BaseUrl.TrimEnd('/')}/api/devices/scan/subnet";
+            // Resolved per call: the URL is a Settings field, and detection has to reach whichever
+            // ws-scrcpy-web is configured now. GetBaseUrlAsync already trims the trailing slash.
+            var url = $"{await _wsscrcpy.GetBaseUrlAsync(cts.Token)}/api/devices/scan/subnet";
             var resp = await http.GetAsync(url, cts.Token);
             if (!resp.IsSuccessStatusCode) return null;
             var json = await resp.Content.ReadAsStringAsync(cts.Token);
