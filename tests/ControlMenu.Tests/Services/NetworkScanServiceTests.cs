@@ -274,6 +274,42 @@ public class NetworkScanServiceTests
     }
 
     [Fact]
+    public async Task StartScan_UsesTheUrlConfiguredNow_NotTheOneCachedAtStartup()
+    {
+        // Startup resolved a port with nothing on it; the user then pointed the setting at a
+        // running ws-scrcpy-web. Reading the value cached at StartAsync kept dialling the dead
+        // port -- a scan that could never connect, with a Settings field claiming otherwise.
+        var dead = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        dead.Start();
+        var deadPort = ((System.Net.IPEndPoint)dead.LocalEndpoint).Port;
+        dead.Stop();
+        await ConfigureWsScrcpyForAsync($"http://localhost:{deadPort}");
+
+        await using var fakeServer = new FakeWsScanServer();
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-url", It.IsAny<string?>()))
+                   .ReturnsAsync(fakeServer.Url);
+
+        var svc = CreateService();
+        var received = new List<ScanEvent>();
+        var complete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var sub = svc.Subscribe(e =>
+        {
+            received.Add(e);
+            if (e is ScanCompleteEvent) complete.TrySetResult();
+        });
+
+        var startTask = svc.StartScanAsync(new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) });
+        var serverSocket = await fakeServer.GetClientAsync(TimeSpan.FromSeconds(5));
+        await fakeServer.ReceiveAsync<System.Text.Json.JsonElement>(serverSocket);  // drain scan.start
+        await fakeServer.SendAsync(serverSocket, new { type = "scan.complete", found = 0 });
+
+        await startTask;
+        await AsyncSignal.ArrivesAsync(complete.Task);
+
+        Assert.DoesNotContain(received, e => e is ScanErrorEvent);
+    }
+
+    [Fact]
     public async Task StartScan_WhileScanning_Throws()
     {
         await using var fakeServer = new FakeWsScanServer();

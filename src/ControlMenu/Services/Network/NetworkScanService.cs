@@ -113,10 +113,13 @@ public sealed class NetworkScanService : INetworkScanService
                 throw new InvalidOperationException("scan already in progress");
         }
 
-        var baseUrl = _wsscrcpy.BaseUrl;
+        string? baseUrl = null;
         Uri wsUrl;
         try
         {
+            // Resolved here rather than read from a startup cache -- a scan has to reach whichever
+            // ws-scrcpy-web is configured now. Inside the try because the read touches the database.
+            baseUrl = await _wsscrcpy.GetBaseUrlAsync(ct);
             // UriBuilder handles trailing slashes, case-insensitive schemes, and
             // any query-string quirks that a raw string Replace would miss.
             var builder = new UriBuilder(baseUrl);
@@ -126,7 +129,7 @@ public sealed class NetworkScanService : INetworkScanService
         }
         catch (Exception ex)
         {
-            Dispatch(new ScanErrorEvent($"invalid ws-scrcpy-web BaseUrl '{baseUrl}': {ex.Message}"));
+            Dispatch(new ScanErrorEvent($"invalid ws-scrcpy-web URL '{baseUrl ?? "(unresolved)"}': {ex.Message}"));
             return;
         }
 

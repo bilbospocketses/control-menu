@@ -25,7 +25,9 @@ public sealed class ScrcpyProbeService : IScrcpyProbeService
         try
         {
             using var ws = new ClientWebSocket();
-            var baseUri = new Uri(_wsScrcpy.BaseUrl);
+            // Per call, not the value cached at startup: probing a ws-scrcpy-web the user has
+            // since moved would otherwise dial the old host and report every device as dead.
+            var baseUri = new Uri(await _wsScrcpy.GetBaseUrlAsync(cts.Token));
             var wsScheme = baseUri.Scheme == "https" ? "wss" : "ws";
             var probeUri = new Uri($"{wsScheme}://{baseUri.Host}:{baseUri.Port}/?action=probe&udid={Uri.EscapeDataString(udid)}");
 

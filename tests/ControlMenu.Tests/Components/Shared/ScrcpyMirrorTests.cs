@@ -24,9 +24,9 @@ public class ScrcpyMirrorTests : BunitContext
     /// <summary>A WsScrcpyService whose IsRunning reports true (so the inline iframe renders).
     /// IsRunning flips true only inside StartAsync, so we start a real instance over a minimal
     /// real ServiceProvider rather than mock the non-virtual property.</summary>
-    private static WsScrcpyService StartedWsScrcpy()
+    private static WsScrcpyService StartedWsScrcpy(Mock<IConfigurationService>? config = null)
     {
-        var config = new Mock<IConfigurationService>();
+        config ??= new Mock<IConfigurationService>();
         config.Setup(c => c.GetSettingAsync(It.IsAny<string>())).ReturnsAsync("http://localhost:8000");
 
         var sp = new ServiceCollection()
@@ -73,5 +73,27 @@ public class ScrcpyMirrorTests : BunitContext
         var ex = Record.Exception(() => cut.Find("iframe").TriggerEvent("onload", EventArgs.Empty));
 
         Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Inline_iframe_uses_the_url_configured_now_not_the_one_cached_at_startup()
+    {
+        // Mirroring is the primary ws-scrcpy-web surface, and it built its src from the URL
+        // resolved once at startup -- so changing the setting pointed Power Tools at the new
+        // address while the mirror silently kept framing the old one until a restart.
+        JSInterop.Mode = JSRuntimeMode.Loose;
+
+        var config = new Mock<IConfigurationService>();
+        var ws = StartedWsScrcpy(config);
+
+        // The user edits the URL in Settings. No restart.
+        config.Setup(c => c.GetSettingAsync(It.IsAny<string>())).ReturnsAsync("http://localhost:9100");
+
+        Services.AddSingleton(ws);
+        var cut = Render<ScrcpyMirror>(p => p
+            .Add(c => c.Udid, "1.2.3.4:5555")
+            .Add(c => c.Inline, true));
+
+        Assert.StartsWith("http://localhost:9100/embed.html", cut.Find("iframe").GetAttribute("src"));
     }
 }

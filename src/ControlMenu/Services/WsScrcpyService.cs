@@ -6,8 +6,8 @@ using ControlMenu.Data;
 namespace ControlMenu.Services;
 
 /// <summary>
-/// External-mode-only ws-scrcpy-web client. Reads the user-configured URL from
-/// the IConfigurationService at startup and exposes it via BaseUrl. Does not
+/// External-mode-only ws-scrcpy-web client. Resolves the user-configured URL from
+/// the IConfigurationService on every call — see <see cref="GetBaseUrlAsync"/>. Does not
 /// spawn or supervise any process — ws-scrcpy-web is run externally by the user.
 /// </summary>
 public class WsScrcpyService : IHostedService
@@ -26,13 +26,16 @@ public class WsScrcpyService : IHostedService
     public static readonly TimeSpan ApprovalWindow = TimeSpan.FromMinutes(5);
 
     /// <summary>
-    /// Last resolved URL. This is a cache for synchronous readers -- call
-    /// <see cref="GetBaseUrlAsync"/> when the value must be current.
+    /// The last URL <see cref="GetBaseUrlAsync"/> resolved, for diagnostics only -- it names
+    /// the address in an error raised before resolution could run. Deliberately NOT exposed:
+    /// a readable cache is exactly what let five consumers keep dialling a URL the user had
+    /// already changed, and every one of those call sites looked correct.
     /// </summary>
-    public string BaseUrl { get; private set; } = DefaultUrl;
+    private string _lastResolvedUrl = DefaultUrl;
 
     /// <summary>True once the service has resolved a URL at startup. Does NOT
-    /// guarantee ws-scrcpy-web is currently reachable — call ProbeAsync for that.</summary>
+    /// guarantee ws-scrcpy-web is currently reachable — call <see cref="CheckEmbedAsync"/>
+    /// for that.</summary>
     public bool IsRunning => _serviceReady;
 
     public WsScrcpyService(IServiceScopeFactory scopeFactory, IHttpClientFactory httpClientFactory, ILogger<WsScrcpyService> logger)
@@ -50,10 +53,11 @@ public class WsScrcpyService : IHostedService
     }
 
     /// <summary>
-    /// Re-reads <c>wsscrcpy-url</c> from configuration and refreshes <see cref="BaseUrl"/>.
-    /// The URL used to be resolved once in <see cref="StartAsync"/> and cached for the life of the
-    /// process, so changing it in Settings had no effect until the app was restarted -- the Power
-    /// Tools page kept pointing at the default port 8000 whatever was configured.
+    /// Re-reads <c>wsscrcpy-url</c> from configuration. The URL used to be resolved once in
+    /// <see cref="StartAsync"/> and cached for the life of the process, so changing it in Settings
+    /// had no effect until the app was restarted -- the Power Tools page kept pointing at the
+    /// default port 8000 whatever was configured. Every consumer calls this; there is no cached
+    /// property to read instead.
     /// </summary>
     public async Task<string> GetBaseUrlAsync(CancellationToken cancellationToken = default)
     {
@@ -66,7 +70,7 @@ public class WsScrcpyService : IHostedService
         // path to the server and which Node's URL parser rejects outright. `?? DefaultUrl` also did
         // not cover an empty or whitespace-only stored value.
         var url = string.IsNullOrWhiteSpace(stored) ? DefaultUrl : stored.Trim().TrimEnd('/');
-        BaseUrl = url;
+        _lastResolvedUrl = url;
         return url;
     }
 
@@ -214,7 +218,7 @@ public class WsScrcpyService : IHostedService
     /// </summary>
     public async Task<EmbedCheck> CheckEmbedAsync(string embedderOrigin, CancellationToken cancellationToken = default)
     {
-        var baseUrl = BaseUrl;
+        var baseUrl = _lastResolvedUrl;
         HttpResponseMessage response;
         using var http = _httpClientFactory.CreateClient();
         http.Timeout = TimeSpan.FromSeconds(5);
@@ -294,29 +298,5 @@ public class WsScrcpyService : IHostedService
         }
 
         return null;
-    }
-
-    /// <summary>HTTP probe against BaseUrl/. Returns true if a response (any status)
-    /// comes back inside the timeout, false on connection refused / DNS failure /
-    /// timeout. Use this to gate UI that embeds the ws-scrcpy-web iframe.</summary>
-    public async Task<bool> ProbeAsync(CancellationToken cancellationToken = default)
-    {
-        if (!_serviceReady) return false;
-
-        using var http = _httpClientFactory.CreateClient();
-        http.Timeout = TimeSpan.FromSeconds(2);
-        try
-        {
-            // Probe whatever is configured right now, not whatever was configured at startup —
-            // and inside the try, since both resolving and parsing it can throw.
-            var baseUrl = await GetBaseUrlAsync(cancellationToken);
-            using var req = new HttpRequestMessage(HttpMethod.Head, baseUrl + "/");
-            using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            return true;
-        }
-        catch (Exception ex) when (IsTransportFailure(ex))
-        {
-            return false;
-        }
     }
 }

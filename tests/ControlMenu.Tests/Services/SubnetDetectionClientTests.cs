@@ -89,6 +89,23 @@ public class SubnetDetectionClientTests
         await client.DetectAsync();
         Assert.Equal("http://localhost:8000/api/devices/scan/subnet", capturedUrl);
     }
+
+    [Fact]
+    public async Task Detect_UsesTheUrlConfiguredNow_NotTheOneCachedAtStartup()
+    {
+        // The URL is a Settings field that changes while the app runs. Reading the value cached
+        // at StartAsync sent subnet detection to the old address until the process restarted.
+        await ConfigureExternalAsync("http://localhost:8000");
+        _mockConfig.Setup(c => c.GetSettingAsync("wsscrcpy-url", It.IsAny<string?>()))
+                   .ReturnsAsync("http://localhost:9100");
+
+        string? capturedUrl = null;
+        var handler = new CapturingHttpHandler(req => { capturedUrl = req.RequestUri?.ToString(); });
+        var client = new SubnetDetectionClient(FactoryFor(handler).Object, _wsScrcpy);
+        await client.DetectAsync();
+
+        Assert.Equal("http://localhost:9100/api/devices/scan/subnet", capturedUrl);
+    }
 }
 
 // Small inline helper for the URL-capture test. Local to this file.

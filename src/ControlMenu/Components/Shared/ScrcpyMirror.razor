@@ -60,6 +60,7 @@
 
     private int _renderKey;
     private bool _embedBlocked;
+    private string _baseUrl = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -78,13 +79,23 @@
             _embedBlocked = false;
         }
     }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Resolved per render rather than read from a startup cache. Mirroring is the primary
+        // ws-scrcpy-web surface, and it used to frame the URL resolved at startup -- so a URL
+        // changed in Settings moved Power Tools and left the mirror pointing at the old address
+        // with nothing on screen to say so.
+        if (WsScrcpy.IsRunning) _baseUrl = await WsScrcpy.GetBaseUrlAsync();
+    }
+
     private ElementReference _iframeRef;
 
     private string StreamUrl
     {
         get
         {
-            var url = $"{WsScrcpy.BaseUrl}/embed.html?device={Uri.EscapeDataString(Udid)}";
+            var url = $"{_baseUrl}/embed.html?device={Uri.EscapeDataString(Udid)}";
             if (!string.IsNullOrEmpty(DeviceKind))
                 url += $"&deviceKind={Uri.EscapeDataString(DeviceKind)}";
 
