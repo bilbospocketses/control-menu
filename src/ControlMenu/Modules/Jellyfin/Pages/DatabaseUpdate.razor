@@ -19,7 +19,7 @@
                     <li>Creates a database backup</li>
                     <li>Runs the SQL update</li>
                     <li>Restarts the container</li>
-                    <li>Removes database backups older than the configured retention (default 5 days) and card backups beyond the newest three per library</li>
+                    <li>Removes database backups older than @_retentionDays days and card backups beyond the newest three per library</li>
                 </ol>
                 <p><strong>Jellyfin is offline</strong> while this runs — the container has to be stopped to write to its database safely.</p>
             </div>
@@ -120,8 +120,13 @@ else
     private string? _error;
     private List<OperationLogEntry> _recentLogs = [];
 
-    protected override void OnInitialized()
+    // The same default JellyfinService.CleanupOldBackupsAsync falls back to, so the copy and
+    // the behaviour cannot disagree -- they did, for anyone who had changed the setting.
+    private int _retentionDays = 5;
+
+    protected override async Task OnInitializedAsync()
     {
+        _retentionDays = int.TryParse(await Config.GetSettingAsync("jellyfin-backup-retention-days"), out var days) ? days : 5;
         _recentLogs = OperationLogger.GetRecentLogs(10, Paths)
             .Where(l => l.Operation == "db-date-update")
             .ToList();
@@ -234,7 +239,7 @@ else
             StateHasChanged();
             await JellyfinService.CleanupOldBackupsAsync(logger);
             _steps[4].Status = StepStatus.Completed;
-            _steps[4].Detail = "Database backups past the retention window and surplus card backups removed.";
+            _steps[4].Detail = $"Database backups older than {_retentionDays} days and surplus card backups removed.";
             logger.Ok("Old backups removed");
             StateHasChanged();
 

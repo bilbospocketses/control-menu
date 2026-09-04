@@ -21,9 +21,9 @@
 Control Menu replaces a collection of PowerShell scripts with a cross-platform web UI. It manages:
 
 - **Android Devices** &mdash; Connect, reboot, toggle power/screensaver, manage ADB settings, and screen mirror Google TVs and Android phones via [ws-scrcpy-web](https://github.com/bilbospocketses/ws-scrcpy-web). mDNS-based network discovery with one-click Add for unregistered devices and auto-classification (phone / tablet / TV / watch) via an ADB shell probe.
-- **Android Power Tools** &mdash; ws-scrcpy-web's full home page embedded in an iframe at `/android-power-tools`. Direct access to the power-user workflows not duplicated in the Devices module: shell (xterm), file browser, stream configuration, network scan + manual-add, and dependency updater. Theme syncs bidirectionally with the iframe via `postMessage` (requires ws-scrcpy-web v0.1.24-beta.5+).
+- **Android Power Tools** &mdash; ws-scrcpy-web's full home page embedded in an iframe at `/android-power-tools`. Direct access to the power-user workflows not duplicated in the Devices module: shell (xterm), file browser, stream configuration, network scan + manual-add, and dependency updater. Theme syncs bidirectionally with the iframe via `postMessage` (ws-scrcpy-web v0.1.24-beta.5+). Because the two apps are different origins, ws-scrcpy-web refuses to be framed until it is asked: the page detects the refusal before rendering and offers **Request permission**, which raises a prompt in ws-scrcpy-web; approving there grants this origin and the iframe loads (embed handshake: ws-scrcpy-web v0.1.30-beta.83+).
 - **Cameras** &mdash; View LTS/Hikvision CCTV cameras via [go2rtc](https://github.com/AlexxIT/go2rtc) RTSP-to-browser streaming. Configurable camera count with encrypted credential storage. go2rtc is auto-installed and updated via the dependency manager.
-- **Jellyfin Media Server** &mdash; Database date updates, cast & crew image refresh (background worker with resume support), Docker container management, automated backups with configurable retention
+- **Jellyfin Media Server** &mdash; Database date updates, cast & crew image refresh (background worker with resume support), My Media card regeneration (back up → delete → let Jellyfin rebuild → wait for the card, with rollback on failure and a per-library Restore), Docker container management, automated backups with configurable retention
 - **Imaging Tools** &mdash; Six image utilities backed by bundled [ImageMagick](https://imagemagick.org), [vtracer](https://github.com/visioncortex/vtracer), and [potrace](https://potrace.sourceforge.net/) plus the in-process [Svg.Skia](https://www.nuget.org/packages/Svg.Skia) NuGet: **Icon Converter** (image → multi-size `.ico`), **Format Converter** (PNG/JPG/WEBP/AVIF/TIFF/BMP/GIF), **Image Resize** (pixel / percentage / max-fit), **SVG Rasterize** (SVG → PNG/ICO via Svg.Skia, in-process), **Magic Wand** (click-to-remove background with a live SkiaSharp preview and an authoritative ImageMagick render), and **Tracing** (raster → SVG: color via vtracer, monochrome via potrace).
 - **Utilities** &mdash; Windows Zone.Identifier file unblocker
 - **Dependency Management** &mdash; Auto-installs and updates ADB, sqlite3, go2rtc, ImageMagick, vtracer, and potrace to a self-contained `dependencies/` folder. Configurable install paths per tool. Version checks via the GitHub API, direct-URL scraping, or — for a pinned dependency such as potrace — the version in its download URL. Every download is integrity-verified before it is extracted or run (pinned SHA-256 → upstream checksum → Authenticode, falling back to an explicit confirmation prompt for unsigned assets). Services are automatically stopped before binary updates and restarted after. Docker and ws-scrcpy-web are externally managed (configured in Settings → General).
@@ -67,7 +67,7 @@ Open http://localhost:5159 in your browser. The first-run wizard will guide you 
 dotnet test
 ```
 
-819 tests covering services, modules, the launcher, and integrations (across `ControlMenu.Tests`, `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests`).
+820 tests covering services, modules, the launcher, and integrations (across `ControlMenu.Tests`, `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests`).
 
 ## Architecture
 
@@ -82,7 +82,7 @@ src/ControlMenu/
     AndroidDevices/     #   ADB service, Google TV & Android Phone dashboards
     AndroidPowerTools/  #   ws-scrcpy-web home page iframe (shell, files, configure)
     Cameras/            #   CCTV camera streaming via go2rtc
-    Jellyfin/           #   Docker ops, DB updates, Cast/Crew worker
+    Jellyfin/           #   Docker ops, DB updates, Cast/Crew + Media Cards workers
     Imaging/            #   6 image tools (magick, Svg.Skia, vtracer, potrace)
     Utilities/          #   File unblocker
   Services/             # Core services (config, secrets, jobs, dependencies, email)

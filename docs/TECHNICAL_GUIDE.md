@@ -187,7 +187,7 @@ public record ConfigRequirement(
 |--------|----|-----------|--------------|-------------|
 | Android Devices | `android-devices` | 1 | adb, ws-scrcpy-web | Device List; Google TV / Phone / Tablet / Watch (each shown when ≥1 device of that type is registered) |
 | Android Power Tools | `android-power-tools` | 2 | (none — shares ws-scrcpy-web with Android Devices) | Power Tools |
-| Jellyfin | `jellyfin` | 3 | docker, sqlite3 | DB Date Update, Cast & Crew |
+| Jellyfin | `jellyfin` | 3 | docker, sqlite3 | DB Date Update, Cast & Crew, Media Cards |
 | Utilities | `utilities` | 4 | (none) | File Unblocker |
 | Cameras | `cameras` | 5 | go2rtc | Dynamic: one entry per configured camera |
 | Imaging Tools | `imaging` | 6 | magick, vtracer, potrace | Icon Converter, Format Converter, Image Resize, SVG Rasterize, Magic Wand, Tracing |
@@ -352,7 +352,7 @@ Framing, however, **is** cross-origin and is the central constraint here. ws-scr
 
 ## 5. Jellyfin Module
 
-The Jellyfin module manages a Jellyfin media server running in Docker. It handles container lifecycle, database operations, automated backups, and a long-running cast & crew image update worker.
+The Jellyfin module manages a Jellyfin media server running in Docker. It handles container lifecycle, database operations, automated backups, and two long-running background workers: the cast & crew image update (`CastCrewUpdateWorker`, job type `cast-crew-update`) and the My Media card regeneration (`MediaCardRefreshWorker`, job type `media-card-refresh`). Both run in their own DI scope, re-read cancellation from the database so they survive a circuit disconnect, and report through `OperationLogger` plus an optional completion email.
 
 ### JellyfinService
 
@@ -371,6 +371,13 @@ The Jellyfin module manages a Jellyfin media server running in Docker. It handle
 | `GetPersonsMissingImagesAsync()` | Query Jellyfin API for persons without images |
 | `TriggerPersonImageDownloadAsync(id, config)` | Refresh a single person's images via API |
 | `GetApiConfigAsync()` | Resolve Jellyfin API base URL, API key, and user ID |
+| `GetMediaCardTargetsAsync(config)` | The My Media row from `/UserViews` (not `/Library/VirtualFolders`, which omits generated views such as Playlists): each tile with whether it has a card and whether Jellyfin can rebuild it (`MediaCardSupport.Evaluate` — every `CollectionFolder` qualifies; a `UserView` only for `movies` / `tvshows` / `playlists`, so Live TV is refused) |
+| `BackupLibraryCardAsync(id, name, config)` | Download the current card to `<backups>/media-cards/<sanitised name>-yyyyMMdd-HHmmss.<ext>`; `null` when there is no card |
+| `DeleteLibraryCardAsync(id, config)` | `DELETE /Items/{id}/Images/Primary` — the collage provider only runs when no image exists |
+| `RefreshLibraryCardAsync(id, config)` | `POST /Items/{id}/Refresh` with `metadataRefreshMode=ValidationOnly` and `replaceAllImages=false` (see the #124 CHANGELOG entry for why both values are load-bearing) |
+| `HasLibraryCardAsync(id, config)` | Whether a primary image exists now — the worker's wait polls this |
+| `RestoreLibraryCardAsync(id, backupPath, config)` | Upload a backup via `POST /Items/{id}/Images/Primary` (body is **base64 text**, despite the OpenAPI `format: binary`); copying the file back would leave `BaseItemImageInfos` without a row |
+| `FindLatestCardBackupAsync(name)` | Newest backup for a library name, for the page's per-row **Restore** |
 
 ### ComposeParser
 
@@ -427,6 +434,20 @@ The logger respects the `app-timezone` setting for timestamp display. It is cons
 
 - **DatabaseUpdate** (`/jellyfin/db-update`) -- DateCreated update with backup, container stop/start, operation logging
 - **CastCrewUpdate** (`/jellyfin/cast-crew`) -- Start/cancel cast & crew worker, progress tracking, job history
+- **MediaCards** (`/jellyfin/media-cards`) -- Lists the My Media row with a Present / Missing / Hand-set badge per tile; tick the ones to rebuild (nothing ticked by default; a header checkbox selects every regenerable row) and start `MediaCardRefreshWorker`, which per library backs up the card, deletes it, requests the refresh and polls until the new card exists (20-minute cap, since the refresh queues behind a full library walk), rolling the backup back on failure. A per-row **Restore** re-uploads the newest backup. Cancel is honoured on every 3-second poll of the wait, not only between libraries. When a run ends the worker prunes card backups to the newest three per library.
+
+### JellyfinDirectoryResolver
+
+`IJellyfinDirectoryResolver` owns *where* the module's files live, so pages and the service never compute paths themselves:
+
+| Member | Purpose |
+|--------|---------|
+| `MediaCardsFolder` (const) | `media-cards` — the sub-folder of the backup directory that holds card backups |
+| `GetBackupDirectoryAsync()` | `jellyfin-backup-directory` override, else `<dataRoot>/jellyfin-backups/` |
+| `GetLogDirectoryAsync()` | `jellyfin-log-directory` override, else `<dataRoot>/logs/jellyfin/` |
+| `MigrateFilesAsync(old, new, pattern)` | Best-effort move of matching files; per-file failures do not abort the batch |
+| `MigrateBackupsAsync(old, new)` | The whole backup directory: `*.db` at the root plus `media-cards/` beneath it. Moving only `*.db` orphaned the cards where the page's Restore could not see them |
+| `GetBackupStats(dir)` | `BackupDirectoryStats(FileCount, TotalBytes)` over the databases and the cards, for the Settings-page stat |
 
 ---
 
@@ -963,12 +984,12 @@ During the **Cameras** step, `SubnetDetectionClient.DetectAsync()` calls ws-scrc
 | General | GeneralSettings | `smtp-server`, `smtp-port`, `smtp-username`, `smtp-password` (secret), `smtp-from-email`, `notification-email`, `app-timezone`; **External Dependencies**: `wsscrcpy-url` (ws-scrcpy-web URL) + docker executable path |
 | Android Devices | DeviceManagement | Device CRUD (the `Devices` table). The ws-scrcpy-web URL lives on General → External Dependencies (`wsscrcpy-url`), not here. |
 | Cameras | CameraSettings | `cameras-liveness-interval-seconds`, `cameras-scan-subnets`, per-camera username/password as `camera-{guid:N}-username/-password` (secrets) (module: `cameras`). Camera rows live in the `Cameras` DB table, not in Settings. |
-| Jellyfin | JellyfinSettingsSection | `jellyfin-compose-path`, `jellyfin-api-key` (secret), `jellyfin-url`, `jellyfin-user-id` |
+| Jellyfin | JellyfinSettingsSection | `jellyfin-compose-path`, `jellyfin-api-key` (secret), `jellyfin-base-url`, `jellyfin-user-id`, `jellyfin-castcrew-notify-email`; **Logging, Backup & Retention**: `jellyfin-backup-directory`, `jellyfin-log-directory`, `jellyfin-backup-retention-days` (default 5; the DB Date Update page and `CleanupOldBackupsAsync` both read it) |
 | Dependencies | DependencyManagement | Per-dependency install paths (`dep-path-{name}`), version check, install/update buttons, check interval (`dep-check-interval`) |
 
 ### Module-Scoped vs. Global Settings
 
-Settings with a non-null `ModuleId` are scoped to that module. For example, `ws_scrcpy_web_path` with `ModuleId = "android-devices"` is an Android Devices module setting. SMTP settings have `ModuleId = null` (global).
+Settings with a non-null `ModuleId` are scoped to that module. For example, a camera's `camera-{guid:N}-username` secret carries `ModuleId = "cameras"`. SMTP settings have `ModuleId = null` (global). (`ws_scrcpy_web_path`, the example this paragraph used to give, is a legacy key that `ObsoleteSettingsCleanupService` deletes on startup — see §3.)
 
 ### Secret Management
 
@@ -1070,7 +1091,7 @@ All paths resolve under `<dataRoot>` via `IDataPathResolver` — `C:\ProgramData
 - **xUnit** -- test runner
 - **Moq** -- mocking framework
 - **bunit** -- Blazor (Razor) component testing
-- **819 tests** (all green on net10.0) across three projects — `ControlMenu.Tests` (app), `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests` — run together via `ControlMenu.sln`
+- **820 tests** (all green on net10.0) across three projects — `ControlMenu.Tests` (app), `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests` — run together via `ControlMenu.sln`
 
 ### Test Database
 
