@@ -301,8 +301,10 @@ public bool Inline { get; set; }  // true = embedded iframe, false = popup butto
 
 The iframe source URL follows this pattern:
 ```
-{BaseUrl}/embed.html?device={Udid}
+{ws-scrcpy-web URL}/embed.html?device={Udid}
 ```
+
+The base is resolved with `WsScrcpyService.GetBaseUrlAsync()` in `OnParametersSetAsync` — per render, not once at startup — so a URL changed in Settings takes effect the next time the mirror renders. (It used to read a `BaseUrl` property cached at `StartAsync`; that property is gone, see §3.)
 
 `embed.html` is ws-scrcpy-web's dedicated iframe-friendly wrapper (shipped with the 1.0.0 stream API rewrite, April 2026). It renders the stream plus toolbar only, with a transparent background so iframe consumers can place any background behind the video. The legacy `#!action=stream&udid=...&embed=true` hash-routing URL was removed in the same release.
 
@@ -336,7 +338,7 @@ The component has three non-iframe states, not one. `WsScrcpy.IsRunning` false r
 
 Peer of Android Devices (sort order 2), added April 2026. Host for ws-scrcpy-web's full home page via iframe at `/android-power-tools`. Gives the user direct access to power-user workflows that aren't replicated in Control Menu's Android Devices UI: one-click shell (xterm modal), file browser (ListFilesModal with sticky header, reserved actions column, bulk selection, drag-and-drop upload, filter), ConfigureScrcpy stream parameters, network scan panel with mDNS + manual-add, and dependency updater.
 
-Strictly additive — Android Devices module remains the primary device-management surface (registered-devices list, PIN unlock, power state, sleep/wake, screensaver, Projectivy backups). The Power Tools module is a thin wrapper: `AndroidPowerToolsPage.razor` resolves the URL with `WsScrcpyService.GetBaseUrlAsync()` on each visit and gates the iframe on `CheckEmbedAsync` rather than on `IsRunning` alone, and the module class itself declares no dependencies (they're already declared by AndroidDevices).
+Strictly additive — Android Devices module remains the primary device-management surface (registered-devices list, PIN unlock, power state, sleep/wake, screensaver, Projectivy backups). The Power Tools module is a thin wrapper: `AndroidPowerToolsPage.razor` resolves the URL with `WsScrcpyService.GetBaseUrlAsync()` on each visit and gates the iframe on `CheckEmbedAsync` (it does not consult `IsRunning` at all), and the module class itself declares no dependencies (they're already declared by AndroidDevices).
 
 `MainLayout.razor`'s page-title switch needs a specific case for `/android-power-tools` that sits **above** the generic `path.StartsWith("android")` fallback — otherwise the breadcrumb shows "Android Devices" for what should be "Android Power Tools" (the prefix-match order is load-bearing).
 
@@ -761,7 +763,7 @@ Manages the lifecycle of external tool dependencies: version checking, downloadi
 
 **Version checking** supports three strategies:
 - `UpdateSourceType.GitHub` -- Fetches `GET /repos/{owner}/{repo}/releases/latest` from GitHub API, extracts `tag_name`
-- `UpdateSourceType.DirectUrl` -- Scrapes a web page using `VersionCheckUrl` and `VersionCheckPattern` regex
+- `UpdateSourceType.DirectUrl` -- Two paths. With `VersionCheckUrl` + `VersionCheckPattern` (adb, sqlite3): scrapes that page with the regex. Without them (potrace, pinned): the version in `DownloadUrl`'s file name *is* the latest — `VersionFromFileName`, digits and interior dots only — and is written to `LatestKnownVersion` on every check, derived rather than remembered
 - `UpdateSourceType.Manual` -- Always reports `UpToDate` (user manages these externally)
 
 **Download and install** (`DownloadAndInstallAsync`):
@@ -1068,7 +1070,7 @@ All paths resolve under `<dataRoot>` via `IDataPathResolver` — `C:\ProgramData
 - **xUnit** -- test runner
 - **Moq** -- mocking framework
 - **bunit** -- Blazor (Razor) component testing
-- **802 tests** (all green on net10.0) across three projects — `ControlMenu.Tests` (app), `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests` — run together via `ControlMenu.sln`
+- **819 tests** (all green on net10.0) across three projects — `ControlMenu.Tests` (app), `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests` — run together via `ControlMenu.sln`
 
 ### Test Database
 
@@ -1098,9 +1100,10 @@ tests/ControlMenu.Tests/
     NetworkDiscoveryServiceTests.cs
     SecretStoreTests.cs
   Modules/
-    AndroidDevices/               # AdbService tests
+    AndroidDevices/               # AdbService, liveness tests
+    AndroidPowerTools/            # AndroidPowerToolsPage (bUnit; the approval countdown on a FakeTimeProvider)
     Cameras/                      # CameraService, CamerasModule, CameraProxyMiddleware tests
-    Jellyfin/                     # JellyfinService, ComposeParser, CastCrewUpdateWorker tests
+    Jellyfin/                     # JellyfinService (+ media cards), JellyfinDirectoryResolver, ComposeParser, CastCrewUpdateWorker, MediaCardRefreshWorker tests
     Imaging/                      # ImageService (real-magick integration), TracingService, page render, ImagingModule (68 tests)
     Utilities/                    # FileUnblockService tests
     Fakes/                        # Test doubles
