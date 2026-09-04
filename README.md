@@ -26,7 +26,7 @@ Control Menu replaces a collection of PowerShell scripts with a cross-platform w
 - **Jellyfin Media Server** &mdash; Database date updates, cast & crew image refresh (background worker with resume support), Docker container management, automated backups with configurable retention
 - **Imaging Tools** &mdash; Six image utilities backed by bundled [ImageMagick](https://imagemagick.org), [vtracer](https://github.com/visioncortex/vtracer), and [potrace](https://potrace.sourceforge.net/) plus the in-process [Svg.Skia](https://www.nuget.org/packages/Svg.Skia) NuGet: **Icon Converter** (image → multi-size `.ico`), **Format Converter** (PNG/JPG/WEBP/AVIF/TIFF/BMP/GIF), **Image Resize** (pixel / percentage / max-fit), **SVG Rasterize** (SVG → PNG/ICO via Svg.Skia, in-process), **Magic Wand** (click-to-remove background with a live SkiaSharp preview and an authoritative ImageMagick render), and **Tracing** (raster → SVG: color via vtracer, monochrome via potrace).
 - **Utilities** &mdash; Windows Zone.Identifier file unblocker
-- **Dependency Management** &mdash; Auto-installs and updates ADB, sqlite3, go2rtc, ImageMagick, vtracer, and potrace to a self-contained `dependencies/` folder. Configurable install paths per tool. Version checks via GitHub API and direct URL scraping. Every download is integrity-verified before it is extracted or run (pinned SHA-256 → upstream checksum → Authenticode, falling back to an explicit confirmation prompt for unsigned assets). Services are automatically stopped before binary updates and restarted after. Docker and ws-scrcpy-web are externally managed (configured in Settings → General).
+- **Dependency Management** &mdash; Auto-installs and updates ADB, sqlite3, go2rtc, ImageMagick, vtracer, and potrace to a self-contained `dependencies/` folder. Configurable install paths per tool. Version checks via the GitHub API, direct-URL scraping, or — for a pinned dependency such as potrace — the version in its download URL. Every download is integrity-verified before it is extracted or run (pinned SHA-256 → upstream checksum → Authenticode, falling back to an explicit confirmation prompt for unsigned assets). Services are automatically stopped before binary updates and restarted after. Docker and ws-scrcpy-web are externally managed (configured in Settings → General).
 
 ## Features
 
@@ -67,7 +67,7 @@ Open http://localhost:5159 in your browser. The first-run wizard will guide you 
 dotnet test
 ```
 
-802 tests covering services, modules, the launcher, and integrations (across `ControlMenu.Tests`, `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests`).
+819 tests covering services, modules, the launcher, and integrations (across `ControlMenu.Tests`, `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests`).
 
 ## Architecture
 

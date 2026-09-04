@@ -401,10 +401,10 @@ Top-level sidebar section (after Cameras). All six tools accept an image via dra
 ## 22. ws-scrcpy-web Integration
 
 - [ ] If ws-scrcpy-web is configured and running: "Screen mirroring unavailable" does NOT show
-- [ ] If ws-scrcpy-web crashes: mirror shows unavailable (not stale "running" state)
-- [ ] ws-scrcpy-web is external — CM does not spawn or restart it; after you restart your own ws-scrcpy-web instance, the mirror reflects reachability on its next render (`CheckEmbedAsync`), with no CM-side readiness wait
+- [ ] If ws-scrcpy-web is stopped: the mirror does **not** switch to the "Screen mirroring unavailable" alert — `IsRunning` only means a URL was resolved at startup. It falls through to the iframe, which shows the browser's own connection error; the alert is reserved for a definite framing refusal (TECHNICAL_GUIDE §4)
+- [ ] ws-scrcpy-web is external — CM does not spawn or restart it; after you restart your own ws-scrcpy-web instance, the mirror re-checks framing only when it initialises (`CheckEmbedAsync` runs once, in `OnInitializedAsync`) — re-open the dashboard to re-check; the stream URL itself is re-resolved on every render. No CM-side readiness wait
 - [ ] **Changing the URL applies everywhere without a restart.** With mirroring working, edit **Settings > General > ws-scrcpy-web URL** to a port with nothing on it and save. Every surface must follow the new value, not just Power Tools: the inline mirror stops showing a working stream, **Scan Network** reports it cannot reach ws-scrcpy-web at the *new* URL (not the old one), and **Dependencies > Check** reports ws-scrcpy-web unreachable at the *new* URL. Set it back and confirm all three recover — still with no restart
-- [ ] **A blank URL does not break the Dependencies page.** Clear the ws-scrcpy-web URL field entirely and save, then run **Dependencies > Check All**: the sweep completes and ws-scrcpy-web reports against the default `http://localhost:8000`. It must not error out or leave other dependencies unchecked
+- [ ] **A blank URL cannot be saved, and a legacy blank does not break Dependencies.** Clear the ws-scrcpy-web URL field and blur: the field refuses it ("Enter a full URL including http:// or https://…") and the stored value is unchanged. A blank already in the database — from a build before the field validated on save — is repaired to `http://localhost:8000` on every read, so **Dependencies > Check All** completes; that half is pinned by `CheckDependency_WsScrcpyWeb_BlankUrlSetting_PingsTheDefault_InsteadOfThrowing` rather than reproducible from the UI
 - [ ] **Stream quality refresh does not kill mouse input** (race condition fixed)
 - [ ] **Offline devices do not crash ws-scrcpy-web** (WebSocket close reason truncated)
 
@@ -438,7 +438,7 @@ If you're short on time, just hit these:
 - [ ] Theme buttons toggle theme immediately.
 - [ ] Email (SMTP) renders as 4-row 2-col grid; per-field auto-save still works.
 - [ ] Test Email button alone in the bottom row.
-- [ ] ws-scrcpy-web URL field is editable; blur saves with "ws-scrcpy-web URL saved." (no restart — the Power Tools page re-reads the setting on each visit).
+- [ ] ws-scrcpy-web URL field is editable; blur saves with "ws-scrcpy-web URL saved." (no restart — every page resolves the setting per request).
 - [ ] A value with no scheme (e.g. `localhost:8000`) is rejected with "Enter a full URL including http:// or https:// — for example http://localhost:8000".
 - [ ] A pasted trailing slash is stripped before storing.
 - [ ] Docker executable path field is editable; blur saves with "Docker path saved." notification (or "Docker path cleared." when emptied).
@@ -468,7 +468,7 @@ If you're short on time, just hit these:
 - [ ] Settings → General page has an **External Dependencies** section (was: "ws-scrcpy-web deployment").
 - [ ] Section intro paragraph mentions scanning features need ws-scrcpy-web running.
 - [ ] **No** Managed/External radio toggle.
-- [ ] ws-scrcpy-web URL field is editable; blur saves with "ws-scrcpy-web URL saved." (no restart — the Power Tools page re-reads the setting on each visit).
+- [ ] ws-scrcpy-web URL field is editable; blur saves with "ws-scrcpy-web URL saved." (no restart — every page resolves the setting per request).
 - [ ] A value with no scheme (e.g. `localhost:8000`) is rejected with "Enter a full URL including http:// or https:// — for example http://localhost:8000".
 - [ ] A pasted trailing slash is stripped before storing.
 - [ ] Docker executable path field is editable; blur saves with "Docker path saved." notification (or "Docker path cleared." if emptied).

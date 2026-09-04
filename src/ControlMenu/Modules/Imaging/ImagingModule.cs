@@ -92,7 +92,8 @@ public class ImagingModule : IToolModule
             DownloadUrl = "https://potrace.sourceforge.net/download/1.16/potrace-1.16.win64.zip",
             InstallPath = Path.Combine(DepsRoot, "potrace"),
             // T1: KnownHashes keyed by DependencyManagerService.ResolveTargetVersion output.
-            // DirectUrl pinned deps use the version parsed from VersionCheckPattern (e.g. "1.16").
+            // DirectUrl pinned deps (no VersionCheckUrl) use the version parsed from the DownloadUrl
+            // file name -- DependencyManagerService.VersionFromFileName -> "1.16".
             // Pinned 2026-06-18; refresh via scripts/update-dependency-hashes.ps1.
             KnownHashes = new Dictionary<string, string>
             {
