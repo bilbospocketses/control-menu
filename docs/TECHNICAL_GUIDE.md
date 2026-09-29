@@ -365,7 +365,7 @@ The Jellyfin module manages a Jellyfin media server running in Docker. It handle
 | `StartContainerAsync(id)` | `docker start` the container |
 | `WaitForContainerReadyAsync(id, timeout)` | Poll until container is healthy |
 | `BackupDatabaseAsync(logger)` | Copy `jellyfin.db` to timestamped backup |
-| `UpdateDateCreatedAsync(logger)` | Update DateCreated fields in Jellyfin DB |
+| `UpdateDateCreatedAsync(logger)` | Set `DateCreated = PremiereDate` for episodes and movies only; other types (Person rows carry a *birth date* there) are left alone. The page calls it only after a successful backup |
 | `CleanupOldBackupsAsync(logger)` | Remove `*.db` backups older than the retention window, and card backups under `media-cards/` beyond the newest three per library — by count, never by age, since the newest card backup is the only route back from a bad regeneration. Runs from the DB Date Update routine and at the end of every Media Cards run |
 | `ParseComposeFileAsync()` | Extract container info from docker-compose.yml |
 | `GetPersonsMissingImagesAsync()` | Query Jellyfin API for persons without images |
@@ -1091,7 +1091,7 @@ All paths resolve under `<dataRoot>` via `IDataPathResolver` — `C:\ProgramData
 - **xUnit** -- test runner
 - **Moq** -- mocking framework
 - **bunit** -- Blazor (Razor) component testing
-- **821 tests** (all green on net10.0) across three projects — `ControlMenu.Tests` (app), `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests` — run together via `ControlMenu.sln`
+- **823 tests** (all green on net10.0) across three projects — `ControlMenu.Tests` (app), `ControlMenu.Common.Tests`, and `ControlMenuLauncher.Tests` — run together via `ControlMenu.sln`
 
 ### Test Database
 

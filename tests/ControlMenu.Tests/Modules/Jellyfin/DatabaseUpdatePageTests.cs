@@ -39,4 +39,41 @@ public class DatabaseUpdatePageTests : BunitContext
             Directory.Delete(temp, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task A_failed_backup_skips_the_sql_update_and_still_restarts_the_container()
+    {
+        // The SQL step used to run whether or not the backup had been written, so a run whose
+        // backup failed rewrote the Jellyfin database with nothing to restore from. The container
+        // has already been stopped by then, so it must still be started again.
+        var temp = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            var jellyfin = new Mock<IJellyfinService>();
+            jellyfin.Setup(j => j.GetContainerIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync("a4cc8b418cca");
+            jellyfin.Setup(j => j.StopContainerAsync("a4cc8b418cca", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+            jellyfin.Setup(j => j.BackupDatabaseAsync(It.IsAny<OperationLogger?>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync((string?)null);
+            jellyfin.Setup(j => j.StartContainerAsync("a4cc8b418cca", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+            jellyfin.Setup(j => j.WaitForContainerReadyAsync("a4cc8b418cca", It.IsAny<int>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(true);
+
+            Services.AddSingleton(Mock.Of<IConfigurationService>());
+            Services.AddSingleton(jellyfin.Object);
+            Services.AddSingleton<IDataPathResolver>(new TestPathResolver(temp));
+
+            var cut = Render<DatabaseUpdate>();
+            await cut.Find("button.btn-primary").ClickAsync(new());
+
+            cut.WaitForAssertion(() => Assert.Contains("Some steps failed", cut.Markup));
+            jellyfin.Verify(j => j.UpdateDateCreatedAsync(It.IsAny<OperationLogger?>(), It.IsAny<CancellationToken>()), Times.Never);
+            jellyfin.Verify(j => j.StartContainerAsync("a4cc8b418cca", It.IsAny<CancellationToken>()), Times.Once);
+            Assert.Contains("Skipped: no backup was taken", cut.Markup);
+        }
+        finally
+        {
+            Directory.Delete(temp, recursive: true);
+        }
+    }
 }

@@ -17,7 +17,7 @@
                 <ol>
                     <li>Stops the Jellyfin Docker container</li>
                     <li>Creates a database backup</li>
-                    <li>Runs the SQL update</li>
+                    <li>Runs the SQL update on episodes and movies (skipped if the backup failed)</li>
                     <li>Restarts the container</li>
                     <li>Removes database backups older than @_retentionDays days and card backups beyond the newest three per library</li>
                 </ol>
@@ -194,16 +194,27 @@ else
             else logger.Fail("Backup failed");
             StateHasChanged();
 
-            // Step 3: SQL Update
-            _steps[2].Status = StepStatus.Running;
-            logger.Step("Running SQL update");
-            StateHasChanged();
-            var updated = await JellyfinService.UpdateDateCreatedAsync(logger);
-            _steps[2].Status = updated ? StepStatus.Completed : StepStatus.Failed;
-            _steps[2].Detail = updated ? "DateCreated = PremiereDate applied." : "SQL update failed.";
-            if (updated) logger.Ok("DateCreated = PremiereDate applied");
-            else logger.Fail("SQL update failed");
-            StateHasChanged();
+            // Step 3: SQL Update -- only with a backup to restore from. The container is already
+            // stopped, so a skipped update still falls through to the restart below.
+            if (backupPath is null)
+            {
+                _steps[2].Status = StepStatus.Failed;
+                _steps[2].Detail = "Skipped: no backup was taken, so the database was not modified.";
+                logger.Fail("SQL update skipped: no backup was taken");
+                StateHasChanged();
+            }
+            else
+            {
+                _steps[2].Status = StepStatus.Running;
+                logger.Step("Running SQL update");
+                StateHasChanged();
+                var updated = await JellyfinService.UpdateDateCreatedAsync(logger);
+                _steps[2].Status = updated ? StepStatus.Completed : StepStatus.Failed;
+                _steps[2].Detail = updated ? "DateCreated = PremiereDate applied." : "SQL update failed.";
+                if (updated) logger.Ok("DateCreated = PremiereDate applied");
+                else logger.Fail("SQL update failed");
+                StateHasChanged();
+            }
 
             // Step 4: Start container and wait for ready
             _steps[3].Status = StepStatus.Running;
