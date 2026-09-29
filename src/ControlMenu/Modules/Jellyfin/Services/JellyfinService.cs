@@ -188,6 +188,15 @@ public class JellyfinService : IJellyfinService
         }
     }
 
+    /// <summary>
+    /// Scoped to episodes and movies, the only rows Recently Added orders by. Unscoped it also
+    /// rewrote Person rows -- whose PremiereDate is a BIRTH date, so actors got a 1976 "date
+    /// added" -- and Series, Seasons and BoxSets, scrambling Date Added for everything else.
+    /// </summary>
+    private const string DateCreatedUpdateSql =
+        "UPDATE BaseItems SET DateCreated=PremiereDate WHERE PremiereDate IS NOT NULL"
+        + " AND Type IN ('MediaBrowser.Controller.Entities.TV.Episode','MediaBrowser.Controller.Entities.Movies.Movie');";
+
     public async Task<bool> UpdateDateCreatedAsync(OperationLogger? logger = null, CancellationToken ct = default)
     {
         var dbPath = await _config.GetSettingAsync("jellyfin-db-path");
@@ -200,7 +209,7 @@ public class JellyfinService : IJellyfinService
         // Structured args: dbPath and the SQL are discrete ArgumentList elements, so a dbPath
         // derived from a compose file (ComposeParser) cannot inject extra sqlite3 arguments.
         var result = await _executor.ExecuteResolvedAsync(_resolver, "jellyfin", "sqlite3",
-            new[] { dbPath, "UPDATE BaseItems SET DateCreated=PremiereDate WHERE PremiereDate IS NOT NULL;" },
+            new[] { dbPath, DateCreatedUpdateSql },
             null, ct);
         if (result.ExitCode == 0)
         {

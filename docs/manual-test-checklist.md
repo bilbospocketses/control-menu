@@ -290,7 +290,8 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 - [ ] Click "Start Update":
   - [ ] Step 1: Container stops (shows truncated container ID)
   - [ ] Step 2: Backup created
-  - [ ] Step 3: SQL update runs
+  - [ ] Step 3: SQL update runs, touching only episodes and movies (`Type IN (…TV.Episode, …Movies.Movie)`), never Person, Series, Season or BoxSet rows
+  - [ ] Point `jellyfin-db-path` at a missing file and run: Step 2 fails, Step 3 reads "Skipped: no backup was taken, so the database was not modified", and the container is still started again
   - [ ] Step 4: Container starts, then **waits for Jellyfin to be ready** — the container healthcheck reporting `healthy`, or `Startup complete` in logs timestamped *after* this start. Budget 120s. A failure here means "started but never reported ready", which is NOT `docker start` failing — the step text distinguishes the two
   - [ ] Step 5: Old `.db` backups cleaned (older than the retention window), and card backups under `media-cards/` pruned to the newest three per library. Both the steps overview and the step-5 detail name the **configured** retention (Settings > Jellyfin), not a hard-coded 5 — change the setting to 9 and reload: "older than 9 days"
   - [ ] All steps show green checkmarks on success

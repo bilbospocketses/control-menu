@@ -132,6 +132,72 @@ public class JellyfinServiceTests
     }
 
     [Fact]
+    public async Task UpdateDateCreatedAsync_RewritesOnlyEpisodesAndMovies()
+    {
+        // Unscoped, the statement also rewrote Person rows -- whose PremiereDate is a BIRTH date,
+        // so actors acquired a 1976 "date added" -- plus Series, Seasons and BoxSets, scrambling the
+        // Date Added sort for everything that is not an episode or a movie. The SQL is executed
+        // here rather than string-matched, so a filter that parses but selects the wrong rows fails.
+        _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-db-path", null))
+            .ReturnsAsync("D:/DockerData/jellyfin/config/data/jellyfin.db");
+
+        IReadOnlyList<string>? captured = null;
+        _mockExecutor.Setup(e => e.ExecuteAsync("sqlite3",
+                It.IsAny<IReadOnlyList<string>>(), null, It.IsAny<CancellationToken>()))
+            .Callback<string, IReadOnlyList<string>, string?, CancellationToken>((_, a, _, _) => captured = a)
+            .ReturnsAsync(new CommandResult(0, "", "", false));
+
+        var service = CreateService();
+        await service.UpdateDateCreatedAsync();
+        Assert.NotNull(captured);
+
+        using var db = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        db.Open();
+        using (var setup = db.CreateCommand())
+        {
+            setup.CommandText = """
+                CREATE TABLE BaseItems (Type TEXT NOT NULL, DateCreated TEXT, PremiereDate TEXT);
+                INSERT INTO BaseItems VALUES
+                    ('MediaBrowser.Controller.Entities.TV.Episode',     '2026-09-01', '2011-04-17'),
+                    ('MediaBrowser.Controller.Entities.Movies.Movie',   '2026-09-01', '1999-03-31'),
+                    ('MediaBrowser.Controller.Entities.Person',         '2026-09-01', '1976-08-23'),
+                    ('MediaBrowser.Controller.Entities.TV.Series',      '2026-09-01', '2011-04-17'),
+                    ('MediaBrowser.Controller.Entities.TV.Season',      '2026-09-01', '2011-04-17'),
+                    ('MediaBrowser.Controller.Entities.Movies.BoxSet',  '2026-09-01', '1999-03-31'),
+                    ('MediaBrowser.Controller.Entities.TV.Episode',     '2026-09-01', NULL);
+                """;
+            setup.ExecuteNonQuery();
+        }
+
+        using (var update = db.CreateCommand())
+        {
+            update.CommandText = captured![1];
+            update.ExecuteNonQuery();
+        }
+
+        var dateCreatedByType = new List<(string Type, string? DateCreated)>();
+        using (var read = db.CreateCommand())
+        {
+            read.CommandText = "SELECT Type, DateCreated FROM BaseItems ORDER BY rowid";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+                dateCreatedByType.Add((reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1)));
+        }
+
+        Assert.Equal(
+            [
+                ("MediaBrowser.Controller.Entities.TV.Episode", "2011-04-17"),
+                ("MediaBrowser.Controller.Entities.Movies.Movie", "1999-03-31"),
+                ("MediaBrowser.Controller.Entities.Person", "2026-09-01"),
+                ("MediaBrowser.Controller.Entities.TV.Series", "2026-09-01"),
+                ("MediaBrowser.Controller.Entities.TV.Season", "2026-09-01"),
+                ("MediaBrowser.Controller.Entities.Movies.BoxSet", "2026-09-01"),
+                ("MediaBrowser.Controller.Entities.TV.Episode", "2026-09-01"),
+            ],
+            dateCreatedByType);
+    }
+
+    [Fact]
     public async Task CleanupOldBackupsAsync_KeepsTheNewestThreeCardBackupsPerLibrary_RegardlessOfAge()
     {
         // Card backups live in media-cards/ and were invisible to retention, which globbed *.db
