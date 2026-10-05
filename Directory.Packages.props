@@ -29,9 +29,9 @@
     <PackageVersion Include="Serilog.AspNetCore" Version="9.0.0" />
     <PackageVersion Include="Serilog.Sinks.File" Version="6.0.0" />
     <PackageVersion Include="SharpCompress" Version="0.50.4" />
-    <PackageVersion Include="SkiaSharp" Version="4.152.1" />
+    <PackageVersion Include="SkiaSharp" Version="4.153.1" />
     <PackageVersion Include="Svg.Skia" Version="5.2.3" />
-    <PackageVersion Include="Velopack" Version="1.2.158" />
+    <PackageVersion Include="Velopack" Version="1.2.161" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
     <PackageVersion Include="Xunit.SkippableFact" Version="1.5.85" />
