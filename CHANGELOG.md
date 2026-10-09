@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Nothing is ticked by default (a header checkbox selects or clears all regenerable tiles) and the button stays disabled until at least one is chosen. Reading `/UserViews` needs a user id, which an API key does not carry, so it uses `jellyfin-user-id` when set and otherwise falls back to the first administrator from `/Users` — rather than returning nothing when that setting happens to be blank.
 
+- **CI checks American spelling.** The `build-and-test` job now runs the gate from `bilbospocketses/american-spelling` (pinned to v1.0.2 by commit SHA), which fails a pull request whose added lines or commit messages use a British spelling. Exceptions take an inline `spelling: allow` marker or go in the gate's central allow list; none are kept in this repo.
+
 ### Changed
 
 - **The DB Date Update page names the retention you configured, not "5 days".** Its steps overview and the step-5 detail both hard-coded five while **Settings → Jellyfin → Backup retention** has been a field since the Logging, Backup & Retention section shipped — so anyone who had changed it read a promise the routine did not keep. Both now read `jellyfin-backup-retention-days`, with the same default the cleanup itself falls back to, and mention that card backups are pruned in the same step. Pinned by a bUnit render test.
