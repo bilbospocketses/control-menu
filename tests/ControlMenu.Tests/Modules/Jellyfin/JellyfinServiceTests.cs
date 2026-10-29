@@ -75,37 +75,163 @@ public class JellyfinServiceTests
     }
 
     [Fact]
-    public async Task BackupDatabaseAsync_CopiesFile()
+    public async Task BackupDatabaseAsync_IncludesWritesStillInTheWal()
     {
-        // Create a real source DB file in a temp dir so JellyfinService.BackupDatabaseAsync's
-        // File.Exists(dbPath) check passes on any environment. Previous hardcoded
-        // D:/DockerData/jellyfin/config/data/jellyfin.db only existed on the dev box; CI
-        // (GitHub Actions windows-latest, no D: drive) returned null → assertion failed.
+        // Jellyfin runs in WAL mode, and `docker stop -t=15` SIGKILLs a server that does not exit
+        // in time, so the WAL can hold writes the main file lacks. The backup used File.Copy on the
+        // main file alone and silently dropped them. Here the killed state is reproduced exactly:
+        // db, -wal and -shm are copied aside while a writer still holds them uncheckpointed.
         var tempDir = Path.Combine(Path.GetTempPath(), "cm-test-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
-        var sourceDbPath = Path.Combine(tempDir, "jellyfin.db");
-        await File.WriteAllBytesAsync(sourceDbPath, new byte[] { 0x53, 0x51, 0x4c, 0x69 }); // SQLi header bytes — fake but plausible
+        var liveDir = Path.Combine(tempDir, "live");
+        var killedDir = Path.Combine(tempDir, "killed");
+        var backupDir = Path.Combine(tempDir, "backups");
+        Directory.CreateDirectory(liveDir);
+        Directory.CreateDirectory(killedDir);
+        var livePath = Path.Combine(liveDir, "jellyfin.db");
+        var killedPath = Path.Combine(killedDir, "jellyfin.db");
 
         try
         {
-            _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-db-path", null))
-                .ReturnsAsync(sourceDbPath);
+            using (var writer = OpenDb(livePath))
+            {
+                Exec(writer, "PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;");
+                Exec(writer, "CREATE TABLE BaseItems (Name TEXT);");
+                Exec(writer, "PRAGMA wal_checkpoint(TRUNCATE);");   // the table is in the main file
+                Exec(writer, "INSERT INTO BaseItems VALUES ('in the wal');");
 
-            _mockExecutor.Setup(e => e.ExecuteAsync(
-                It.IsAny<CommandDefinition>(), default))
-                .ReturnsAsync(new CommandResult(0, "", "", false));
+                foreach (var suffix in new[] { "", "-wal", "-shm" })
+                    File.Copy(livePath + suffix, killedPath + suffix);
+            }
 
-            var service = CreateService();
-            var backupPath = await service.BackupDatabaseAsync();
+            // Control: the main file alone really does lack the write, so this test can fail.
+            var mainOnly = Path.Combine(tempDir, "main-only.db");
+            File.Copy(killedPath, mainOnly);
+            Assert.Equal(0, CountRows(mainOnly));
+
+            _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-db-path", null)).ReturnsAsync(killedPath);
+            _mockDirectoryResolver.Setup(r => r.GetBackupDirectoryAsync()).ReturnsAsync(backupDir);
+
+            var backupPath = await CreateService().BackupDatabaseAsync();
 
             Assert.NotNull(backupPath);
-            Assert.Contains("jellyfin_", backupPath);
+            Assert.Matches(@"jellyfin_\d{8}_\d{6}\.db$", backupPath);
+            Assert.Equal(1, CountRows(backupPath!));
+            // One self-contained file: retention globs *.db and would never prune a sidecar.
+            Assert.Equal([Path.GetFileName(backupPath!)], Directory.GetFiles(backupDir).Select(Path.GetFileName));
         }
         finally
         {
-            if (Directory.Exists(tempDir))
-                Directory.Delete(tempDir, recursive: true);
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task BackupDatabaseAsync_ReturnsNullAndLeavesNoPartialFile_WhenTheSourceIsNotADatabase()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "cm-test-" + Guid.NewGuid().ToString("N"));
+        var backupDir = Path.Combine(tempDir, "backups");
+        Directory.CreateDirectory(tempDir);
+        var sourceDbPath = Path.Combine(tempDir, "jellyfin.db");
+        await File.WriteAllTextAsync(sourceDbPath, "this is not a sqlite database, just some bytes long enough to read");
+
+        try
+        {
+            _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-db-path", null)).ReturnsAsync(sourceDbPath);
+            _mockDirectoryResolver.Setup(r => r.GetBackupDirectoryAsync()).ReturnsAsync(backupDir);
+
+            var backupPath = await CreateService().BackupDatabaseAsync();
+
+            Assert.Null(backupPath);
+            Assert.Empty(Directory.GetFiles(backupDir));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task PreflightDateUpdateAsync_IsEmpty_WhenEverythingIsReady()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "cm-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        var dbPath = Path.Combine(tempDir, "jellyfin.db");
+        File.WriteAllText(dbPath, "");
+        try
+        {
+            _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-db-path", null)).ReturnsAsync(dbPath);
+            _mockDirectoryResolver.Setup(r => r.GetBackupDirectoryAsync()).ReturnsAsync(Path.Combine(tempDir, "backups"));
+
+            var problems = await CreateService().PreflightDateUpdateAsync();
+
+            Assert.Empty(problems);
+            Assert.Empty(Directory.GetFiles(Path.Combine(tempDir, "backups"), "*", SearchOption.AllDirectories));
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("db-path-unset", "database path is not set")]
+    [InlineData("db-file-missing", "database was not found")]
+    [InlineData("sqlite3-missing", "sqlite3 is not installed")]
+    [InlineData("backup-dir-unwritable", "cannot be written")]
+    public async Task PreflightDateUpdateAsync_NamesEachMissingPrecondition(string missing, string expected)
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "cm-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        var dbPath = Path.Combine(tempDir, "jellyfin.db");
+        File.WriteAllText(dbPath, "");
+        var backupDir = Path.Combine(tempDir, "backups");
+        try
+        {
+            _mockConfig.Setup(c => c.GetSettingAsync("jellyfin-db-path", null)).ReturnsAsync(missing switch
+            {
+                "db-path-unset" => null,
+                "db-file-missing" => Path.Combine(tempDir, "nope.db"),
+                _ => dbPath,
+            });
+            if (missing == "sqlite3-missing")
+                _mockResolver.Setup(r => r.ResolveAsync("jellyfin", "sqlite3", It.IsAny<CancellationToken>()))
+                    .ThrowsAsync(new DependencyNotInstalledException("jellyfin", "sqlite3", "/cm/deps/sqlite3/sqlite3.exe"));
+            if (missing == "backup-dir-unwritable")
+                File.WriteAllText(backupDir, "a file where the folder should be");
+            _mockDirectoryResolver.Setup(r => r.GetBackupDirectoryAsync()).ReturnsAsync(backupDir);
+
+            var problems = await CreateService().PreflightDateUpdateAsync();
+
+            var problem = Assert.Single(problems);
+            Assert.Contains(expected, problem);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    private static Microsoft.Data.Sqlite.SqliteConnection OpenDb(string path)
+    {
+        var conn = new Microsoft.Data.Sqlite.SqliteConnection(
+            new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());
+        conn.Open();
+        return conn;
+    }
+
+    private static void Exec(Microsoft.Data.Sqlite.SqliteConnection conn, string sql)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
+    }
+
+    private static long CountRows(string path)
+    {
+        using var conn = OpenDb(path);
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM BaseItems";
+        return (long)cmd.ExecuteScalar()!;
     }
 
     [Fact]

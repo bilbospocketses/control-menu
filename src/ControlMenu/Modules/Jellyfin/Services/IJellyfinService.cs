@@ -6,6 +6,11 @@ public interface IJellyfinService
     Task<bool> StopContainerAsync(string containerId, CancellationToken ct = default);
     Task<bool> StartContainerAsync(string containerId, CancellationToken ct = default);
     Task<bool> WaitForContainerReadyAsync(string containerId, int timeoutSeconds = 60, CancellationToken ct = default);
+    /// <summary>
+    /// What would stop the DB Date Update from finishing, checked before the container is
+    /// stopped. Empty when the run can go ahead.
+    /// </summary>
+    Task<IReadOnlyList<string>> PreflightDateUpdateAsync(CancellationToken ct = default);
     Task<string?> BackupDatabaseAsync(OperationLogger? logger = null, CancellationToken ct = default);
     Task<bool> UpdateDateCreatedAsync(OperationLogger? logger = null, CancellationToken ct = default);
     Task CleanupOldBackupsAsync(OperationLogger? logger = null, CancellationToken ct = default);
