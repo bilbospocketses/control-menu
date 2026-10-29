@@ -41,6 +41,39 @@ public class DatabaseUpdatePageTests : BunitContext
     }
 
     [Fact]
+    public async Task A_failed_preflight_never_touches_the_container_and_names_what_is_missing()
+    {
+        // The routine stopped Jellyfin first and only then found the DB path unset or sqlite3
+        // missing, so each misconfigured run took the server offline for nothing.
+        var temp = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            var jellyfin = new Mock<IJellyfinService>();
+            jellyfin.Setup(j => j.PreflightDateUpdateAsync(It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(["sqlite3 is not installed (Settings → Dependencies)."]);
+
+            Services.AddSingleton(Mock.Of<IConfigurationService>());
+            Services.AddSingleton(jellyfin.Object);
+            Services.AddSingleton<IDataPathResolver>(new TestPathResolver(temp));
+
+            var cut = Render<DatabaseUpdate>();
+            await cut.Find("button.btn-primary").ClickAsync(new());
+
+            cut.WaitForAssertion(() => Assert.Contains("sqlite3 is not installed", cut.Markup));
+            jellyfin.Verify(j => j.GetContainerIdAsync(It.IsAny<CancellationToken>()), Times.Never);
+            jellyfin.Verify(j => j.StopContainerAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+            jellyfin.Verify(j => j.BackupDatabaseAsync(It.IsAny<OperationLogger?>(), It.IsAny<CancellationToken>()), Times.Never);
+            // The start button is back, so the run can be retried once the setting is fixed.
+            Assert.NotEmpty(cut.FindAll("button.btn-primary"));
+        }
+        finally
+        {
+            Directory.Delete(temp, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task A_failed_backup_skips_the_sql_update_and_still_restarts_the_container()
     {
         // The SQL step used to run whether or not the backup had been written, so a run whose
@@ -51,6 +84,7 @@ public class DatabaseUpdatePageTests : BunitContext
         try
         {
             var jellyfin = new Mock<IJellyfinService>();
+            jellyfin.Setup(j => j.PreflightDateUpdateAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
             jellyfin.Setup(j => j.GetContainerIdAsync(It.IsAny<CancellationToken>())).ReturnsAsync("a4cc8b418cca");
             jellyfin.Setup(j => j.StopContainerAsync("a4cc8b418cca", It.IsAny<CancellationToken>())).ReturnsAsync(true);
             jellyfin.Setup(j => j.BackupDatabaseAsync(It.IsAny<OperationLogger?>(), It.IsAny<CancellationToken>()))

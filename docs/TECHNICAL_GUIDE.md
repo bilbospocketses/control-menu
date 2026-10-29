@@ -364,7 +364,8 @@ The Jellyfin module manages a Jellyfin media server running in Docker. It handle
 | `StopContainerAsync(id)` | `docker stop` the container |
 | `StartContainerAsync(id)` | `docker start` the container |
 | `WaitForContainerReadyAsync(id, timeout)` | Poll until container is healthy |
-| `BackupDatabaseAsync(logger)` | Copy `jellyfin.db` to timestamped backup |
+| `PreflightDateUpdateAsync()` | What would stop the DB Date Update finishing, checked while Jellyfin is still up: DB path set and present, `sqlite3` resolvable, backup folder writable. The page runs it first and stops nothing if it reports a problem |
+| `BackupDatabaseAsync(logger)` | Back up `jellyfin.db` to a timestamped `.db` through SQLite's online backup API (in process), so writes still in `jellyfin.db-wal` after a killed shutdown are included in one self-contained file |
 | `UpdateDateCreatedAsync(logger)` | Set `DateCreated = PremiereDate` for episodes and movies only; other types (Person rows carry a *birth date* there) are left alone. The page calls it only after a successful backup |
 | `CleanupOldBackupsAsync(logger)` | Remove `*.db` backups older than the retention window, and card backups under `media-cards/` beyond the newest three per library — by count, never by age, since the newest card backup is the only route back from a bad regeneration. Runs from the DB Date Update routine and at the end of every Media Cards run |
 | `ParseComposeFileAsync()` | Extract container info from docker-compose.yml |

@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using ControlMenu.Services;
+using Microsoft.Data.Sqlite;
 
 namespace ControlMenu.Modules.Jellyfin.Services;
 
@@ -154,6 +155,48 @@ public class JellyfinService : IJellyfinService
             System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
             out parsed);
 
+    /// <summary>
+    /// Everything the DB Date Update needs, checked while Jellyfin is still up. The routine's cost
+    /// is the outage, and it used to stop the container first and only then find out that the DB
+    /// path was unset or sqlite3 was missing -- taking Jellyfin offline for nothing.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> PreflightDateUpdateAsync(CancellationToken ct = default)
+    {
+        var problems = new List<string>();
+
+        var dbPath = await _config.GetSettingAsync("jellyfin-db-path");
+        if (string.IsNullOrWhiteSpace(dbPath))
+            problems.Add("The Jellyfin database path is not set (Settings → Jellyfin).");
+        else if (!File.Exists(dbPath))
+            problems.Add($"The Jellyfin database was not found at {dbPath}.");
+
+        // The same lookup UpdateDateCreatedAsync's ExecuteResolvedAsync makes, so the answer here
+        // is the answer step 3 will get.
+        try
+        {
+            await _resolver.ResolveAsync("jellyfin", "sqlite3", ct);
+        }
+        catch (DependencyNotInstalledException)
+        {
+            problems.Add("sqlite3 is not installed (Settings → Dependencies).");
+        }
+
+        var backupDir = await _directoryResolver.GetBackupDirectoryAsync();
+        try
+        {
+            Directory.CreateDirectory(backupDir);
+            var probe = Path.Combine(backupDir, $".write-probe-{Guid.NewGuid():N}");
+            await File.WriteAllBytesAsync(probe, [], ct);
+            File.Delete(probe);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            problems.Add($"The backup folder {backupDir} cannot be written: {ex.Message}");
+        }
+
+        return problems;
+    }
+
     public async Task<string?> BackupDatabaseAsync(OperationLogger? logger = null, CancellationToken ct = default)
     {
         var dbPath = await _config.GetSettingAsync("jellyfin-db-path");
@@ -177,15 +220,52 @@ public class JellyfinService : IJellyfinService
 
         try
         {
-            File.Copy(dbPath, backupPath, overwrite: true);
+            BackupWithSqlite(dbPath, backupPath);
             logger?.Ok($"Backup saved: {backupFileName}");
             return backupPath;
         }
         catch (Exception ex)
         {
+            try { File.Delete(backupPath); } catch (IOException) { }
             logger?.Fail($"Backup failed: {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// Copies the database through SQLite's online backup API rather than <c>File.Copy</c>.
+    /// Jellyfin runs in WAL mode, and <c>docker stop -t=15</c> SIGKILLs a server that does not exit
+    /// in time, leaving recent writes in <c>jellyfin.db-wal</c>. A copy of the main file alone then
+    /// silently lacks them, while the SQL step runs against the WAL-replayed database -- so the
+    /// backup no longer matches what was modified. The backup API reads through the WAL and writes
+    /// one self-contained file, which also keeps retention's <c>*.db</c> glob complete.
+    /// </summary>
+    /// <remarks>
+    /// The source opens read-write, not read-only: a read-only open of a WAL database fails when
+    /// <c>-wal</c> exists without its <c>-shm</c>. Closing it checkpoints the WAL into the main
+    /// file, which changes no content. Pooling is off so neither file is still held open when
+    /// sqlite3 runs the update or the container starts again.
+    /// </remarks>
+    private static void BackupWithSqlite(string dbPath, string backupPath)
+    {
+        var source = new SqliteConnectionStringBuilder
+        {
+            DataSource = dbPath,
+            Mode = SqliteOpenMode.ReadWrite,
+            Pooling = false,
+        }.ToString();
+        var destination = new SqliteConnectionStringBuilder
+        {
+            DataSource = backupPath,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Pooling = false,
+        }.ToString();
+
+        using var src = new SqliteConnection(source);
+        using var dst = new SqliteConnection(destination);
+        src.Open();
+        dst.Open();
+        src.BackupDatabase(dst);
     }
 
     /// <summary>

@@ -15,6 +15,7 @@
             <div>
                 <p><strong>What this does:</strong> sets each item's <code>DateCreated</code> to its premiere date, so Recently Added orders by when a show aired rather than when the file landed.</p>
                 <ol>
+                    <li>Checks the database path, sqlite3 and the backup folder &mdash; nothing is stopped if one is missing</li>
                     <li>Stops the Jellyfin Docker container</li>
                     <li>Creates a database backup</li>
                     <li>Runs the SQL update on episodes and movies (skipped if the backup failed)</li>
@@ -138,6 +139,7 @@ else
         _error = null;
         _steps =
         [
+            new("Checking prerequisites..."),
             new("Stopping Docker container..."),
             new("Creating database backup..."),
             new("Running SQL update..."),
@@ -153,15 +155,33 @@ else
 
         try
         {
-            // Step 1: Get container ID
+            // Step 0: Preflight -- everything the run needs, checked while Jellyfin is still up.
+            // A missing DB path or sqlite3 used to surface only after the container was stopped.
             _steps[0].Status = StepStatus.Running;
+            logger.Step("Checking prerequisites");
+            StateHasChanged();
+            var problems = await JellyfinService.PreflightDateUpdateAsync();
+            if (problems is { Count: > 0 })
+            {
+                _steps[0].Status = StepStatus.Failed;
+                _steps[0].Detail = "Jellyfin was not stopped; nothing was changed.";
+                _error = "Cannot run the update: " + string.Join(" ", problems);
+                foreach (var problem in problems) logger.Fail(problem);
+                return;
+            }
+            _steps[0].Status = StepStatus.Completed;
+            _steps[0].Detail = "Database, sqlite3 and backup folder are ready.";
+            logger.Ok("Prerequisites ready");
+
+            // Step 1: Get container ID
+            _steps[1].Status = StepStatus.Running;
             logger.Step("Stopping Docker container");
             StateHasChanged();
             containerId = await JellyfinService.GetContainerIdAsync();
             if (containerId is null)
             {
-                _steps[0].Status = StepStatus.Failed;
-                _steps[0].Detail = "Jellyfin container not found. Is it running?";
+                _steps[1].Status = StepStatus.Failed;
+                _steps[1].Detail = "Jellyfin container not found. Is it running?";
                 _error = "Could not find Jellyfin Docker container.";
                 _running = false;
                 logger.Fail("Container not found");
@@ -171,25 +191,25 @@ else
             var stopped = await JellyfinService.StopContainerAsync(containerId);
             if (!stopped)
             {
-                _steps[0].Status = StepStatus.Failed;
+                _steps[1].Status = StepStatus.Failed;
                 _error = "Failed to stop container.";
                 _running = false;
                 logger.Fail("Failed to stop container");
                 return;
             }
-            _steps[0].Status = StepStatus.Completed;
+            _steps[1].Status = StepStatus.Completed;
             var shortId = containerId.Length >= 12 ? containerId[..12] : containerId;
-            _steps[0].Detail = $"Container {shortId} stopped.";
+            _steps[1].Detail = $"Container {shortId} stopped.";
             logger.Ok($"Container {shortId} stopped");
             StateHasChanged();
 
             // Step 2: Backup
-            _steps[1].Status = StepStatus.Running;
+            _steps[2].Status = StepStatus.Running;
             logger.Step("Creating database backup");
             StateHasChanged();
             var backupPath = await JellyfinService.BackupDatabaseAsync(logger);
-            _steps[1].Status = backupPath is not null ? StepStatus.Completed : StepStatus.Failed;
-            _steps[1].Detail = backupPath is not null ? $"Saved to {Path.GetFileName(backupPath)}" : "Backup failed";
+            _steps[2].Status = backupPath is not null ? StepStatus.Completed : StepStatus.Failed;
+            _steps[2].Detail = backupPath is not null ? $"Saved to {Path.GetFileName(backupPath)}" : "Backup failed";
             if (backupPath is not null) logger.Ok($"Backup saved to {Path.GetFileName(backupPath)}");
             else logger.Fail("Backup failed");
             StateHasChanged();
@@ -198,45 +218,45 @@ else
             // stopped, so a skipped update still falls through to the restart below.
             if (backupPath is null)
             {
-                _steps[2].Status = StepStatus.Failed;
-                _steps[2].Detail = "Skipped: no backup was taken, so the database was not modified.";
+                _steps[3].Status = StepStatus.Failed;
+                _steps[3].Detail = "Skipped: no backup was taken, so the database was not modified.";
                 logger.Fail("SQL update skipped: no backup was taken");
                 StateHasChanged();
             }
             else
             {
-                _steps[2].Status = StepStatus.Running;
+                _steps[3].Status = StepStatus.Running;
                 logger.Step("Running SQL update");
                 StateHasChanged();
                 var updated = await JellyfinService.UpdateDateCreatedAsync(logger);
-                _steps[2].Status = updated ? StepStatus.Completed : StepStatus.Failed;
-                _steps[2].Detail = updated ? "DateCreated = PremiereDate applied." : "SQL update failed.";
+                _steps[3].Status = updated ? StepStatus.Completed : StepStatus.Failed;
+                _steps[3].Detail = updated ? "DateCreated = PremiereDate applied." : "SQL update failed.";
                 if (updated) logger.Ok("DateCreated = PremiereDate applied");
                 else logger.Fail("SQL update failed");
                 StateHasChanged();
             }
 
             // Step 4: Start container and wait for ready
-            _steps[3].Status = StepStatus.Running;
-            _steps[3].Detail = "Starting container...";
+            _steps[4].Status = StepStatus.Running;
+            _steps[4].Detail = "Starting container...";
             logger.Step("Starting Docker container");
             StateHasChanged();
             var started = await JellyfinService.StartContainerAsync(containerId);
             if (!started)
             {
-                _steps[3].Status = StepStatus.Failed;
-                _steps[3].Detail = "docker start failed — the container did not start.";
+                _steps[4].Status = StepStatus.Failed;
+                _steps[4].Detail = "docker start failed — the container did not start.";
                 logger.Fail("Failed to start container");
                 StateHasChanged();
             }
             else
             {
-                _steps[3].Detail = "Waiting for Jellyfin startup...";
+                _steps[4].Detail = "Waiting for Jellyfin startup...";
                 logger.Step("Waiting for 'Startup complete' in container logs");
                 StateHasChanged();
                 var ready = await JellyfinService.WaitForContainerReadyAsync(containerId);
-                _steps[3].Status = ready ? StepStatus.Completed : StepStatus.Failed;
-                _steps[3].Detail = ready
+                _steps[4].Status = ready ? StepStatus.Completed : StepStatus.Failed;
+                _steps[4].Detail = ready
                     ? "Jellyfin is online."
                     : "Container started, but Jellyfin did not report ready within 120s. The database update itself completed — check the container directly.";
                 if (ready) logger.Ok("Jellyfin startup complete");
@@ -245,19 +265,19 @@ else
             }
 
             // Step 5: Cleanup
-            _steps[4].Status = StepStatus.Running;
+            _steps[5].Status = StepStatus.Running;
             logger.Step("Cleaning up old backups");
             StateHasChanged();
             await JellyfinService.CleanupOldBackupsAsync(logger);
-            _steps[4].Status = StepStatus.Completed;
-            _steps[4].Detail = $"Database backups older than {_retentionDays} days and surplus card backups removed.";
+            _steps[5].Status = StepStatus.Completed;
+            _steps[5].Detail = $"Database backups older than {_retentionDays} days and surplus card backups removed.";
             logger.Ok("Old backups removed");
             StateHasChanged();
 
             // Done — only mark complete if all steps passed
-            var allPassed = _steps.Take(5).All(s => s.Status == StepStatus.Completed);
-            _steps[5].Status = allPassed ? StepStatus.Completed : StepStatus.Failed;
-            _steps[5].Detail = allPassed ? "All checks passed." : "Some steps failed — review above.";
+            var allPassed = _steps.Take(6).All(s => s.Status == StepStatus.Completed);
+            _steps[6].Status = allPassed ? StepStatus.Completed : StepStatus.Failed;
+            _steps[6].Detail = allPassed ? "All checks passed." : "Some steps failed — review above.";
             if (allPassed) logger.Done("All steps completed successfully");
             else logger.Fail("Completed with errors");
             _completed = true;
@@ -271,7 +291,7 @@ else
             logger.Fail($"Unexpected error: {ex.Message}");
 
             // Attempt to restart container if it was stopped before the error
-            if (containerId is not null && _steps[0].Status == StepStatus.Completed)
+            if (containerId is not null && _steps[1].Status == StepStatus.Completed)
             {
                 try
                 {
