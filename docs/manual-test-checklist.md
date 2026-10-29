@@ -288,12 +288,13 @@ Post-audit verification. Run the app with `dotnet run` from `src/ControlMenu/`.
 
 - [ ] Page loads, shows steps overview
 - [ ] Click "Start Update":
-  - [ ] Step 1: Container stops (shows truncated container ID)
-  - [ ] Step 2: Backup created
-  - [ ] Step 3: SQL update runs, touching only episodes and movies (`Type IN (…TV.Episode, …Movies.Movie)`), never Person, Series, Season or BoxSet rows
-  - [ ] Point `jellyfin-db-path` at a missing file and run: Step 2 fails, Step 3 reads "Skipped: no backup was taken, so the database was not modified", and the container is still started again
-  - [ ] Step 4: Container starts, then **waits for Jellyfin to be ready** — the container healthcheck reporting `healthy`, or `Startup complete` in logs timestamped *after* this start. Budget 120s. A failure here means "started but never reported ready", which is NOT `docker start` failing — the step text distinguishes the two
-  - [ ] Step 5: Old `.db` backups cleaned (older than the retention window), and card backups under `media-cards/` pruned to the newest three per library. Both the steps overview and the step-5 detail name the **configured** retention (Settings > Jellyfin), not a hard-coded 5 — change the setting to 9 and reload: "older than 9 days"
+  - [ ] Step 1: Prerequisites checked — "Database, sqlite3 and backup folder are ready."
+  - [ ] Point `jellyfin-db-path` at a missing file and run: Step 1 fails with "Jellyfin was not stopped; nothing was changed.", the error names the missing database, the **container keeps running**, and the Start button is back. Same with sqlite3 uninstalled: the error reads "sqlite3 is not installed (Settings → Dependencies)."
+  - [ ] Step 2: Container stops (shows truncated container ID)
+  - [ ] Step 3: Backup created — one `jellyfin_<stamp>.db` in the backup folder, with **no** `-wal` or `-shm` beside it
+  - [ ] Step 4: SQL update runs, touching only episodes and movies (`Type IN (…TV.Episode, …Movies.Movie)`), never Person, Series, Season or BoxSet rows. If the backup fails, this step reads "Skipped: no backup was taken, so the database was not modified" and the container is still started again (the preflight makes this hard to reach by hand; `DatabaseUpdatePageTests` pins it)
+  - [ ] Step 5: Container starts, then **waits for Jellyfin to be ready** — the container healthcheck reporting `healthy`, or `Startup complete` in logs timestamped *after* this start. Budget 120s. A failure here means "started but never reported ready", which is NOT `docker start` failing — the step text distinguishes the two
+  - [ ] Step 6: Old `.db` backups cleaned (older than the retention window), and card backups under `media-cards/` pruned to the newest three per library. Both the steps overview and the step-6 detail name the **configured** retention (Settings > Jellyfin), not a hard-coded 5 — change the setting to 9 and reload: "older than 9 days"
   - [ ] All steps show green checkmarks on success
 - [ ] If any step fails: error shows immediately (red X), **container is restarted** on failure
 - [ ] Recent Operations table shows styled status badges
@@ -449,7 +450,7 @@ If you're short on time, just hit these:
 4. [ ] Settings > General: SMTP fields save without reverting
 5. [ ] Settings > Cameras: save a camera, verify name shows in sidebar after refresh
 6. [ ] Settings > Dependencies: badges are styled, disabled buttons are dimmed
-7. [ ] Jellyfin > DB Date Update: start a run, verify Step 4 reports Jellyfin online (healthcheck or post-start log marker), not a false "failed to start"
+7. [ ] Jellyfin > DB Date Update: start a run, verify Step 5 reports Jellyfin online (healthcheck or post-start log marker), not a false "failed to start"
 8. [ ] Edit a device, cancel — verify original values unchanged
 9. [ ] Google TV mirror: clicks work, survive stream refresh
 10. [ ] Cast & Crew update sends email on completion (if notification email set)
