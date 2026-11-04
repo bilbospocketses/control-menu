@@ -662,7 +662,11 @@ public class DependencyManagerServiceTests : IDisposable
             .ReturnsAsync(new CommandResult(0, "tool 1.0.0", "", false));
 
         var handler = new ConcurrencyTrackingHandler(@"{""tag_name"": ""v9.9.9"", ""assets"": []}");
-        _mockHttpFactory.Setup(f => f.CreateClient("github-api")).Returns(new HttpClient(handler));
+        // HttpClient's default 100 s timeout would cancel a request the handler is still holding
+        // (the hold runs to the suite's 120 s ceiling), so a sequential caller would fail on an
+        // uncaught cancellation instead of on the "ran sequentially" assertion below.
+        _mockHttpFactory.Setup(f => f.CreateClient("github-api"))
+            .Returns(new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan });
 
         var service = new DependencyManagerService(
             fileFactory, [module], _mockExecutor.Object, _mockHttpFactory.Object,
@@ -844,8 +848,10 @@ internal class StubArtifactVerifier(ControlMenu.Services.Verification.Verificati
 /// fixed linger alone let a loaded box finish the first request before the next check had reached
 /// its HTTP call, and a concurrent service then read as sequential. A sequential caller never sends
 /// a second request while the first is held, so the hold gives up once, at the suite's hang
-/// ceiling, and the test's own "ran sequentially" assertion reports it. After that, each request
-/// still lingers briefly, which only widens the window the upper-bound check watches.
+/// ceiling, and the test's own "ran sequentially" assertion reports it. That holds only if the
+/// <see cref="HttpClient"/> wrapping this handler does not time out first, so the test gives it
+/// <see cref="Timeout.InfiniteTimeSpan"/>. After that, each request still lingers briefly, which
+/// only widens the window the upper-bound check watches.
 /// </summary>
 internal sealed class ConcurrencyTrackingHandler(string body, int delayMs = 100) : HttpMessageHandler
 {

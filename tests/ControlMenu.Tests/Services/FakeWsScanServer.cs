@@ -39,7 +39,9 @@ public sealed class FakeWsScanServer : IAsyncDisposable
     public async Task<T?> ReceiveAsync<T>(WebSocket ws)
     {
         var buffer = new byte[4096];
-        var result = await ws.ReceiveAsync(buffer, CancellationToken.None);
+        // A client that never sends fails with a HUNG message instead of hanging the run.
+        var result = await AsyncSignal.ArrivesAsync(
+            ws.ReceiveAsync(buffer, CancellationToken.None), "a message from the client on /ws-scan");
         var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
         return JsonSerializer.Deserialize<T>(json,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true });

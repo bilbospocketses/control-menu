@@ -22,7 +22,9 @@ public class RtspProbeClientTests
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         try
         {
-            var result = await _sut.ProbeTcpAsync("127.0.0.1", port, AsyncSignal.Timeout, default);
+            // No product timeout here, so a slow box cannot fail it; the hang guard says HUNG.
+            var result = await AsyncSignal.ArrivesAsync(
+                _sut.ProbeTcpAsync("127.0.0.1", port, Timeout.InfiniteTimeSpan, default));
             Assert.True(result);
         }
         finally
@@ -117,7 +119,8 @@ public class RtspProbeClientTests
         });
         try
         {
-            var result = await _sut.DescribeAsync($"rtsp://127.0.0.1:{port}/test", AsyncSignal.Timeout, default);
+            var result = await AsyncSignal.ArrivesAsync(
+                _sut.DescribeAsync($"rtsp://127.0.0.1:{port}/test", Timeout.InfiniteTimeSpan, default));
             Assert.True(result.Success);
             Assert.Equal(200, result.StatusCode);
             Assert.NotNull(result.Sdp);
@@ -149,7 +152,8 @@ public class RtspProbeClientTests
         });
         try
         {
-            var result = await _sut.DescribeAsync($"rtsp://user:pass@127.0.0.1:{port}/test", AsyncSignal.Timeout, default);
+            var result = await AsyncSignal.ArrivesAsync(
+                _sut.DescribeAsync($"rtsp://user:pass@127.0.0.1:{port}/test", Timeout.InfiniteTimeSpan, default));
             Assert.False(result.Success);
             Assert.Equal(401, result.StatusCode);
         }
@@ -206,9 +210,9 @@ public class RtspProbeClientTests
         {
             var encUser = Uri.EscapeDataString(user);
             var encPass = Uri.EscapeDataString(password);
-            var result = await _sut.DescribeAsync(
+            var result = await AsyncSignal.ArrivesAsync(_sut.DescribeAsync(
                 $"rtsp://{encUser}:{encPass}@127.0.0.1:{port}/Streaming/Channels/101",
-                AsyncSignal.Timeout, default);
+                Timeout.InfiniteTimeSpan, default));
             await serverTask;
 
             Assert.DoesNotContain("Authorization", firstRequest, StringComparison.OrdinalIgnoreCase);

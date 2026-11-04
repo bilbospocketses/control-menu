@@ -132,8 +132,11 @@ public class CameraScanServiceTests
         // The ONVIF answer is held until the TCP hit for the same IP has been emitted. A fixed delay
         // here used to decide the order, and on a loaded box ONVIF could land first: the test still
         // passed, but through the no-duplicate path, never exercising the upgrade it is named for.
-        // The two branches run concurrently, so holding ONVIF cannot deadlock the TCP sweep; if the
-        // service ever awaited ONVIF before starting TCP, the hold fails with a HUNG message.
+        // The two branches run concurrently, so holding ONVIF cannot deadlock the TCP sweep. If the
+        // service ever awaited ONVIF before starting TCP, the hold would run out with a HUNG
+        // exception -- which the service's ONVIF branch catches and reports as a
+        // CameraScanErrorEvent rather than rethrowing, so the test records those events and fails
+        // on them by name instead of on a bare IsOnvif assertion.
         var tcpHitEmitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _onvifDisc.Setup(d => d.ProbeAsync(It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
             .Returns(async (TimeSpan _, CancellationToken _) =>
@@ -150,13 +153,17 @@ public class CameraScanServiceTests
             .ReturnsAsync(false);
 
         var sut = CreateSut();
+        var errors = new System.Collections.Concurrent.ConcurrentQueue<CameraScanErrorEvent>();
         using var sub = sut.Subscribe(e =>
         {
             if (e is CameraScanHitEvent { Hit: { IpAddress: "192.168.1.10", IsOnvif: false } })
                 tcpHitEmitted.TrySetResult();
+            if (e is CameraScanErrorEvent error) errors.Enqueue(error);
         });
         await sut.StartScanAsync(new[] { Subnet("192.168.1.0/24") });
 
+        Assert.True(errors.IsEmpty,
+            "the scan reported a branch error: " + string.Join("; ", errors.Select(e => $"{e.Branch}: {e.Message}")));
         Assert.Single(sut.Hits);
         Assert.True(sut.Hits[0].IsOnvif);
         Assert.Equal("Hikvision", sut.Hits[0].Manufacturer);

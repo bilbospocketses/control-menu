@@ -30,7 +30,8 @@ internal static class AsyncSignal
 
     /// <summary>Window a negative assertion watches before concluding nothing arrived. Long enough
     /// for a continuation on a loaded runner; the whole window is paid on every passing run, so it
-    /// is deliberately modest. A slow box only makes it stricter; it cannot fail a correct run.</summary>
+    /// is deliberately modest. It cannot fail a correct run: a slow box can only let a broken run
+    /// pass more easily.</summary>
     public static readonly TimeSpan Grace = TimeSpan.FromMilliseconds(250);
 
     /// <summary>The failure text for a wait that ran out: it starts with HUNG and names what the
