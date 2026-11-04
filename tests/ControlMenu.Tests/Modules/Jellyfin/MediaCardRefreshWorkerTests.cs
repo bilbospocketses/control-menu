@@ -193,11 +193,37 @@ public class MediaCardRefreshWorkerTests
         };
         _mockJobService.Setup(j => j.GetJobAsync(jobId)).ReturnsAsync(job);
 
-        // The card never appears; the user clicks Cancel while the first library is still waiting.
-        _mockJellyfin.Setup(j => j.HasLibraryCardAsync(It.IsAny<string>(), It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() => { job.CancellationRequested = true; return false; });
+        // A backstop token, not the thing under test: if the wait ever polls the card a second time
+        // it has missed the flag, and this ends the run through the token path instead of letting it
+        // sit out the hour-long card timeout below.
+        using var backstop = new CancellationTokenSource();
+        var lib1Polls = 0;
 
-        await CreateWorker().ExecuteAsync(jobId, ["lib-1", "lib-2"], CancellationToken.None);
+        // The card never appears; the user clicks Cancel while the first library is still waiting.
+        _mockJellyfin.Setup(j => j.HasLibraryCardAsync("lib-1", It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                if (++lib1Polls == 1) job.CancellationRequested = true;
+                else backstop.Cancel();
+                return false;
+            });
+
+        // The card timeout is far longer than any test run, so the wait cannot end on it: it ends on
+        // the flag, or (when the per-poll read is missing) on the backstop at the second poll.
+        var worker = new MediaCardRefreshWorker(
+            _mockJellyfin.Object, _mockJobService.Object, _mockEmail.Object, _mockConfig.Object,
+            logger: null,
+            pollInterval: TimeSpan.FromMilliseconds(1),
+            cardTimeout: TimeSpan.FromHours(1));
+
+        await worker.ExecuteAsync(jobId, ["lib-1", "lib-2"], backstop.Token);
+
+        // The wait saw the flag on the poll right after the click: one card check, no second one.
+        _mockJellyfin.Verify(j => j.HasLibraryCardAsync("lib-1", It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()), Times.Once);
+        // ...and the run stopped as a Cancel click after lib-1, not through the backstop token.
+        _mockJobService.Verify(j => j.FailJobAsync(jobId,
+            It.Is<string>(m => m.StartsWith("Canceled after 1 of 2 libraries")), It.IsAny<string?>()), Times.Once);
+        Assert.False(backstop.IsCancellationRequested);
 
         // Checking the flag only BETWEEN libraries meant a click during a 3-minute wait did nothing
         // and the next library was deleted anyway.
