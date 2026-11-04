@@ -67,13 +67,13 @@ public sealed class MediaCardRefreshWorker
             string NameOf(string id) => targets.FirstOrDefault(t => t.Id == id)?.Name ?? id;
 
             var results = new List<MediaCardResult>();
-            var cancelled = false;
+            var canceled = false;
 
             for (var i = 0; i < libraryIds.Count; i++)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    cancelled = true;
+                    canceled = true;
                     break;
                 }
 
@@ -82,7 +82,7 @@ public sealed class MediaCardRefreshWorker
                 var checkJob = await _jobService.GetJobAsync(jobId);
                 if (checkJob?.CancellationRequested == true)
                 {
-                    cancelled = true;
+                    canceled = true;
                     break;
                 }
 
@@ -125,7 +125,7 @@ public sealed class MediaCardRefreshWorker
                 Libraries = results
             });
 
-            if (cancelled)
+            if (canceled)
             {
                 var cancelMsg = $"Canceled after {results.Count} of {libraryIds.Count} libraries. {summary}";
                 _logger?.Fail(cancelMsg);
