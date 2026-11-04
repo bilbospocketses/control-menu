@@ -75,7 +75,7 @@ public class ScrcpyProbeServiceTests
 
             // The connection arriving at the port configured *now* is the whole assertion:
             // against the cached value nothing ever reaches this listener.
-            // A probe dialling the cached port never arrives here, and fails with a HUNG message.
+            // A probe dialing the cached port never arrives here, and fails with a HUNG message.
             (await AsyncSignal.ArrivesAsync(accepted)).Dispose();   // refuse the upgrade so the probe gives up promptly
             Assert.Null(await probe);
         }

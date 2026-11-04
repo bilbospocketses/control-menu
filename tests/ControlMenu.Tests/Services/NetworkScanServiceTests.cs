@@ -364,8 +364,8 @@ public class NetworkScanServiceTests
         Assert.Equal(ScanPhase.Scanning, svc.Phase);
 
         // Subscribe BEFORE calling Cancel so we catch the Draining + Cancelled events.
-        var (cancelledTask, cancelledSub) = WaitForEvent<ScanCancelledEvent>(svc);
-        using var cancelledSubDisposable = cancelledSub;
+        var (canceledTask, canceledSub) = WaitForEvent<ScanCanceledEvent>(svc);
+        using var canceledSubDisposable = canceledSub;
 
         await svc.CancelAsync();
 
@@ -375,7 +375,7 @@ public class NetworkScanServiceTests
         await fakeServer.SendAsync(serverSocket, new { type = "scan.draining" });
         await fakeServer.SendAsync(serverSocket, new { type = "scan.cancelled", found = 0 });
 
-        await AsyncSignal.ArrivesAsync(cancelledTask);
+        await AsyncSignal.ArrivesAsync(canceledTask);
         Assert.Equal(ScanPhase.Cancelled, svc.Phase);
     }
 
@@ -406,17 +406,17 @@ public class NetworkScanServiceTests
         await AsyncSignal.ArrivesAsync(startedTask);
 
         // Subscribe before forcing the drop.
-        var (cancelledTask, cancelledSub) = WaitForEvent<ScanCancelledEvent>(svc);
-        using var cancelledSubDisposable2 = cancelledSub;
+        var (canceledTask, canceledSub) = WaitForEvent<ScanCanceledEvent>(svc);
+        using var canceledSubDisposable2 = canceledSub;
 
         // Server-side close without sending scan.cancelled — simulates container restart.
         // CloseOutputAsync sends the Close frame without waiting for the client echo;
         // this avoids a handshake race between the server-side test code and the
         // receive loop's finally-block CloseAsync. The SUT sees a Close frame and
-        // dispatches ScanCancelledEvent — that's all we need to verify.
+        // dispatches ScanCanceledEvent — that's all we need to verify.
         await serverSocket.CloseOutputAsync(System.Net.WebSockets.WebSocketCloseStatus.EndpointUnavailable, "boom", CancellationToken.None);
 
-        await AsyncSignal.ArrivesAsync(cancelledTask);
+        await AsyncSignal.ArrivesAsync(canceledTask);
         Assert.Equal(ScanPhase.Cancelled, svc.Phase);
     }
 
@@ -425,7 +425,7 @@ public class NetworkScanServiceTests
     {
         // Regression: ws-scrcpy-web sometimes closes the WS abruptly after
         // scan.complete (no proper close handshake). We must not dispatch
-        // spurious ScanCancelled / ScanError events that would overwrite the
+        // spurious ScanCanceled / ScanError events that would overwrite the
         // Complete phase and surface a misleading error toast.
         await using var fakeServer = new FakeWsScanServer();
         await ConfigureWsScrcpyForAsync(fakeServer.Url);
@@ -453,7 +453,7 @@ public class NetworkScanServiceTests
             // Ignore the snapshot replay (ScanStarted already fired)
             if (e is ScanStartedEvent or ScanHitEvent) return;
             extraEvents.Add(e);
-            if (e is ScanCancelledEvent or ScanErrorEvent) spurious.TrySetResult();
+            if (e is ScanCanceledEvent or ScanErrorEvent) spurious.TrySetResult();
         });
 
         // Abort the server socket without a close frame — simulates the
@@ -466,7 +466,7 @@ public class NetworkScanServiceTests
             spurious.Task, "an abrupt close after scan.complete must not dispatch Cancelled/Error");
 
         Assert.Equal(ScanPhase.Complete, svc.Phase);
-        Assert.DoesNotContain(extraEvents, e => e is ScanCancelledEvent);
+        Assert.DoesNotContain(extraEvents, e => e is ScanCanceledEvent);
         Assert.DoesNotContain(extraEvents, e => e is ScanErrorEvent);
     }
 }

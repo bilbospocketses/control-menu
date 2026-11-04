@@ -86,7 +86,7 @@ public class ResolvedExecutorExtensionsTests
         var resolver = new Mock<IDependencyPathResolver>();
         resolver.Setup(r => r.ResolveAsync("android-devices", "adb", It.IsAny<CancellationToken>()))
                 .ReturnsAsync("adb.exe");
-        // The caller cancels while the child is running. Cancelling from inside the running child,
+        // The caller cancels while the child is running. Canceling from inside the running child,
         // rather than on a short timer, means the caller's cancel always lands before the 30 s
         // command timeout, however slowly the box gets the child started.
         using var cts = new CancellationTokenSource();
