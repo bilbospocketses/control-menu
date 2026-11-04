@@ -127,10 +127,10 @@ public sealed class MediaCardRefreshWorker
 
             if (cancelled)
             {
-                var cancelMsg = $"Cancelled after {results.Count} of {libraryIds.Count} libraries. {summary}";
+                var cancelMsg = $"Canceled after {results.Count} of {libraryIds.Count} libraries. {summary}";
                 _logger?.Fail(cancelMsg);
                 await _jobService.FailJobAsync(jobId, cancelMsg, resultData);
-                await SendNotificationAsync("Cancelled", cancelMsg, results);
+                await SendNotificationAsync("Canceled", cancelMsg, results);
             }
             else if (failed > 0)
             {
@@ -148,10 +148,10 @@ public sealed class MediaCardRefreshWorker
         }
         catch (OperationCanceledException)
         {
-            _logger?.Fail("Cancelled by token");
+            _logger?.Fail("Canceled by token");
             try
             {
-                await _jobService.FailJobAsync(jobId, "Cancelled.");
+                await _jobService.FailJobAsync(jobId, "Canceled.");
             }
             catch { /* best effort -- the scope may already be disposed */ }
         }

@@ -220,10 +220,9 @@ public class MediaCardRefreshWorkerTests
 
         // The wait saw the flag on the poll right after the click: one card check, no second one.
         _mockJellyfin.Verify(j => j.HasLibraryCardAsync("lib-1", It.IsAny<JellyfinApiConfig>(), It.IsAny<CancellationToken>()), Times.Once);
-        // ...and the run stopped as a Cancel click after lib-1, not through the backstop token
-        // (whose message names no library count).
+        // ...and the run stopped as a Cancel click after lib-1, not through the backstop token.
         _mockJobService.Verify(j => j.FailJobAsync(jobId,
-            It.Is<string>(m => m.Contains("after 1 of 2 libraries")), It.IsAny<string?>()), Times.Once);
+            It.Is<string>(m => m.StartsWith("Canceled after 1 of 2 libraries")), It.IsAny<string?>()), Times.Once);
         Assert.False(backstop.IsCancellationRequested);
 
         // Checking the flag only BETWEEN libraries meant a click during a 3-minute wait did nothing
