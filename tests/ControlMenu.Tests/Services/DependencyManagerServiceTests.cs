@@ -838,13 +838,20 @@ internal class StubArtifactVerifier(ControlMenu.Services.Verification.Verificati
 
 /// <summary>
 /// Tracks the maximum number of HTTP requests in flight at once, so a test can prove that
-/// callers run concurrently (max &gt; 1) and stay within a bound. Each request lingers briefly
-/// so overlap is observable.
+/// callers run concurrently (max &gt; 1) and stay within a bound.
+///
+/// Each request is held until a second one is in flight, so the overlap is proven by an event: a
+/// fixed linger alone let a loaded box finish the first request before the next check had reached
+/// its HTTP call, and a concurrent service then read as sequential. A sequential caller never sends
+/// a second request while the first is held, so the hold gives up once, at the suite's hang
+/// ceiling, and the test's own "ran sequentially" assertion reports it. After that, each request
+/// still lingers briefly, which only widens the window the upper-bound check watches.
 /// </summary>
 internal sealed class ConcurrencyTrackingHandler(string body, int delayMs = 100) : HttpMessageHandler
 {
     private int _current;
     private int _max;
+    private readonly TaskCompletionSource _overlapped = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public int MaxObserved => Volatile.Read(ref _max);
 
     protected override async Task<HttpResponseMessage> SendAsync(
@@ -854,8 +861,17 @@ internal sealed class ConcurrencyTrackingHandler(string body, int delayMs = 100)
         int observed;
         while (now > (observed = Volatile.Read(ref _max)))
             Interlocked.CompareExchange(ref _max, now, observed);
+        if (now >= 2) _overlapped.TrySetResult();
         try
         {
+            try
+            {
+                await _overlapped.Task.WaitAsync(ControlMenu.Tests.TestHelpers.AsyncSignal.Timeout, cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                _overlapped.TrySetResult();   // sequential caller: stop holding, let the assertion say so
+            }
             await Task.Delay(delayMs, cancellationToken);
             return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
             {
