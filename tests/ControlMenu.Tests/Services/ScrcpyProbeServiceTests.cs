@@ -4,6 +4,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using ControlMenu.Services;
+using ControlMenu.Tests.TestHelpers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -74,10 +75,8 @@ public class ScrcpyProbeServiceTests
 
             // The connection arriving at the port configured *now* is the whole assertion:
             // against the cached value nothing ever reaches this listener.
-            var first = await Task.WhenAny(accepted, Task.Delay(TimeSpan.FromSeconds(5)));
-            Assert.Same(accepted, first);
-
-            (await accepted).Dispose();   // refuse the upgrade so the probe gives up promptly
+            // A probe dialing the cached port never arrives here, and fails with a HUNG message.
+            (await AsyncSignal.ArrivesAsync(accepted)).Dispose();   // refuse the upgrade so the probe gives up promptly
             Assert.Null(await probe);
         }
         finally

@@ -54,7 +54,7 @@ public class DeviceTypeCacheTests
 
         _deviceService.Devices.Add(Make(DeviceType.AndroidPhone));
         _notifier.RaiseChanged();
-        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await AsyncSignal.ArrivesAsync(tcs.Task);
 
         Assert.True(_cache.HasDevicesOfType(DeviceType.AndroidPhone));
         Assert.Equal(1, updated);
@@ -73,7 +73,7 @@ public class DeviceTypeCacheTests
 
         _deviceService.Devices.Clear();
         _notifier.RaiseChanged();
-        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await AsyncSignal.ArrivesAsync(tcs.Task);
 
         Assert.False(_cache.HasDevicesOfType(DeviceType.AndroidPhone));
     }

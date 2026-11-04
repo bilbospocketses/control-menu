@@ -95,7 +95,7 @@ public sealed class ScanLifecycleHandler : IScanLifecycleHandler
             case ScanCompleteEvent:
                 _ = FinalizeScanAsync();
                 break;
-            case ScanCancelledEvent:
+            case ScanCanceledEvent:
                 break;
             case ScanErrorEvent err:
                 _lastError = err.Reason;

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using SkiaSharp;
+using ControlMenu.Tests.TestHelpers;
 
 // FilePickerResult lives in ControlMenu.Modules.Imaging.Pages (imported above).
 
@@ -80,7 +81,7 @@ public class MagicWandPageTests : BunitContext, IDisposable
 
         // Drive the file picker → loads source → controls appear.
         cut.Find("button.btn-secondary").Click();
-        cut.WaitForState(() => cut.FindAll("input.tolerance-slider").Count > 0, TimeSpan.FromSeconds(2));
+        cut.WaitForStateOrHung(() => cut.FindAll("input.tolerance-slider").Count > 0);
 
         Assert.Single(cut.FindAll("input.tolerance-slider"));
         Assert.Single(cut.FindAll("input[type=checkbox]")); // the Contiguous checkbox
@@ -98,7 +99,7 @@ public class MagicWandPageTests : BunitContext, IDisposable
 
         var cut = Render<MagicWand>();
         cut.Find("button.btn-secondary").Click();
-        cut.WaitForState(() => cut.FindAll("button.btn-primary").Count > 0, TimeSpan.FromSeconds(2));
+        cut.WaitForStateOrHung(() => cut.FindAll("button.btn-primary").Count > 0);
 
         // No seed yet → Apply disabled.
         var apply = cut.Find("button.btn-primary");
@@ -119,12 +120,12 @@ public class MagicWandPageTests : BunitContext, IDisposable
 
         var cut = Render<MagicWand>();
         cut.Find("button.btn-secondary").Click();
-        cut.WaitForState(() => cut.FindAll("img.wand-image").Count > 0, TimeSpan.FromSeconds(2));
+        cut.WaitForStateOrHung(() => cut.FindAll("img.wand-image").Count > 0);
 
         var sourceSrc = cut.Find("img.wand-image").GetAttribute("src");
         // Click a pixel → seeds → fires the live flood-fill preview.
         cut.Find("img.wand-image").Click(new MouseEventArgs { OffsetX = 5, OffsetY = 5 });
-        cut.WaitForState(() => cut.Find("img.wand-image").GetAttribute("src") != sourceSrc, TimeSpan.FromSeconds(5));
+        cut.WaitForStateOrHung(() => cut.Find("img.wand-image").GetAttribute("src") != sourceSrc);
 
         var previewSrc = cut.Find("img.wand-image").GetAttribute("src")!;
         // The preview must be served off the circuit via a /temp web-copy, not a full base64 data: URL.
@@ -150,12 +151,12 @@ public class MagicWandPageTests : BunitContext, IDisposable
 
         var cut = Render<MagicWand>();
         cut.Find("button.btn-secondary").Click();
-        cut.WaitForState(() => cut.FindAll("img.wand-image").Count > 0, TimeSpan.FromSeconds(2));
+        cut.WaitForStateOrHung(() => cut.FindAll("img.wand-image").Count > 0);
         cut.Find("img.wand-image").Click(new MouseEventArgs { OffsetX = 5, OffsetY = 5 });
-        cut.WaitForState(() => !cut.Find("button.btn-primary").HasAttribute("disabled"), TimeSpan.FromSeconds(5));
+        cut.WaitForStateOrHung(() => !cut.Find("button.btn-primary").HasAttribute("disabled"));
 
         cut.Find("button.btn-primary").Click(); // Apply & Save
-        cut.WaitForState(() => cut.FindAll("a.btn-pill-success").Count > 0, TimeSpan.FromSeconds(5));
+        cut.WaitForStateOrHung(() => cut.FindAll("a.btn-pill-success").Count > 0);
 
         var previewSrc = cut.Find("img.wand-image").GetAttribute("src")!;
         var downloadHref = cut.Find("a.btn-pill-success").GetAttribute("href")!;
@@ -178,24 +179,23 @@ public class MagicWandPageTests : BunitContext, IDisposable
 
         var cut = Render<MagicWand>();
         cut.Find("button.btn-secondary").Click();
-        cut.WaitForState(() => cut.FindAll("img.wand-image").Count > 0, TimeSpan.FromSeconds(2));
+        cut.WaitForStateOrHung(() => cut.FindAll("img.wand-image").Count > 0);
 
         var tempDir = Path.Combine(_webRoot, "temp");
 
         // First seed → first live preview.
         var src0 = cut.Find("img.wand-image").GetAttribute("src");
         cut.Find("img.wand-image").Click(new MouseEventArgs { OffsetX = 5, OffsetY = 5 });
-        cut.WaitForState(() => cut.Find("img.wand-image").GetAttribute("src") != src0, TimeSpan.FromSeconds(5));
+        cut.WaitForStateOrHung(() => cut.Find("img.wand-image").GetAttribute("src") != src0);
 
         // Second seed → second preview. The prior preview copy must be replaced, not accumulated.
         var src1 = cut.Find("img.wand-image").GetAttribute("src");
         cut.Find("img.wand-image").Click(new MouseEventArgs { OffsetX = 6, OffsetY = 6 });
-        cut.WaitForState(() => cut.Find("img.wand-image").GetAttribute("src") != src1, TimeSpan.FromSeconds(5));
+        cut.WaitForStateOrHung(() => cut.Find("img.wand-image").GetAttribute("src") != src1);
 
         // Exactly the source web-copy + one preview copy remain (would be 3 if previews accumulated).
-        cut.WaitForAssertion(
-            () => Assert.Equal(2, Directory.GetFiles(tempDir, "*.png").Length),
-            TimeSpan.FromSeconds(5));
+        cut.WaitForAssertionOrHung(
+            () => Assert.Equal(2, Directory.GetFiles(tempDir, "*.png").Length));
 
         // Disposing the component (what the framework does on navigate-away) deletes its
         // tracked /temp copies. Dispose is idempotent, so the context's later teardown is a no-op.

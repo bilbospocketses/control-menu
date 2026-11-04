@@ -7,5 +7,5 @@ public sealed record ScanProgressEvent(int Checked, int Total, int FoundSoFar) :
 public sealed record ScanHitEvent(ScanHit Hit) : ScanEvent;
 public sealed record ScanDrainingEvent : ScanEvent;
 public sealed record ScanCompleteEvent(int Found) : ScanEvent;
-public sealed record ScanCancelledEvent(int Found) : ScanEvent;
+public sealed record ScanCanceledEvent(int Found) : ScanEvent;
 public sealed record ScanErrorEvent(string Reason) : ScanEvent;

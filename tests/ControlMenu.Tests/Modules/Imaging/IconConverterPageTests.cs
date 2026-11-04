@@ -5,6 +5,7 @@ using ControlMenu.Modules.Imaging.Services.Options;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using ControlMenu.Tests.TestHelpers;
 
 namespace ControlMenu.Tests.Modules.Imaging;
 
@@ -80,18 +81,18 @@ public class IconConverterPageTests : BunitContext, IDisposable
 
         // First convert → exactly one download web-copy.
         cut.Find("button.btn-primary").Click();
-        cut.WaitForState(() => cut.FindAll("a.btn-pill-success").Count > 0, TimeSpan.FromSeconds(5));
+        cut.WaitForStateOrHung(() => cut.FindAll("a.btn-pill-success").Count > 0);
         var href1 = cut.Find("a.btn-pill-success").GetAttribute("href");
 
         // Second convert → the prior copy must be replaced, not accumulated (would be 2 if it leaked).
         // Convert() clears the result panel at its start, so wait via FindAll (Find would throw during
         // that transient window) until the link reappears with a fresh href.
         cut.Find("button.btn-primary").Click();
-        cut.WaitForState(() =>
+        cut.WaitForStateOrHung(() =>
         {
             var link = cut.FindAll("a.btn-pill-success").FirstOrDefault();
             return link is not null && link.GetAttribute("href") != href1;
-        }, TimeSpan.FromSeconds(5));
+        });
 
         Assert.Single(Directory.GetFiles(tempDir));
 

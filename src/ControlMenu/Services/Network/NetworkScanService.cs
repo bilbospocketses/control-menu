@@ -93,7 +93,7 @@ public sealed class NetworkScanService : INetworkScanService
                 case ScanCompleteEvent:
                     Phase = ScanPhase.Complete;
                     break;
-                case ScanCancelledEvent:
+                case ScanCanceledEvent:
                     Phase = ScanPhase.Cancelled;
                     break;
                 case ScanErrorEvent:
@@ -196,7 +196,7 @@ public sealed class NetworkScanService : INetworkScanService
                     {
                         int count;
                         lock (_lock) count = _hits.Count;
-                        Dispatch(new ScanCancelledEvent(count));
+                        Dispatch(new ScanCanceledEvent(count));
                     }
                     break;
                 }
@@ -230,7 +230,7 @@ public sealed class NetworkScanService : INetworkScanService
             // that's NOT an error the user needs to see.
             if (Phase is not (ScanPhase.Complete or ScanPhase.Cancelled))
             {
-                Dispatch(new ScanCancelledEvent(Hits.Count));
+                Dispatch(new ScanCanceledEvent(Hits.Count));
                 Dispatch(new ScanErrorEvent($"upstream disconnect: {ex.Message}"));
             }
         }
@@ -284,7 +284,7 @@ public sealed class NetworkScanService : INetworkScanService
             case "scan.complete":
                 return new ScanCompleteEvent(GetIntOrDefault(root, "found"));
             case "scan.cancelled":
-                return new ScanCancelledEvent(GetIntOrDefault(root, "found"));
+                return new ScanCanceledEvent(GetIntOrDefault(root, "found"));
             case "scan.error":
                 return new ScanErrorEvent(GetStringOrDefault(root, "reason", "unknown"));
             default:
@@ -331,7 +331,7 @@ public sealed class NetworkScanService : INetworkScanService
         catch
         {
             // Server may already be tearing down — cancellation is idempotent and
-            // best-effort. The receive loop will dispatch ScanCancelled on its
+            // best-effort. The receive loop will dispatch ScanCanceled on its
             // eventual close/drop regardless.
         }
     }

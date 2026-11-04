@@ -6,17 +6,37 @@ namespace ControlMenu.Modules.Cameras.Network;
 public class RtspProbeClient : IRtspProbeClient
 {
     private readonly ILogger<RtspProbeClient> _logger;
+    private readonly TimeProvider _timeProvider;
+    private readonly Func<TcpClient, string, int, CancellationToken, ValueTask> _connect;
 
-    public RtspProbeClient(ILogger<RtspProbeClient> logger) => _logger = logger;
+    public RtspProbeClient(ILogger<RtspProbeClient> logger)
+        : this(logger, TimeProvider.System, connect: null) { }
+
+    /// <summary>
+    /// Test seam. <paramref name="timeProvider"/> runs the probe timeouts and
+    /// <paramref name="connect"/> stands in for the socket connect, so a test can hold a connect
+    /// open the way a host that drops SYNs does and move a fake clock past the timeout -- proving
+    /// the timeout bounds the connect without timing a real one. Internal, so DI only ever sees
+    /// the public constructor.
+    /// </summary>
+    internal RtspProbeClient(
+        ILogger<RtspProbeClient> logger,
+        TimeProvider timeProvider,
+        Func<TcpClient, string, int, CancellationToken, ValueTask>? connect)
+    {
+        _logger = logger;
+        _timeProvider = timeProvider;
+        _connect = connect ?? ((client, host, port, token) => client.ConnectAsync(host, port, token));
+    }
 
     public async Task<bool> ProbeTcpAsync(string ip, int port, TimeSpan timeout, CancellationToken ct)
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(timeout);
+        using var timer = new CancellationTokenSource(timeout, _timeProvider);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, timer.Token);
         try
         {
             using var client = new TcpClient();
-            await client.ConnectAsync(ip, port, cts.Token);
+            await _connect(client, ip, port, cts.Token);
             return client.Connected;
         }
         catch
@@ -28,13 +48,13 @@ public class RtspProbeClient : IRtspProbeClient
     public async Task<RtspDescribeResult> DescribeAsync(string rtspUrl, TimeSpan timeout, CancellationToken ct)
     {
         var uri = new Uri(rtspUrl);
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(timeout);
+        using var timer = new CancellationTokenSource(timeout, _timeProvider);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct, timer.Token);
 
         try
         {
             using var client = new TcpClient();
-            await client.ConnectAsync(uri.Host, uri.Port, cts.Token);
+            await _connect(client, uri.Host, uri.Port, cts.Token);
             using var stream = client.GetStream();
 
             var requestUri = $"{uri.Scheme}://{uri.Host}:{uri.Port}{uri.AbsolutePath}";

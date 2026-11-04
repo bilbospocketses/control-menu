@@ -4,6 +4,7 @@ using ControlMenu.Modules.Jellyfin.Services;
 using ControlMenu.Modules.Jellyfin.Workers;
 using ControlMenu.Services;
 using ControlMenu.Tests.Data;
+using ControlMenu.Tests.TestHelpers;
 using Moq;
 
 namespace ControlMenu.Tests.Modules.Jellyfin;
@@ -57,8 +58,9 @@ public class CastCrewUpdateWorkerTests : IDisposable
 
         var worker = new CastCrewUpdateWorker(_mockJellyfin.Object, _mockJobService.Object, _mockEmail.Object, _mockConfig.Object);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await worker.ExecuteAsync(jobId, cts.Token);
+        // A hang guard, not a cancel: a cancellation token on a timer would cut a slow but correct
+        // run short and fail it on the assertions below.
+        await AsyncSignal.ArrivesAsync(worker.ExecuteAsync(jobId, CancellationToken.None));
 
         Assert.Equal(20, processedIds.Count);
         _mockJobService.Verify(j => j.CompleteJobAsync(jobId, It.IsAny<string>()), Times.Once);
@@ -125,8 +127,7 @@ public class CastCrewUpdateWorkerTests : IDisposable
 
         var worker = new CastCrewUpdateWorker(_mockJellyfin.Object, _mockJobService.Object, _mockEmail.Object, _mockConfig.Object);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await worker.ExecuteAsync(jobId, cts.Token);
+        await AsyncSignal.ArrivesAsync(worker.ExecuteAsync(jobId, CancellationToken.None));
 
         // Verify progress was reported at least once
         _mockJobService.Verify(
