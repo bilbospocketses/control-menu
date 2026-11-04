@@ -1,4 +1,5 @@
 using ControlMenu.Services;
+using ControlMenu.Tests.TestHelpers;
 
 namespace ControlMenu.Tests.Services;
 
@@ -20,7 +21,7 @@ public class IntervalChangeSignalTests
         var wait = signal.WaitAsync(IntervalChangeSignal.CameraLiveness);
         Assert.False(wait.IsCompleted); // parked
         signal.Trigger(IntervalChangeSignal.CameraLiveness);
-        await wait.WaitAsync(TimeSpan.FromSeconds(2));
+        await AsyncSignal.ArrivesAsync(wait);
         Assert.True(wait.IsCompletedSuccessfully);
     }
 

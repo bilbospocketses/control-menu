@@ -1,5 +1,6 @@
 using ControlMenu.Components.Shared;
 using Microsoft.Extensions.Time.Testing;
+using ControlMenu.Tests.TestHelpers;
 
 namespace ControlMenu.Tests.Components;
 
@@ -56,7 +57,7 @@ public class TransientNoticeTests
         Assert.True(notice.IsVisible);
 
         time.Advance(TimeSpan.FromMilliseconds(80));
-        await rerendered.WaitAsync(TimeSpan.FromSeconds(5));
+        await AsyncSignal.ArrivesAsync(rerendered);
 
         Assert.Null(notice.Message);
         Assert.False(notice.IsVisible);
@@ -84,7 +85,7 @@ public class TransientNoticeTests
 
         // t=300ms — the second message's own deadline; now it clears.
         time.Advance(TimeSpan.FromMilliseconds(100));
-        await rerendered.WaitAsync(TimeSpan.FromSeconds(5));
+        await AsyncSignal.ArrivesAsync(rerendered);
         Assert.Null(notice.Message);
     }
 

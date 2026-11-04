@@ -2,6 +2,7 @@ using Bunit;
 using ControlMenu.Components.Pages.Settings;
 using ControlMenu.Data.Entities;
 using Microsoft.AspNetCore.Components;
+using ControlMenu.Tests.TestHelpers;
 
 namespace ControlMenu.Tests.Components.Pages.Settings;
 
@@ -30,9 +31,8 @@ public class DeviceFormTests : BunitContext
         Assert.True(cut.Find("button.btn-primary").HasAttribute("disabled"));
 
         tcs.SetResult(); // complete the save
-        cut.WaitForState(
-            () => !cut.Find("button.btn-primary").HasAttribute("disabled"),
-            TimeSpan.FromSeconds(2));
+        cut.WaitForStateOrHung(
+            () => !cut.Find("button.btn-primary").HasAttribute("disabled"));
         Assert.Equal(1, invocations);
     }
 }

@@ -128,14 +128,17 @@ public class CameraScanServiceTests
         // Simulate the race: TCP probe returns first (synchronous mock), ONVIF probe returns later
         // with richer metadata for the SAME IP. The Hits list should end with ONE entry, IsOnvif=true,
         // with the manufacturer/model populated.
+        //
+        // The ONVIF answer is held until the TCP hit for the same IP has been emitted. A fixed delay
+        // here used to decide the order, and on a loaded box ONVIF could land first: the test still
+        // passed, but through the no-duplicate path, never exercising the upgrade it is named for.
+        // The two branches run concurrently, so holding ONVIF cannot deadlock the TCP sweep; if the
+        // service ever awaited ONVIF before starting TCP, the hold fails with a HUNG message.
+        var tcpHitEmitted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _onvifDisc.Setup(d => d.ProbeAsync(It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
             .Returns(async (TimeSpan _, CancellationToken _) =>
             {
-                // Deliberate latency *inside the mock* to shape the scenario — this is not the test
-                // waiting on the SUT, it is the fake ONVIF probe simulating a slower network round
-                // trip so its response lands after the (synchronous) TCP probe. Gating it on the TCP
-                // probe instead would deadlock if the service awaits ONVIF before starting TCP.
-                await Task.Delay(50);
+                await AsyncSignal.ArrivesAsync(tcpHitEmitted.Task);
                 return new List<OnvifProbeResponse>
                 {
                     new("192.168.1.10", "Hikvision", "DS-2CD2143G0-I", "http://192.168.1.10/onvif/device_service")
@@ -147,6 +150,11 @@ public class CameraScanServiceTests
             .ReturnsAsync(false);
 
         var sut = CreateSut();
+        using var sub = sut.Subscribe(e =>
+        {
+            if (e is CameraScanHitEvent { Hit: { IpAddress: "192.168.1.10", IsOnvif: false } })
+                tcpHitEmitted.TrySetResult();
+        });
         await sut.StartScanAsync(new[] { Subnet("192.168.1.0/24") });
 
         Assert.Single(sut.Hits);
@@ -193,8 +201,12 @@ public class CameraScanServiceTests
             .ReturnsAsync(false);
 
         var started = 0;
+        var secondStart = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var sut = CreateSut();
-        using var sub = sut.Subscribe(e => { if (e is CameraScanStartedEvent) Interlocked.Increment(ref started); });
+        using var sub = sut.Subscribe(e =>
+        {
+            if (e is CameraScanStartedEvent && Interlocked.Increment(ref started) >= 2) secondStart.TrySetResult();
+        });
 
         var subnets = new[] { Subnet("192.168.1.0/24") };
         var tasks = Enumerable.Range(0, 32).Select(_ => Task.Run(() => sut.StartScanAsync(subnets))).ToArray();
@@ -204,10 +216,11 @@ public class CameraScanServiceTests
         await AsyncSignal.BecomesTrueAsync(
             () => Volatile.Read(ref started) >= 1, "one of the 32 concurrent starts should have begun a scan");
 
-        // Then settle: a non-atomic guard would have let several of the 32 slip past and increment by
-        // now, while the atomic guard holds the winner on the gate so the count stays at exactly one.
-        // This one is a genuine negative assertion, so a bounded real wait is the only way to make it.
-        await AsyncSignal.SettleAsync();
+        // Then watch for a second start: a non-atomic guard lets several of the 32 slip past, while
+        // the atomic guard holds the winner on the gate so the count stays at exactly one. This one
+        // is a genuine negative assertion, so a bounded real wait is the only way to make it.
+        await AsyncSignal.NeverArrivesAsync(
+            secondStart.Task, "the atomic guard must admit exactly one of the 32 concurrent starts");
 
         Assert.Equal(1, Volatile.Read(ref started));
 

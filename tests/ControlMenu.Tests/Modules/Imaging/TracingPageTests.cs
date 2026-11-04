@@ -5,6 +5,7 @@ using ControlMenu.Modules.Imaging.Services.Options;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using ControlMenu.Tests.TestHelpers;
 
 namespace ControlMenu.Tests.Modules.Imaging;
 
@@ -133,7 +134,7 @@ public class TracingPageTests : BunitContext, IDisposable
         var cut = Render<Tracing>();
         cut.Find("input.form-control[type=text]").Change(srcPath);
         cut.Find("button.btn-primary").Click();
-        cut.WaitForState(() => cut.FindAll("img.trace-image").Count > 0, TimeSpan.FromSeconds(5));
+        cut.WaitForStateOrHung(() => cut.FindAll("img.trace-image").Count > 0);
 
         // Preview must be an inert SVG data: URL — never a navigable same-origin /temp .svg.
         var previewSrc = cut.Find("img.trace-image").GetAttribute("src")!;

@@ -184,7 +184,7 @@ public class NetworkScanServiceTests
         });
 
         var startTask = svc.StartScanAsync(new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) });
-        var serverSocket = await fakeServer.GetClientAsync(TimeSpan.FromSeconds(5));
+        var serverSocket = await fakeServer.GetClientAsync();
         await fakeServer.ReceiveAsync<System.Text.Json.JsonElement>(serverSocket);  // drain scan.start
 
         await fakeServer.SendAsync(serverSocket, new { type = "scan.started", totalHosts = 6, totalSubnets = 1, startedAt = 0L });
@@ -227,7 +227,7 @@ public class NetworkScanServiceTests
         var subnets = new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) };
         var startTask = svc.StartScanAsync(subnets);
 
-        var serverSocket = await fakeServer.GetClientAsync(TimeSpan.FromSeconds(5));
+        var serverSocket = await fakeServer.GetClientAsync();
 
         // Verify the client sent scan.start with the raw subnet string.
         var clientMsg = await fakeServer.ReceiveAsync<System.Text.Json.JsonElement>(serverSocket);
@@ -299,7 +299,7 @@ public class NetworkScanServiceTests
         });
 
         var startTask = svc.StartScanAsync(new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) });
-        var serverSocket = await fakeServer.GetClientAsync(TimeSpan.FromSeconds(5));
+        var serverSocket = await fakeServer.GetClientAsync();
         await fakeServer.ReceiveAsync<System.Text.Json.JsonElement>(serverSocket);  // drain scan.start
         await fakeServer.SendAsync(serverSocket, new { type = "scan.complete", found = 0 });
 
@@ -320,7 +320,7 @@ public class NetworkScanServiceTests
 
         var subnets = new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) };
         var first = svc.StartScanAsync(subnets);
-        var serverSocket = await fakeServer.GetClientAsync(TimeSpan.FromSeconds(5));
+        var serverSocket = await fakeServer.GetClientAsync();
         await fakeServer.ReceiveAsync<object>(serverSocket);
         await fakeServer.SendAsync(serverSocket, new { type = "scan.started", totalHosts = 6, totalSubnets = 1, startedAt = 0L });
         await AsyncSignal.ArrivesAsync(started.Task);  // Phase has flipped to Scanning
@@ -355,12 +355,12 @@ public class NetworkScanServiceTests
         using var startedSubDisposable = startedSub;
 
         var startTask = svc.StartScanAsync(new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) });
-        var serverSocket = await fakeServer.GetClientAsync(TimeSpan.FromSeconds(5));
+        var serverSocket = await fakeServer.GetClientAsync();
         var startMsg = await fakeServer.ReceiveAsync<object>(serverSocket);  // drain scan.start
         await fakeServer.SendAsync(serverSocket, new { type = "scan.started", totalHosts = 6, totalSubnets = 1, startedAt = 0L });
 
         // Wait for scan.started to flow through Dispatch so Phase flips to Scanning.
-        await startedTask.WaitAsync(TimeSpan.FromSeconds(5));
+        await AsyncSignal.ArrivesAsync(startedTask);
         Assert.Equal(ScanPhase.Scanning, svc.Phase);
 
         // Subscribe BEFORE calling Cancel so we catch the Draining + Cancelled events.
@@ -375,7 +375,7 @@ public class NetworkScanServiceTests
         await fakeServer.SendAsync(serverSocket, new { type = "scan.draining" });
         await fakeServer.SendAsync(serverSocket, new { type = "scan.cancelled", found = 0 });
 
-        await cancelledTask.WaitAsync(TimeSpan.FromSeconds(5));
+        await AsyncSignal.ArrivesAsync(cancelledTask);
         Assert.Equal(ScanPhase.Cancelled, svc.Phase);
     }
 
@@ -400,10 +400,10 @@ public class NetworkScanServiceTests
         using var startedSubDisposable2 = startedSub;
 
         var startTask2 = svc.StartScanAsync(new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) });
-        var serverSocket = await fakeServer.GetClientAsync(TimeSpan.FromSeconds(5));
+        var serverSocket = await fakeServer.GetClientAsync();
         var startMsg2 = await fakeServer.ReceiveAsync<object>(serverSocket);
         await fakeServer.SendAsync(serverSocket, new { type = "scan.started", totalHosts = 6, totalSubnets = 1, startedAt = 0L });
-        await startedTask.WaitAsync(TimeSpan.FromSeconds(5));
+        await AsyncSignal.ArrivesAsync(startedTask);
 
         // Subscribe before forcing the drop.
         var (cancelledTask, cancelledSub) = WaitForEvent<ScanCancelledEvent>(svc);
@@ -416,7 +416,7 @@ public class NetworkScanServiceTests
         // dispatches ScanCancelledEvent — that's all we need to verify.
         await serverSocket.CloseOutputAsync(System.Net.WebSockets.WebSocketCloseStatus.EndpointUnavailable, "boom", CancellationToken.None);
 
-        await cancelledTask.WaitAsync(TimeSpan.FromSeconds(5));
+        await AsyncSignal.ArrivesAsync(cancelledTask);
         Assert.Equal(ScanPhase.Cancelled, svc.Phase);
     }
 
@@ -435,13 +435,13 @@ public class NetworkScanServiceTests
         using var completeSubDisposable = completeSub;
 
         var startTask = svc.StartScanAsync(new[] { new ParsedSubnet("10.0.0.0/29", "10.0.0.0/29", 6) });
-        var serverSocket = await fakeServer.GetClientAsync(TimeSpan.FromSeconds(5));
+        var serverSocket = await fakeServer.GetClientAsync();
         await fakeServer.ReceiveAsync<System.Text.Json.JsonElement>(serverSocket);  // drain scan.start
 
         await fakeServer.SendAsync(serverSocket, new { type = "scan.started", totalHosts = 6, totalSubnets = 1, startedAt = 0L });
         await fakeServer.SendAsync(serverSocket, new { type = "scan.complete", found = 0 });
 
-        await completeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        await AsyncSignal.ArrivesAsync(completeTask);
         Assert.Equal(ScanPhase.Complete, svc.Phase);
 
         // Subscribe AFTER Complete fires to catch anything the receive loop might dispatch

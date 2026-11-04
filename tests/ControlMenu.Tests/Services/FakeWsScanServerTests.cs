@@ -11,7 +11,7 @@ public class FakeWsScanServerTests
         using var client = new ClientWebSocket();
         var wsUrl = new Uri(server.Url.Replace("http://", "ws://") + "/ws-scan");
         await client.ConnectAsync(wsUrl, CancellationToken.None);
-        var serverSocket = await server.GetClientAsync(TimeSpan.FromSeconds(5));
+        var serverSocket = await server.GetClientAsync();
         Assert.Equal(WebSocketState.Open, serverSocket.State);
     }
 
@@ -22,7 +22,7 @@ public class FakeWsScanServerTests
         using var client = new ClientWebSocket();
         var wsUrl = new Uri(server.Url.Replace("http://", "ws://") + "/ws-scan");
         await client.ConnectAsync(wsUrl, CancellationToken.None);
-        var serverSocket = await server.GetClientAsync(TimeSpan.FromSeconds(5));
+        var serverSocket = await server.GetClientAsync();
 
         await server.SendAsync(serverSocket, new { type = "scan.started", totalHosts = 42, totalSubnets = 1, startedAt = 0 });
 

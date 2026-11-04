@@ -60,7 +60,7 @@ public class DatabaseUpdatePageTests : BunitContext
             var cut = Render<DatabaseUpdate>();
             await cut.Find("button.btn-primary").ClickAsync(new());
 
-            cut.WaitForAssertion(() => Assert.Contains("sqlite3 is not installed", cut.Markup));
+            cut.WaitForAssertionOrHung(() => Assert.Contains("sqlite3 is not installed", cut.Markup));
             jellyfin.Verify(j => j.GetContainerIdAsync(It.IsAny<CancellationToken>()), Times.Never);
             jellyfin.Verify(j => j.StopContainerAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
             jellyfin.Verify(j => j.BackupDatabaseAsync(It.IsAny<OperationLogger?>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -100,7 +100,7 @@ public class DatabaseUpdatePageTests : BunitContext
             var cut = Render<DatabaseUpdate>();
             await cut.Find("button.btn-primary").ClickAsync(new());
 
-            cut.WaitForAssertion(() => Assert.Contains("Some steps failed", cut.Markup));
+            cut.WaitForAssertionOrHung(() => Assert.Contains("Some steps failed", cut.Markup));
             jellyfin.Verify(j => j.UpdateDateCreatedAsync(It.IsAny<OperationLogger?>(), It.IsAny<CancellationToken>()), Times.Never);
             jellyfin.Verify(j => j.StartContainerAsync("a4cc8b418cca", It.IsAny<CancellationToken>()), Times.Once);
             Assert.Contains("Skipped: no backup was taken", cut.Markup);

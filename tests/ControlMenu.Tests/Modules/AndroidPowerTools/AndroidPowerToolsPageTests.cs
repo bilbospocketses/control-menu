@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using Moq;
+using ControlMenu.Tests.TestHelpers;
 
 namespace ControlMenu.Tests.Modules.AndroidPowerTools;
 
@@ -65,7 +66,7 @@ public class AndroidPowerToolsPageTests : BunitContext
         clock.Advance(TimeSpan.FromSeconds(1));
 
         // One second of the page's clock, and no poll has fired: the display must already differ.
-        cut.WaitForAssertion(() => Assert.NotEqual(before, CountdownText(cut)), TimeSpan.FromSeconds(1));
+        cut.WaitForAssertionOrHung(() => Assert.NotEqual(before, CountdownText(cut)));
     }
 
     [Fact]
@@ -85,7 +86,7 @@ public class AndroidPowerToolsPageTests : BunitContext
 
         clock.Advance(TimeSpan.FromSeconds(3));   // the page's PollInterval
 
-        cut.WaitForAssertion(() => Assert.Equal(1, handler.StatusPolls), TimeSpan.FromSeconds(1));
+        cut.WaitForAssertionOrHung(() => Assert.Equal(1, handler.StatusPolls));
     }
 
     /// <summary>Answers every request with JSON both the embed request and the status poll parse,

@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Time.Testing;
+using System.Runtime.CompilerServices;
 
 namespace ControlMenu.Tests.TestHelpers;
 
@@ -16,26 +16,55 @@ namespace ControlMenu.Tests.TestHelpers;
 /// <item><b>Negative assertion</b> ("this must NOT happen") -- a real wait is unavoidable, because
 /// absence cannot be awaited. <see cref="NeverArrivesAsync"/> bounds it explicitly and says why in
 /// the failure message. Erring longer here is safe: it only ever makes the assertion stricter.</item>
+/// <item><b>Fake clocks</b> -- never sleep so the code "has time" to arm its next timer before an
+/// Advance; a loaded box loses that race and the test hangs on a timer that started late. Wait for
+/// the timer itself with <see cref="TimerCountingTimeProvider.TimersArmedAsync"/>.</item>
 /// </list>
 /// </summary>
 internal static class AsyncSignal
 {
     /// <summary>Ceiling for a signal that should arrive essentially immediately. Never waited in a
-    /// passing run -- it exists so a broken run fails with a clear timeout instead of hanging.</summary>
-    public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
+    /// passing run -- it exists so a broken run fails with a HUNG message instead of hanging. It is
+    /// deliberately generous: correct code that only runs slower on a loaded box must never fail.</summary>
+    public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(120);
 
     /// <summary>Window a negative assertion watches before concluding nothing arrived. Long enough
     /// for a continuation on a loaded runner; the whole window is paid on every passing run, so it
-    /// is deliberately modest.</summary>
+    /// is deliberately modest. A slow box only makes it stricter; it cannot fail a correct run.</summary>
     public static readonly TimeSpan Grace = TimeSpan.FromMilliseconds(250);
 
-    /// <summary>Awaits <paramref name="signal"/>, failing with a timeout rather than hanging.</summary>
-    public static Task ArrivesAsync(Task signal, TimeSpan? timeout = null)
-        => signal.WaitAsync(timeout ?? Timeout);
+    /// <summary>The failure text for a wait that ran out: it starts with HUNG and names what the
+    /// test was waiting on, so a hang is never mistaken for an assertion about the result.</summary>
+    public static string Hung(string what) =>
+        $"HUNG: waited {Timeout.TotalSeconds:F0} s for `{what}`, and it never arrived";
 
-    /// <inheritdoc cref="ArrivesAsync(Task, TimeSpan?)"/>
-    public static Task<T> ArrivesAsync<T>(Task<T> signal, TimeSpan? timeout = null)
-        => signal.WaitAsync(timeout ?? Timeout);
+    /// <summary>Awaits <paramref name="signal"/>, failing with a HUNG message rather than hanging.</summary>
+    public static async Task ArrivesAsync(
+        Task signal, [CallerArgumentExpression(nameof(signal))] string what = "")
+    {
+        try
+        {
+            await signal.WaitAsync(Timeout);
+        }
+        catch (TimeoutException ex) when (!signal.IsCompleted)
+        {
+            throw new TimeoutException(Hung(what), ex);
+        }
+    }
+
+    /// <inheritdoc cref="ArrivesAsync(Task, string)"/>
+    public static async Task<T> ArrivesAsync<T>(
+        Task<T> signal, [CallerArgumentExpression(nameof(signal))] string what = "")
+    {
+        try
+        {
+            return await signal.WaitAsync(Timeout);
+        }
+        catch (TimeoutException ex) when (!signal.IsCompleted)
+        {
+            throw new TimeoutException(Hung(what), ex);
+        }
+    }
 
     /// <summary>
     /// Asserts <paramref name="signal"/> does not complete within a bounded real window.
@@ -48,28 +77,16 @@ internal static class AsyncSignal
     }
 
     /// <summary>
-    /// Yields real time so code under test can resume from an await and arm its <em>next</em>
-    /// fake-clock timer.
-    ///
-    /// <see cref="FakeTimeProvider"/> deadlines are absolute, not relative to when a test calls
-    /// Advance: advance before the code has reached its next <c>Task.Delay</c> and that timer simply
-    /// starts counting from the new "now", so the advance never reaches it and the test hangs on a
-    /// signal that will never come. Await this between a completed cycle and the advance that should
-    /// drive the following one. Waiting real time here is safe -- a frozen fake clock cannot fire
-    /// anything while we wait, so this can only ever make the following assertion more reliable.
-    /// </summary>
-    public static Task SettleAsync() => Task.Delay(100);
-
-    /// <summary>
     /// Polls <paramref name="condition"/> until it holds, then returns. For state that no callback
     /// announces; prefer <see cref="ArrivesAsync"/> whenever the code under test raises a signal.
     /// </summary>
-    public static async Task BecomesTrueAsync(Func<bool> condition, string because, TimeSpan? timeout = null)
+    /// <param name="because">What the test is waiting for -- named in the HUNG message.</param>
+    public static async Task BecomesTrueAsync(Func<bool> condition, string because)
     {
-        var deadline = DateTime.UtcNow + (timeout ?? Timeout);
+        var deadline = DateTime.UtcNow + Timeout;
         while (!condition())
         {
-            if (DateTime.UtcNow > deadline) Assert.Fail(because);
+            if (DateTime.UtcNow > deadline) Assert.Fail(Hung(because));
             await Task.Delay(10);
         }
     }
