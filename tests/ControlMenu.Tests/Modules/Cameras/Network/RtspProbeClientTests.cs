@@ -1,11 +1,12 @@
-using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using ControlMenu.Modules.Cameras.Network;
+using ControlMenu.Tests.TestHelpers;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 namespace ControlMenu.Tests.Modules.Cameras.Network;
 
@@ -21,7 +22,7 @@ public class RtspProbeClientTests
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         try
         {
-            var result = await _sut.ProbeTcpAsync("127.0.0.1", port, TimeSpan.FromSeconds(1), default);
+            var result = await _sut.ProbeTcpAsync("127.0.0.1", port, AsyncSignal.Timeout, default);
             Assert.True(result);
         }
         finally
@@ -41,18 +42,25 @@ public class RtspProbeClientTests
     [Fact]
     public async Task ProbeTcpAsync_GivesUpAtTheTimeout_WhenTheHostDropsSyns()
     {
-        // 192.0.2.1 is RFC 5737 TEST-NET-1: nothing answers, so the SYN is dropped rather than
-        // refused, and a raw connect sits in the OS retransmit path for ~21s on Windows (measured
-        // 2026-09-04). The liveness tick probes cameras one after another, so a probe that ran to
-        // that limit would stall the whole tick for every powered-off camera. This pins the
-        // timeout as the bound: on net10 the token cancels ConnectAsync at 0.5s, 15 runs of 15.
-        var sw = Stopwatch.StartNew();
-        var result = await _sut.ProbeTcpAsync("192.0.2.1", 554, TimeSpan.FromMilliseconds(500), default);
-        sw.Stop();
+        // A host that drops SYNs never answers, and a raw connect to one sits in the OS retransmit
+        // path for ~21s on Windows (measured 2026-09-04). The liveness tick probes cameras one after
+        // another, so a probe that ran to that limit would stall the whole tick for every
+        // powered-off camera. This pins the timeout as the bound. The connect is faked as one that
+        // completes only when its token cancels, and the clock is fake, so the test proves the
+        // timeout reaches the connect without timing a real one: a box that runs slower cannot
+        // fail it, and a probe that ignored its timeout would fail it with a HUNG message.
+        var time = new FakeTimeProvider();
+        var (connect, connecting) = DroppedSynConnect();
+        var sut = new RtspProbeClient(NullLogger<RtspProbeClient>.Instance, time, connect);
 
-        Assert.False(result);
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(3),
-            $"probe took {sw.Elapsed.TotalSeconds:F1}s against a 0.5s timeout");
+        var probe = sut.ProbeTcpAsync("192.0.2.1", 554, TimeSpan.FromMilliseconds(500), default);
+        var connectToken = await AsyncSignal.ArrivesAsync(connecting);
+
+        time.Advance(TimeSpan.FromMilliseconds(499));
+        Assert.False(connectToken.IsCancellationRequested, "the connect was cut off before its 0.5s timeout");
+
+        time.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.False(await AsyncSignal.ArrivesAsync(probe));
     }
 
     [Fact]
@@ -60,14 +68,32 @@ public class RtspProbeClientTests
     {
         // Same connect, two methods down: a scan that DESCRIBEs a camera that has since gone
         // dark must fail at the timeout, not at the OS's retransmit limit. Pinned for the same
-        // reason as the probe above.
-        var sw = Stopwatch.StartNew();
-        var result = await _sut.DescribeAsync("rtsp://192.0.2.1:554/stream", TimeSpan.FromMilliseconds(500), default);
-        sw.Stop();
+        // reason, and in the same way, as the probe above.
+        var time = new FakeTimeProvider();
+        var (connect, connecting) = DroppedSynConnect();
+        var sut = new RtspProbeClient(NullLogger<RtspProbeClient>.Instance, time, connect);
 
-        Assert.False(result.Success);
-        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(3),
-            $"describe took {sw.Elapsed.TotalSeconds:F1}s against a 0.5s timeout");
+        var describe = sut.DescribeAsync("rtsp://192.0.2.1:554/stream", TimeSpan.FromMilliseconds(500), default);
+        var connectToken = await AsyncSignal.ArrivesAsync(connecting);
+
+        time.Advance(TimeSpan.FromMilliseconds(499));
+        Assert.False(connectToken.IsCancellationRequested, "the connect was cut off before its 0.5s timeout");
+
+        time.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.False((await AsyncSignal.ArrivesAsync(describe)).Success);
+    }
+
+    /// <summary>A connect to a host that drops SYNs: it never completes on its own, only when its
+    /// token cancels. The returned task hands the test that token once the connect has begun.</summary>
+    private static (Func<TcpClient, string, int, CancellationToken, ValueTask> Connect, Task<CancellationToken> Connecting)
+        DroppedSynConnect()
+    {
+        var connecting = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        return (async (_, _, _, token) =>
+        {
+            connecting.TrySetResult(token);
+            await Task.Delay(Timeout.Infinite, token);
+        }, connecting.Task);
     }
 
     [Fact]
@@ -91,7 +117,7 @@ public class RtspProbeClientTests
         });
         try
         {
-            var result = await _sut.DescribeAsync($"rtsp://127.0.0.1:{port}/test", TimeSpan.FromSeconds(2), default);
+            var result = await _sut.DescribeAsync($"rtsp://127.0.0.1:{port}/test", AsyncSignal.Timeout, default);
             Assert.True(result.Success);
             Assert.Equal(200, result.StatusCode);
             Assert.NotNull(result.Sdp);
@@ -123,7 +149,7 @@ public class RtspProbeClientTests
         });
         try
         {
-            var result = await _sut.DescribeAsync($"rtsp://user:pass@127.0.0.1:{port}/test", TimeSpan.FromSeconds(2), default);
+            var result = await _sut.DescribeAsync($"rtsp://user:pass@127.0.0.1:{port}/test", AsyncSignal.Timeout, default);
             Assert.False(result.Success);
             Assert.Equal(401, result.StatusCode);
         }
@@ -150,7 +176,7 @@ public class RtspProbeClientTests
         string? authHeader = null;
         var serverTask = Task.Run(async () =>
         {
-            using var serverCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var serverCts = new CancellationTokenSource(AsyncSignal.Timeout);
             try
             {
                 using var client = await listener.AcceptTcpClientAsync(serverCts.Token);
@@ -182,7 +208,7 @@ public class RtspProbeClientTests
             var encPass = Uri.EscapeDataString(password);
             var result = await _sut.DescribeAsync(
                 $"rtsp://{encUser}:{encPass}@127.0.0.1:{port}/Streaming/Channels/101",
-                TimeSpan.FromSeconds(3), default);
+                AsyncSignal.Timeout, default);
             await serverTask;
 
             Assert.DoesNotContain("Authorization", firstRequest, StringComparison.OrdinalIgnoreCase);
