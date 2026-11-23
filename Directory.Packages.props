@@ -20,7 +20,7 @@
   <ItemGroup>
     <PackageVersion Include="bunit" Version="2.15.2" />
     <PackageVersion Include="coverlet.collector" Version="10.1.1" />
-    <PackageVersion Include="MailKit" Version="4.18.2" />
+    <PackageVersion Include="MailKit" Version="5.0.0" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.*" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.*" />
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.1" />
